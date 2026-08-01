@@ -4,7 +4,10 @@
 > serverseitigen Anteil. Systemprompt: `AGENT_SERVER.md`. Gesamtspezifikation: `/PRJ_FuBo/harness/AGENT.md`.
 
 > Projektordner: `<Projektordner>/PRJ_FuBo`, Backend unter `server/`
-> Git-Repository: noch nicht angelegt (siehe Meilenstein S0)
+> Git-Repository: **eigenständiges Repository mit Wurzel in `server/`** (GitHub, privat, `FuBo-Server`).
+> **Kein Monorepo.** Das Frontend liegt in einem getrennten Repository (`FuBo-Client`, Ordner `client/`).
+> Der übergeordnete Ordner `PRJ_FuBo/` sowie `PRJ_FuBo/harness/` sind bewusst **nicht** versioniert.
+> Anlage erfolgt in Meilenstein S0.
 > Stand: 01.08.2026, Aufteilung in Client-/Server-Verantwortung
 
 ---
@@ -63,15 +66,25 @@ und S5. Abhängigkeit: S2b setzt einen SMTP-Zugang voraus (Anbieter/Absenderadre
 Kein Code vorhanden (reine Konzeptionsphase). Nächster Schritt ist S0.
 
 ## 7. Nächste Schritte
-1. **S0** starten: Backend-Struktur `server/` im Monorepo anlegen, Branch-Strategie und `.gitignore`
-   (inklusive `.env`) festlegen, Compose-Eintrag ergänzen.
-2. Endpunktkontrakt mit dem Client-Agenten abstimmen (OpenAPI) und hier dokumentieren.
+1. **S0** starten: Eigenes Git-Repository mit Wurzel in `server/` initialisieren (`git init -b main`,
+   privates Remote `FuBo-Server`), `.gitignore` und `.gitattributes` (inklusive `.env`) sowie
+   Branch-Strategie festlegen, Spring-Boot-Projekt aufsetzen, Compose-Eintrag ergänzen.
+2. Endpunktkontrakt mit dem Client-Agenten abstimmen (OpenAPI) und hier dokumentieren. Die
+   OpenAPI-Datei liegt als **Quelle der Wahrheit** im Server-Repository unter
+   `src/main/resources/openapi/fubo-api.yaml`; der Client leitet daraus seine Typen ab.
 3. Danach S1 (Datenmodell/Flyway) und S2/S2b (Auth/Session, Admin-Reset).
 
 ## 8. Weitere Anweisungen
+- **Repository-Konventionen:** Repo-Wurzel ist `server/`. Branch-Namen mit Meilenstein-Präfix
+  (`feature/s0-backend-setup`, `fix/...`, `chore/...`, `docs/...`). Commit-Nachrichten nach Conventional
+  Commits **ohne** Scope `(server)` – die Zuordnung ergibt sich aus dem Repository.
+- **Getrennte Repositories:** Änderungen an Server und Client können nicht in einem gemeinsamen Commit
+  erfolgen. Vertragsänderungen daher immer zuerst in der OpenAPI-Datei im Server-Repo abbilden und den
+  Client-Track separat nachziehen.
 - Ohne ausdrückliche Anweisung des Entwicklers nichts in `main` mergen/pushen; Feature-Branch erlaubt.
 - `.env`-Dateien nie einchecken. Dokumentation in deutscher Sprache. **Keine realen Personennamen** in
   Code, Testdaten oder Dokumentation.
 - Nach Abschluss eines Arbeitspakets kurze Verifikation durchführen und diesen Handoff aktualisieren
   (veraltete Fassung zuvor unter `server/harness/archive/` ablegen). 
   Zudem soll auch das zentrale Handoff in `/PRJ_FuBo/harness/CONTEXT_HANDOFF.md` (Gesamtstand) entsprechend aktualisiert werden.
+  *Hinweis:* `/PRJ_FuBo/harness/` liegt **außerhalb** dieses Repositories und wird nicht mitcommittet.
