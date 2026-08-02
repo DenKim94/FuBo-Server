@@ -1,4 +1,4 @@
-package de.fubo.app_server;
+package de.fubo.appserver;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

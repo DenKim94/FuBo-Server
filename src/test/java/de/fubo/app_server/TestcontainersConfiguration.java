@@ -1,4 +1,4 @@
-package de.fubo.app_server;
+package de.fubo.appserver;
 
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;

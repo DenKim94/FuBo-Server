@@ -1,4 +1,4 @@
-package de.fubo.app_server;
+package de.fubo.appserver;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
