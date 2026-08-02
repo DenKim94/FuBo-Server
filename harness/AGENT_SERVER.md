@@ -123,9 +123,14 @@ Da deterministisch, wählt der `seed` die A/B-Zuordnung und – bei Gleichstand 
   empfohlen) und in `CONTEXT_HANDOFF_SERVER.md` bzw. `CONTEXT_HANDOFF_CLIENT.md` festgehalten.
 
 ### Techstack (Server)
-- Java 25, Spring Boot, Maven.
+- Java 25, **Spring Boot 4.1.0**, Maven (Wrapper im Repository). Artefakt `de.fubo:app-server`,
+  Basispaket `de.fubo.app_server` (Umbenennung nach `de.fubo.appserver` empfohlen, siehe Handoff 6.2).
+  Hinweis zu Spring Boot 4: Die Starter heissen `spring-boot-starter-webmvc` (statt `-web`) und
+  `spring-boot-starter-flyway`; Test-Abhängigkeiten werden je Baustein als `*-test`-Starter eingebunden.
 - PostgreSQL 17, eine Instanz mit drei Schemas `profil`, `spieltag`, `configs`; Flyway für Migrationen.
-- Testcontainers (Integrationstests gegen das echte Postgres-Image), JUnit.
+- Testcontainers (Integrationstests gegen das echte Postgres-Image), JUnit. Das Image ist auf
+  **`postgres:17`** festzunageln, nie `latest` – Tests müssen gegen dieselbe Hauptversion laufen wie
+  die Produktion.
 - `spring-boot-starter-mail` für die Bestätigungs-PIN.
 - Hosting: Raspberry Pi 5 über Docker/Docker-Compose, Nginx als Reverse-Proxy, Cloudflared-Tunnel.
   Bestehende Konfigurationsdateien unter `assets/Deployment/`. Das Backend muss auch auf einem separaten
@@ -134,7 +139,24 @@ Da deterministisch, wählt der `seed` die A/B-Zuordnung und – bei Gleichstand 
 ### Datenmodell
 Das vollständige, verbindliche Datenmodell (Schemas `profil`, `spieltag`, `configs` mit allen Tabellen,
 Constraints und Seed-Daten) steht in `/PRJ_FuBo/harness/AGENT.md`, Abschnitt „Datenbank – Umsetzung". Es ist die
-maßgebliche Quelle; dieser Agent setzt es per Flyway um und pflegt es dort fort.
+maßgebliche Quelle; dieser Agent setzt es per Flyway um und pflegt es dort fort. Das dortige
+„Änderungsprotokoll Datenmodell (02.08.2026)" hält die im Review korrigierten Punkte fest.
+
+### Flyway-Konventionen (verbindlich ab S1)
+- Ablage: `src/main/resources/db/migration`. Namensschema `V<nnn>__<kurze_beschreibung>.sql` mit
+  dreistelliger, lückenlos aufsteigender Nummer (`V001__schemas.sql`).
+- **Migrationen sind unveränderlich.** Eine bereits ausgeführte Datei wird nie nachträglich editiert –
+  Flyway prüft Prüfsummen und bricht sonst ab. Korrekturen erfolgen ausschliesslich über eine neue
+  Migration.
+- **Eine Migration, ein Thema.** Strukturänderungen (`V0xx`) und Referenzdaten (`R`- bzw. eigene
+  `V`-Dateien) werden getrennt gehalten, damit sich Schema und Seed unabhängig nachvollziehen lassen.
+- Objektnamen durchgehend in `snake_case`, Constraints explizit benennen
+  (`pk_`, `fk_`, `uq_`, `ck_`, `ix_` als Präfix). Automatisch vergebene Namen erschweren spätere
+  `ALTER`-Migrationen und Fehlermeldungen.
+- Kein `spring.jpa.hibernate.ddl-auto` ausser `validate`. Das Schema entsteht ausschliesslich aus
+  Flyway; Hibernate prüft nur, ob die Entities dazu passen.
+- Jede Migration muss auf einer leeren Datenbank **und** in der bestehenden Reihenfolge durchlaufen; das
+  wird durch einen Testcontainers-Integrationstest abgesichert.
 
 ### Implementierungs-Richtlinien (Server)
 - Funktions- und Variablennamen in camelCase; Konstanten groß mit maximal einem Unterstrich.

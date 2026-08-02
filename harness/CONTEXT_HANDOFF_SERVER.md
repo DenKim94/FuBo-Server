@@ -7,8 +7,9 @@
 > Git-Repository: **eigenständiges Repository mit Wurzel in `server/`** (GitHub, privat, `FuBo-Server`).
 > **Kein Monorepo.** Das Frontend liegt in einem getrennten Repository (`FuBo-Client`, Ordner `client/`).
 > Der übergeordnete Ordner `PRJ_FuBo/` sowie `PRJ_FuBo/harness/` sind bewusst **nicht** versioniert.
-> Anlage erfolgt in Meilenstein S0.
-> Stand: 01.08.2026, Aufteilung in Client-/Server-Verantwortung
+> Repository ist angelegt: `https://github.com/DenKim94/FuBo-Server.git` (privat).
+> Stand: 02.08.2026, **S0 abgeschlossen**, Datenmodell-Review vor S1 durchgeführt
+> (Vorfassung archiviert unter `harness/archive/CONTEXT_HANDOFF_SERVER_2026-08-01_v1_Aufteilung.md`)
 
 ---
 
@@ -48,7 +49,7 @@ Mid-Level-Entwickler, KI-gestützt, ca. 6,5 h/Woche.
 
 | MS | Inhalt | Aufwand (h) |
 |---|---|---|
-| S0 | Backend-Setup: Spring Boot, Maven, Modulstruktur, `.gitignore`, Docker/Compose-Eintrag, CI-Backend | 8 |
+| S0 | Backend-Setup: Spring Boot, Maven, Modulstruktur, `.gitignore`, Docker/Compose-Eintrag – **abgeschlossen** | 8 |
 | S1 | Datenmodell: 3 Schemas, alle Tabellen/Constraints, Flyway-Migrationen, Seed (Kategorien, `gast_vorlage`), Testcontainers-Grundgerüst | 14 |
 | S2 | Auth & Session: Security-Filterchain, PIN-Login + Brute-Force-Schutz, `stage`-Erzwingung, opaker Token/HttpOnly, Zwei-Timer-Modell, Namensliste/-belegung, Online-Status | 18 |
 | S2b | Admin-Passwort-Reset: `spring-boot-starter-mail`, 5-stellige PIN, Rate-Limit, Sitzungswiderruf | 6 |
@@ -62,17 +63,69 @@ Mid-Level-Entwickler, KI-gestützt, ca. 6,5 h/Woche.
 **Summe Server ≈ 120 h → ca. 18–19 Kalenderwochen** bei 6,5 h/Woche (Spanne ±15 %). Kritischer Pfad: S2
 und S5. Abhängigkeit: S2b setzt einen SMTP-Zugang voraus (Anbieter/Absenderadresse festlegen).
 
-## 6. Aktueller Code-Zustand
-Kein Code vorhanden (reine Konzeptionsphase). Nächster Schritt ist S0.
+## 6. Aktueller Code-Zustand (Stand 02.08.2026)
+
+### 6.1 Ergebnis aus S0
+Das Repository ist angelegt und ein lauffähiges Spring-Boot-Grundgerüst vorhanden:
+
+```
+server/                       Repository-Wurzel (remote: FuBo-Server, privat)
+  pom.xml                     Spring Boot 4.1.0, Java 25, Artefakt de.fubo:app-server:0.0.1-SNAPSHOT
+  mvnw, mvnw.cmd, .mvn/       Maven Wrapper
+  compose.dev.yml             postgres:17 für die lokale Entwicklung (Service fubo-db-dev)
+  .env / .env.example         DB-Zugangsdaten; .env ist per .gitignore ausgeschlossen
+  .gitignore, .gitattributes  inkl. Ausschluss von .env, target/, IDE-Ordnern
+  src/main/java/de/fubo/app_server/AppServerApplication.java
+  src/main/resources/application.yml
+  src/test/java/de/fubo/app_server/  AppServerApplicationTests, TestcontainersConfiguration,
+                                     TestAppServerApplication
+  harness/                    AGENT_SERVER.md, CONTEXT_HANDOFF_SERVER.md, archive/
+```
+
+**Eingebundene Abhängigkeiten:** `actuator`, `data-jpa`, `flyway` (+ `flyway-database-postgresql`),
+`security`, `validation`, `webmvc`, `postgresql` (runtime); im Testumfang die zugehörigen
+`*-test`-Starter sowie `spring-boot-testcontainers` und `testcontainers-postgresql`.
+
+**Bereits gesetzte Konfiguration (`application.yml`):** Datasource über Umgebungsvariablen,
+`jpa.hibernate.ddl-auto=validate` (Schema kommt ausschliesslich von Flyway), `open-in-view=false`,
+`flyway.schemas=profil, spieltag, configs`, `server.forward-headers-strategy=NATIVE`,
+Actuator-Exposure auf `health` beschränkt.
+
+### 6.2 Offene Restpunkte aus S0
+1. `TestcontainersConfiguration` startet `postgres:latest`. Das muss auf **`postgres:17`** festgelegt
+   werden, sonst testet man gegen eine andere Hauptversion als in Produktion (`NULLS NOT DISTINCT`,
+   Verhalten von `MERGE` und Planänderungen sind versionsabhängig).
+2. Das Basispaket heisst `de.fubo.app_server` (Unterstrich, aus dem Artefaktnamen abgeleitet). Java-
+   Paketnamen sind konventionell durchgehend klein ohne Trennzeichen. Empfehlung: Umbenennung nach
+   `de.fubo.appserver`, solange nur drei Klassen betroffen sind.
+3. `pom.xml` enthält leere Metadaten-Elemente (`<name/>`, `<description/>`, `<licenses><license/></licenses>`,
+   `<scm>`), die Maven-Warnungen erzeugen. Ausfüllen oder entfernen.
+4. `spring-boot-starter-mail` fehlt noch – wird erst in S2b gebraucht, dann nachziehen.
+5. `compose.dev.yml` enthält bisher nur die Datenbank. Dockerfile und Anwendungs-Service gehören zu S8.
+
+### 6.3 Datenmodell-Review vor S1 (02.08.2026)
+Vor Beginn von S1 wurde das Datenmodell in `/PRJ_FuBo/harness/AGENT.md` gegen die Anforderungen geprüft.
+Elf Widersprüche wurden korrigiert und dort im Abschnitt „Änderungsprotokoll Datenmodell" mit Begründung
+dokumentiert. Die wichtigsten für S1:
+- `configs` liegt jetzt als `configs.app_config` in einem eigenen Schema und enthält `min_teilnehmer`,
+  `max_teilnehmer`, die Session-Timer sowie die Hallenmodus-Parameter.
+- `configs.central_pin` und `admin_konto.pin_2fa` sind entfallen (Klartext-PIN bzw. zu kleiner Datentyp).
+- Der zirkuläre Fremdschlüssel zwischen `session` und `gast_slot` ist aufgelöst
+  (`session.gast_slot_id` entfernt).
+- `skill_kategorie` erhält `reihenfolge` und `aktiv`; der Trigger für den kategorie-spezifischen
+  Wertebereich ist verbindlich.
+
+**Massgeblich für die Migrationen ist ab sofort die korrigierte Fassung in `AGENT.md`.**
 
 ## 7. Nächste Schritte
-1. **S0** starten: Eigenes Git-Repository mit Wurzel in `server/` initialisieren (`git init -b main`,
-   privates Remote `FuBo-Server`), `.gitignore` und `.gitattributes` (inklusive `.env`) sowie
-   Branch-Strategie festlegen, Spring-Boot-Projekt aufsetzen, Compose-Eintrag ergänzen.
-2. Endpunktkontrakt mit dem Client-Agenten abstimmen (OpenAPI) und hier dokumentieren. Die
-   OpenAPI-Datei liegt als **Quelle der Wahrheit** im Server-Repository unter
-   `src/main/resources/openapi/fubo-api.yaml`; der Client leitet daraus seine Typen ab.
-3. Danach S1 (Datenmodell/Flyway) und S2/S2b (Auth/Session, Admin-Reset).
+1. Restpunkte aus Abschnitt 6.2 abarbeiten (mindestens Punkt 1 und 2 vor S1, da beide später teurer
+   werden).
+2. **S1** umsetzen: Flyway-Migrationen für die drei Schemas, alle Tabellen und Constraints, Seed für
+   `skill_kategorie`, `gast_vorlage`, `gast_slot` und `configs.app_config`, dazu das
+   Testcontainers-Grundgerüst. Schrittweise Anleitung: `harness/S1_UMSETZUNG.md`.
+3. Danach S2/S2b (Auth/Session, Admin-Reset). Voraussetzung für S2b: SMTP-Zugang festlegen.
+4. Parallel den Endpunktkontrakt als OpenAPI unter
+   `src/main/resources/openapi/fubo-api.yaml` beginnen (Quelle der Wahrheit für den Client-Track).
 
 ## 8. Weitere Anweisungen
 - **Repository-Konventionen:** Repo-Wurzel ist `server/`. Branch-Namen mit Meilenstein-Präfix
