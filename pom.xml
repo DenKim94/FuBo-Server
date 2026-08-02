@@ -11,21 +11,29 @@
 	<groupId>de.fubo</groupId>
 	<artifactId>app-server</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name/>
-	<description/>
-	<url/>
+	<name>FuBo-Server</name>
+	<description>
+		Backend für die FuBo-App mit Spring Boot,
+		bietet Services und Endpunkte zum Anlegen, Abrufen und Bearbeiten von Daten.
+	</description>
 	<licenses>
-		<license/>
+		<license>
+			<name>MIT License</name>
+			<url>https://opensource.org/licenses/MIT</url>
+			<distribution>repo</distribution>
+		</license>
 	</licenses>
 	<developers>
-		<developer/>
+		<developer>
+			<id>denis.kim</id>
+			<name>Denis Kim</name>
+			<roles>
+				<role>Developer</role>
+				<role>Mainainer</role>
+			</roles>
+			<timezone>Europe/Berlin</timezone>
+		</developer>
 	</developers>
-	<scm>
-		<connection/>
-		<developerConnection/>
-		<tag/>
-		<url/>
-	</scm>
 	<properties>
 		<java.version>25</java.version>
 	</properties>
