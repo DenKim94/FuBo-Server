@@ -50,10 +50,10 @@ Mid-Level-Entwickler, KI-gestützt, ca. 6,5 h/Woche.
 | MS | Inhalt | Aufwand (h) |
 |---|---|---|
 | S0 | Backend-Setup: Spring Boot, Maven, Modulstruktur, `.gitignore`, Docker/Compose-Eintrag – **abgeschlossen** | 8 |
-| S1 | Datenmodell: 3 Schemas, alle Tabellen/Constraints, Flyway-Migrationen, Seed (Kategorien, `gast_vorlage`), Testcontainers-Grundgerüst | 14 |
+| S1 | Datenmodell: 3 Schemas, alle Tabellen/Constraints, Flyway-Migrationen, Seed (Kategorien, `gast_vorlage`, anonymisierte Beispielprofile), lokale Datenversorgung, Testcontainers-Grundgerüst | 15 |
 | S2 | Auth & Session: Security-Filterchain, PIN-Login + Brute-Force-Schutz, `stage`-Erzwingung, opaker Token/HttpOnly, Zwei-Timer-Modell, Namensliste/-belegung, Online-Status | 18 |
 | S2b | Admin-Passwort-Reset: `spring-boot-starter-mail`, 5-stellige PIN, Rate-Limit, Sitzungswiderruf | 6 |
-| S3 | Profile & Skills API: Admin-CRUD, Rollen/Autorisierung, `configs`, Import der Referenzdaten (ohne reale Namen) | 12 |
+| S3 | Profile & Skills API: Admin-CRUD, Rollen/Autorisierung, `configs` (Import der Referenzdaten entfällt – siehe Abschnitt 7.3) | 11 |
 | S4 | Termine & Teilnahme API: Einzel/Serie, Teilnahme, `teilnehmer_version`, Min/Max + Warteschlange, Gast-Flow/`gast_slot` | 16 |
 | S5 | Teamgenerator: `EXHAUSTIV` + `HEURISTIK`, Zielfunktion inkl. Torwart-Gewicht, Kontingent/Seed/Snapshot, Auswechselspieler, Tests | 18 |
 | S6 | Ergebnis & Audit API: „erster Eintrag gilt", Admin-Korrektur, `audit_log` | 8 |
@@ -102,6 +102,15 @@ Actuator-Exposure auf `health` beschränkt.
    `<scm>`), die Maven-Warnungen erzeugen. Ausfüllen oder entfernen.
 4. `spring-boot-starter-mail` fehlt noch – wird erst in S2b gebraucht, dann nachziehen.
 5. `compose.dev.yml` enthält bisher nur die Datenbank. Dockerfile und Anwendungs-Service gehören zu S8.
+6. `.gitignore` um zwei Regeln ergänzen, die unabhängig vom Ablageort greifen und lokale Datenimporte
+   mit realen Daten ausschliessen:
+
+   ```gitignore
+   # Lokale Datenimporte mit realen Daten – niemals einchecken
+   *.local.sql
+   ```
+
+   Bisher schützt nur `/harness/tmp/*`, also ein einzelnes Verzeichnis.
 
 ### 6.3 Datenmodell-Review vor S1 (02.08.2026)
 Vor Beginn von S1 wurde das Datenmodell in `/PRJ_FuBo/harness/AGENT.md` gegen die Anforderungen geprüft.
@@ -120,11 +129,25 @@ dokumentiert. Die wichtigsten für S1:
 ## 7. Nächste Schritte
 1. Restpunkte aus Abschnitt 6.2 abarbeiten (mindestens Punkt 1 und 2 vor S1, da beide später teurer
    werden).
-2. **S1** umsetzen: Flyway-Migrationen für die drei Schemas, alle Tabellen und Constraints, Seed für
-   `skill_kategorie`, `gast_vorlage`, `gast_slot` und `configs.app_config`, dazu das
-   Testcontainers-Grundgerüst. Schrittweise Anleitung: `harness/S1_UMSETZUNG.md`.
-3. Danach S2/S2b (Auth/Session, Admin-Reset). Voraussetzung für S2b: SMTP-Zugang festlegen.
-4. Parallel den Endpunktkontrakt als OpenAPI unter
+2. **S1** umsetzen: Flyway-Migrationen `V001`–`V007` für die drei Schemas, alle Tabellen und Constraints
+   sowie den Seed für `skill_kategorie`, `gast_vorlage`, `gast_slot` und `configs.app_config`, dazu das
+   Testcontainers-Grundgerüst. Schrittweise Anleitung: `harness/tmp/S1_UMSETZUNG.md`.
+3. **Profildaten – zwei getrennte Wege** (Entscheidung vom 02.08.2026, Details in `S1_UMSETZUNG.md`,
+   Abschnitte 8.4 bis 8.6):
+   - **Real:** `import_spielerprofile_real.sql` (30 Profile) wird **nicht** eingecheckt und **nicht** von
+     Flyway ausgeführt. Ablage ausserhalb von `PRJ_FuBo/` (Konvention: `~/fubo-lokal/`), Pfad über
+     `FUBO_LOCAL_SEED` in der `.env`. Der Maintainer überträgt die Datei manuell auf das Zielsystem und
+     spielt sie einmalig per `psql` ein; sie ist idempotent. **Erledigt:** Datei aus `harness/tmp/`
+     herausbewegt, `FUBO_LOCAL_SEED` in `.env` und `.env.example` gesetzt.
+   - **Anonymisiert, auf Abruf:** `harness/tmp/spielerprofile_anonym.sql` (30 Profile mit den realen
+     Skillwerten, Namen `Spieler 01`–`30`, gemischte Reihenfolge) kommt nach `scripts/data/`. Enthält
+     keine personenbezogenen Daten. Regelfall für die Arbeit am Teamgenerator; keine Flyway-Migration,
+     damit er nicht in jedem Testlauf geladen wird.
+   - **Einspielhilfe (erledigt):** `scripts/seed-lokal.sh` liegt bereits im Repository und ist ausführbar.
+     Nimmt einen Pfad als Argument oder greift auf `FUBO_LOCAL_SEED` aus der `.env` zurück. Enthält keine
+     Daten.
+4. Danach S2/S2b (Auth/Session, Admin-Reset). Voraussetzung für S2b: SMTP-Zugang festlegen.
+5. Parallel den Endpunktkontrakt als OpenAPI unter
    `src/main/resources/openapi/fubo-api.yaml` beginnen (Quelle der Wahrheit für den Client-Track).
 
 ## 8. Weitere Anweisungen
@@ -140,4 +163,4 @@ dokumentiert. Die wichtigsten für S1:
 - Nach Abschluss eines Arbeitspakets kurze Verifikation durchführen und diesen Handoff aktualisieren
   (veraltete Fassung zuvor unter `server/harness/archive/` ablegen). 
   Zudem soll auch das zentrale Handoff in `/PRJ_FuBo/harness/CONTEXT_HANDOFF.md` (Gesamtstand) entsprechend aktualisiert werden.
-  *Hinweis:* `/PRJ_FuBo/harness/` liegt **außerhalb** dieses Repositories und wird nicht mitcommittet.
+  *Hinweis:* `/PRJ_FuBo/harness/` liegt **außerhalb** dieses Repositories und wird nicht mit committet.

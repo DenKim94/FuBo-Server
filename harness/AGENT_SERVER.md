@@ -167,5 +167,7 @@ maßgebliche Quelle; dieser Agent setzt es per Flyway um und pflegt es dort fort
   Commits/Pushes in den Feature-Branch sind erlaubt.
 - Dokumentation und Erklärungen in deutscher Sprache. **Keine realen Personennamen** in Code,
   Testdaten oder Dokumentation verwenden (neutrale Platzhalter nutzen).
+  Die Vorgabe gilt **ohne Ausnahme**, insbesondere für Migrationen: Flyway-Dateien sind unveränderlich,
+  ein einmal committeter Name bliebe dauerhaft in der Git-Historie.
 - Zugehörige Dokumente: `/PRJ_FuBo/harness/AGENT.md` (Gesamtspezifikation), `CONTEXT_HANDOFF_SERVER.md` (Stand/Meilensteine
   Backend), `/PRJ_FuBo/harness/assets/Deployment/`.
