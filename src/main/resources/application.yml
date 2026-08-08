@@ -1,6 +1,12 @@
 spring:
   application:
     name: app-server
+  config:
+    # Laedt die lokale .env als Property-Quelle, damit DB_USER/DB_PASSWORD auch beim
+    # Start ausserhalb von Docker aufgeloest werden. "optional:" -> kein Fehler, wenn
+    # die Datei fehlt (Zielsystem: echte Umgebungsvariablen aus dem Compose-env_file,
+    # die ohnehin Vorrang vor Konfigurationsdateien haben).
+    import: optional:file:./.env[.properties]
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:fubo}
     username: ${DB_USER}

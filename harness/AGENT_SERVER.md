@@ -80,6 +80,15 @@ Identifikation über den hinterlegten Namen. Rollen: ADMIN, USER, GAST.
 - **Authentifizierung als Querschnitt:** Prüfung des Session-Tokens in einer Spring-Security-Filterchain
   vor dem Controller, Deny-by-default. Keine Tokenprüfung in einzelnen Endpunkten. Eine Session in
   `PIN_VERIFIED` darf ausschließlich die Namensliste abrufen und die Namensauswahl absenden.
+  Die Security-Auto-Konfiguration wird **nie** über
+  `@SpringBootApplication(exclude = SecurityAutoConfiguration.class)` abgeschaltet – das entfernte
+  genau die Deny-by-default-Haltung, die diese Regel verlangt. Solange keine eigene
+  `SecurityFilterChain` existiert, ist die Log-Zeile „Using generated security password" das erwartete
+  Verhalten und kein Konfigurationsfehler.
+- **`/actuator/health` ist in der Filterchain freizugeben** (`permitAll`). Der Container-Healthcheck ruft
+  den Endpunkt lokal auf; mit `401` bliebe der Container dauerhaft `unhealthy` und
+  `depends_on: condition: service_healthy` würde nie erfüllt. Die Abschottung nach aussen übernimmt
+  nginx, nicht die Anwendung.
 - **Skill-Geheimhaltung:** DTOs für USER/GAST enthalten keine Skillwerte. Der Teamgenerator liegt
   serverseitig; die Skillwerte verlassen den Server nicht. Admin-DTOs dürfen Skills enthalten.
 - **Brute-Force-Schutz** am PIN-Endpunkt; echte Client-IP aus `X-Forwarded-For`, daher
@@ -141,6 +150,27 @@ Das vollständige, verbindliche Datenmodell (Schemas `profil`, `spieltag`, `conf
 Constraints und Seed-Daten) steht in `/PRJ_FuBo/harness/AGENT.md`, Abschnitt „Datenbank – Umsetzung". Es ist die
 maßgebliche Quelle; dieser Agent setzt es per Flyway um und pflegt es dort fort. Das dortige
 „Änderungsprotokoll Datenmodell (02.08.2026)" hält die im Review korrigierten Punkte fest.
+
+### Paketstruktur (verbindlich ab S2)
+
+Basispaket `de.fubo.appserver`. Geschnitten wird zuerst nach Schicht, darunter nach Fachbereich
+(`auth`, `profil`, `termin`, `team`, `ergebnis`, `config`):
+
+```
+de/fubo/appserver/
+  common/config      Querschnitt: SecurityConfig, CorsConfig, Scheduling
+  common/error       @RestControllerAdvice, Fehlercodes, ProblemDetail-Aufbau
+  controller/<b>     nur HTTP: Mapping, Validierung, DTO rein/raus
+  service/<b>        Fachlogik, Transaktionsgrenzen (@Transactional)
+  repository/<b>     Spring-Data-Repositories
+  domain/<b>         JPA-Entities (verlassen die API-Grenze nie)
+  dto/<b>            Records fuer Ein- und Ausgabe an der API-Grenze
+  utils              zustandslose Helfer ohne Spring-Abhaengigkeit
+```
+
+`domain` und `dto` getrennt zu halten ist die technische Absicherung der Regel „JPA-Entities verlassen
+die API-Grenze nie" und damit der Skill-Geheimhaltung: Liegt eine Entity in einem anderen Paket als die
+DTOs, fällt beim Lesen sofort auf, wenn ein Controller den falschen Typ zurückgibt.
 
 ### Flyway-Konventionen (verbindlich ab S1)
 - Ablage: `src/main/resources/db/migration`. Namensschema `V<nnn>__<kurze_beschreibung>.sql` mit

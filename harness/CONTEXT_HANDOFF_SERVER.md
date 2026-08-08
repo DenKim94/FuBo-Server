@@ -8,8 +8,8 @@
 > **Kein Monorepo.** Das Frontend liegt in einem getrennten Repository (`FuBo-Client`, Ordner `client/`).
 > Der übergeordnete Ordner `PRJ_FuBo/` sowie `PRJ_FuBo/harness/` sind bewusst **nicht** versioniert.
 > Repository ist angelegt: `https://github.com/DenKim94/FuBo-Server.git` (privat).
-> Stand: 02.08.2026, **S0 abgeschlossen**, Datenmodell-Review vor S1 durchgeführt
-> (Vorfassung archiviert unter `harness/archive/CONTEXT_HANDOFF_SERVER_2026-08-01_v1_Aufteilung.md`)
+> Stand: 08.08.2026, **S0 und S1 abgeschlossen**, Beginn von S2
+> (Vorfassung archiviert unter `harness/archive/CONTEXT_HANDOFF_SERVER_2026-08-02_v2_S0-abgeschlossen.md`)
 
 ---
 
@@ -50,8 +50,8 @@ Mid-Level-Entwickler, KI-gestützt, ca. 6,5 h/Woche.
 | MS | Inhalt | Aufwand (h) |
 |---|---|---|
 | S0 | Backend-Setup: Spring Boot, Maven, Modulstruktur, `.gitignore`, Docker/Compose-Eintrag – **abgeschlossen** | 8 |
-| S1 | Datenmodell: 3 Schemas, alle Tabellen/Constraints, Flyway-Migrationen, Seed (Kategorien, `gast_vorlage`, anonymisierte Beispielprofile), lokale Datenversorgung, Testcontainers-Grundgerüst | 15 |
-| S2 | Auth & Session: Security-Filterchain, PIN-Login + Brute-Force-Schutz, `stage`-Erzwingung, opaker Token/HttpOnly, Zwei-Timer-Modell, Namensliste/-belegung, Online-Status | 18 |
+| S1 | Datenmodell: 3 Schemas, alle Tabellen/Constraints, Flyway-Migrationen, Seed (Kategorien, `gast_vorlage`, anonymisierte Beispielprofile), lokale Datenversorgung, Testcontainers-Grundgerüst – **abgeschlossen** | 15 |
+| S2 | Auth & Session: Security-Filterchain, PIN-Login + Brute-Force-Schutz, `stage`-Erzwingung, opaker Token/HttpOnly, Zwei-Timer-Modell, Namensliste/-belegung, Online-Status – **in Arbeit**, Anleitung `harness/tmp/S2_UMSETZUNG.md` | 22 |
 | S2b | Admin-Passwort-Reset: `spring-boot-starter-mail`, 5-stellige PIN, Rate-Limit, Sitzungswiderruf | 6 |
 | S3 | Profile & Skills API: Admin-CRUD, Rollen/Autorisierung, `configs` (Import der Referenzdaten entfällt – siehe Abschnitt 7.3) | 11 |
 | S4 | Termine & Teilnahme API: Einzel/Serie, Teilnahme, `teilnehmer_version`, Min/Max + Warteschlange, Gast-Flow/`gast_slot` | 16 |
@@ -60,105 +60,135 @@ Mid-Level-Entwickler, KI-gestützt, ca. 6,5 h/Woche.
 | S7 | Hallenmodus: E-Mail-Absage, 48-Stunden-Regel, serverseitige Deaktivierung | 6 |
 | S8 | Härtung, Integrationstests, Deployment (Docker/nginx/Cloudflared), API-Doku/OpenAPI – Entwurf liegt vor: `harness/tmp/S8_DEPLOYMENT.md` | 14 |
 
-**Summe Server ≈ 120 h → ca. 18–19 Kalenderwochen** bei 6,5 h/Woche (Spanne ±15 %). Kritischer Pfad: S2
+**Korrektur der S2-Schätzung (08.08.2026):** Die Aufschlüsselung in `S2_UMSETZUNG.md` summiert sich auf
+**22 h** statt der ursprünglich veranschlagten 18 h. Die Abweichung entsteht vor allem in der
+Filterchain (4 h) und beim Brute-Force-Schutz (3 h) – beides war in der Top-down-Schätzung zu grob
+angesetzt. Die Summe der Einzelschritte ist verlässlicher als die Gesamtschätzung, deshalb steht hier
+der höhere Wert. S1 wurde entsprechend von 14 auf 15 h angehoben, S3 von 12 auf 11 h gesenkt, da der
+Import der Referenzdaten dort entfällt.
+
+**Summe Server ≈ 124 h → ca. 19–20 Kalenderwochen** bei 6,5 h/Woche (Spanne ±15 %). Kritischer Pfad: S2
 und S5. Abhängigkeit: S2b setzt einen SMTP-Zugang voraus (Anbieter/Absenderadresse festlegen).
 
-## 6. Aktueller Code-Zustand (Stand 02.08.2026)
+## 6. Aktueller Code-Zustand (Stand 08.08.2026, Branch `dev`, Commit `1d90f67`)
 
-### 6.1 Ergebnis aus S0
-Das Repository ist angelegt und ein lauffähiges Spring-Boot-Grundgerüst vorhanden:
+### 6.1 S0 und S1 sind abgeschlossen
 
 ```
-server/                       Repository-Wurzel (remote: FuBo-Server, privat)
-  pom.xml                     Spring Boot 4.1.0, Java 25, Artefakt de.fubo:app-server:0.0.1-SNAPSHOT
-  mvnw, mvnw.cmd, .mvn/       Maven Wrapper
-  compose.dev.yml             postgres:17 für die lokale Entwicklung (Service fubo-db-dev)
-  .env / .env.example         DB-Zugangsdaten; .env ist per .gitignore ausgeschlossen
-  .gitignore, .gitattributes  inkl. Ausschluss von .env, target/, IDE-Ordnern
-  src/main/java/de/fubo/app_server/AppServerApplication.java
+server/                                  Repository-Wurzel (remote: FuBo-Server, privat)
+  pom.xml                                Spring Boot 4.1.0, Java 25, de.fubo:app-server:0.0.1-SNAPSHOT
+  mvnw, mvnw.cmd, .mvn/                  Maven Wrapper
+  compose.dev.yml                        postgres:17 (Service fubo-db-dev, Volume fubo_db_dev_data)
+  .env / .env.example                    DB-Zugang, FUBO_LOCAL_SEED, FUBO_INITIAL_PIN
+  scripts/seed-lokal.sh                  Import lokaler bzw. anonymisierter Profildaten
+  scripts/data/spielerprofile_anonym.sql 30 Profile, reale Skillwerte, anonymisierte Namen
+  src/main/java/de/fubo/appserver/        AppServerApplication + leere Paketstruktur (siehe 6.2)
   src/main/resources/application.yml
-  src/test/java/de/fubo/app_server/  AppServerApplicationTests, TestcontainersConfiguration,
-                                     TestAppServerApplication
-  harness/                    AGENT_SERVER.md, CONTEXT_HANDOFF_SERVER.md, archive/
+  src/main/resources/db/migration/        V001-V007 (Schema + Referenzdaten)
+  src/main/resources/db/demodata/         R__seed_beispielprofile.sql (12 Profile, nur dev/test)
+  src/test/java/de/fubo/appserver/database/  MigrationTests, TestcontainersConfiguration
+  src/test/resources/application.yml      Testprofil: Demodaten-Location, Datasource-Platzhalter
+  harness/                                AGENT_SERVER.md, CONTEXT_HANDOFF_SERVER.md, archive/, tmp/
 ```
 
-**Eingebundene Abhängigkeiten:** `actuator`, `data-jpa`, `flyway` (+ `flyway-database-postgresql`),
-`security`, `validation`, `webmvc`, `postgresql` (runtime); im Testumfang die zugehörigen
-`*-test`-Starter sowie `spring-boot-testcontainers` und `testcontainers-postgresql`.
+**Abhängigkeiten:** `actuator`, `data-jpa`, `flyway` (+ `flyway-database-postgresql`), `security`,
+`validation`, `webmvc`, `postgresql` (runtime); im Test die zugehörigen `*-test`-Starter sowie
+`spring-boot-testcontainers` und `testcontainers-postgresql`. **`spring-boot-starter-mail` fehlt noch** –
+korrekt so, wird erst in S2b gebraucht.
 
-**Bereits gesetzte Konfiguration (`application.yml`):** Datasource über Umgebungsvariablen,
-`jpa.hibernate.ddl-auto=validate` (Schema kommt ausschliesslich von Flyway), `open-in-view=false`,
-`flyway.schemas=profil, spieltag, configs`, `server.forward-headers-strategy=NATIVE`,
-Actuator-Exposure auf `health` beschränkt.
+**Konfiguration (`application.yml`):**
+`spring.config.import=optional:file:./.env[.properties]` (siehe 6.4), Datasource über Umgebungsvariablen,
+`jpa.hibernate.ddl-auto=validate`, `open-in-view=false`, `flyway.schemas=profil, spieltag, configs`,
+`flyway.default-schema=public`, `flyway.locations=classpath:db/migration`,
+`server.forward-headers-strategy=NATIVE`, Actuator-Exposure auf `health` beschränkt.
+Die Demodaten-Location wird ausschliesslich über `src/test/resources/application.yml` ergänzt – die
+Produktionskonfiguration sieht sie nie.
 
-### 6.2 Offene Restpunkte aus S0
-1. `TestcontainersConfiguration` startet `postgres:latest`. Das muss auf **`postgres:17`** festgelegt
-   werden, sonst testet man gegen eine andere Hauptversion als in Produktion (`NULLS NOT DISTINCT`,
-   Verhalten von `MERGE` und Planänderungen sind versionsabhängig).
-2. Das Basispaket heisst `de.fubo.appserver` (Unterstrich, aus dem Artefaktnamen abgeleitet). Java-
-   Paketnamen sind konventionell durchgehend klein ohne Trennzeichen. Empfehlung: Umbenennung nach
-   `de.fubo.appserver`, solange nur drei Klassen betroffen sind.
-3. `pom.xml` enthält leere Metadaten-Elemente (`<name/>`, `<description/>`, `<licenses><license/></licenses>`,
-   `<scm>`), die Maven-Warnungen erzeugen. Ausfüllen oder entfernen.
-4. `spring-boot-starter-mail` fehlt noch – wird erst in S2b gebraucht, dann nachziehen.
-5. `compose.dev.yml` enthält bisher nur die Datenbank. Dockerfile und Anwendungs-Service gehören zu S8.
-6. `.gitignore` um zwei Regeln ergänzen, die unabhängig vom Ablageort greifen und lokale Datenimporte
-   mit realen Daten ausschliessen:
+**Datenmodell:** 18 Tabellen in drei Schemas, umgesetzt in `V001`–`V007` gemäss der korrigierten Fassung
+in `/PRJ_FuBo/harness/AGENT.md`. `MigrationTests` enthält sieben Tests (Schemas, Seed, partieller
+Admin-Index, Wertebereichs-Trigger, `NULLS NOT DISTINCT`, Demodaten, Torwart-Bereich).
 
-   ```gitignore
-   # Lokale Datenimporte mit realen Daten – niemals einchecken
-   *.local.sql
-   ```
+### 6.2 Offene Punkte vor S2
 
-   Bisher schützt nur `/harness/tmp/*`, also ein einzelnes Verzeichnis.
+1. **Paketstruktur ist unvollständig.** Angelegt (und leer) sind `common/{config,error}`,
+   `controller/{auth,config,ergebnis,profil,team,termin}`, `service/{…}`, `repository`, `utils`.
+   Es fehlen Pakete für **JPA-Entities** und **DTOs**. Vorschlag in `S2_UMSETZUNG.md`, Abschnitt 1.1.
+2. **Es gibt noch keine `SecurityFilterChain`.** Solange keine existiert, konfiguriert Spring Security
+   einen Notbehelf: In-Memory-Benutzer `user` mit zufälligem UUID-Passwort, bei jedem Start neu, plus
+   Deny-by-default auf allen Endpunkten. Das ist der Grund für die Log-Zeile
+   „Using generated security password". Kein Konfigurationswert, gehört **nicht** in die `.env`.
+   Die Auto-Konfiguration darf **nicht** über
+   `@SpringBootApplication(exclude = SecurityAutoConfiguration.class)` abgeschaltet werden – das
+   entfernte die Deny-by-default-Haltung, die die Architekturregeln verlangen.
+3. **`/actuator/health` muss in der Filterchain freigegeben werden** (`permitAll`). Der
+   Container-Healthcheck aus `harness/tmp/S8_DEPLOYMENT.md` ruft
+   `http://localhost:8080/actuator/health` auf. Mit aktiver Filterchain antwortet der Endpunkt sonst mit
+   `401`, `curl -fsS` schlägt fehl, Docker markiert den Container dauerhaft als `unhealthy` – und
+   `depends_on: condition: service_healthy` wäre nie erfüllt. Der Fehler fällt erst beim Deployment auf
+   und wird dann an der falschen Stelle gesucht. Gleichzeitig darf der Endpunkt von aussen nicht
+   erreichbar sein; das regelt nginx, nicht die Anwendung.
+4. **`.gitignore`:** `*.local.sql` ist ergänzt, `/db-local/` fehlt noch (geringe Priorität, seit die
+   Realdaten ausserhalb des Projektordners liegen).
+5. **Bootstrap fehlt:** `profil.zugangsdaten` und `profil.admin_konto` sind bewusst leer. Ohne
+   Startlogik gibt es keine zentrale PIN und keinen Admin. `FUBO_INITIAL_PIN` steht bereits in der
+   `.env`. Gehört zu S2, siehe `S2_UMSETZUNG.md`, Abschnitt 9.
 
-### 6.3 Datenmodell-Review vor S1 (02.08.2026)
-Vor Beginn von S1 wurde das Datenmodell in `/PRJ_FuBo/harness/AGENT.md` gegen die Anforderungen geprüft.
-Elf Widersprüche wurden korrigiert und dort im Abschnitt „Änderungsprotokoll Datenmodell" mit Begründung
-dokumentiert. Die wichtigsten für S1:
-- `configs` liegt jetzt als `configs.app_config` in einem eigenen Schema und enthält `min_teilnehmer`,
-  `max_teilnehmer`, die Session-Timer sowie die Hallenmodus-Parameter.
-- `configs.central_pin` und `admin_konto.pin_2fa` sind entfallen (Klartext-PIN bzw. zu kleiner Datentyp).
-- Der zirkuläre Fremdschlüssel zwischen `session` und `gast_slot` ist aufgelöst
-  (`session.gast_slot_id` entfernt).
-- `skill_kategorie` erhält `reihenfolge` und `aktiv`; der Trigger für den kategorie-spezifischen
-  Wertebereich ist verbindlich.
+### 6.3 Abweichungen, die während S1 bewusst festgelegt wurden
 
-**Massgeblich für die Migrationen ist ab sofort die korrigierte Fassung in `AGENT.md`.**
+- **Defaults in `configs.app_config`** weichen von der Vorplanung ab und die Dokumentation wurde
+  angeglichen (`AGENT.md`, Änderungsprotokoll Punkt 13): `min_teilnehmer = 6` (statt 8, Anforderung 10
+  mitgeändert), `anz_team_generator = 1` (statt 2, deckt sich mit dem Wortlaut von A15),
+  `session_maximal_stunden = 1` (statt 8).
+- **`session.stage`** heisst in der zweiten Stufe `PROFILE_AUTHENTICATED` (vorher
+  `PLAYER_AUTHENTICATED`). Begründung: Die Stufe wird auch von Gästen erreicht, die kein Profil in
+  `profil.spieler` haben. Einheitlich in allen aktiven Dokumenten nachgezogen.
+- **`spieltag.termin.fk_termin_serie` ohne `ON DELETE`**, also `NO ACTION`: Eine Serie lässt sich nicht
+  löschen, solange Termine daran hängen. Bewusst konservativ – `ON DELETE CASCADE` hätte über die
+  Kaskadenkette auch Teilnahmen, Teameinteilungen und Ergebnisse gelöscht.
+  Falls erforderlich werden nicht mehr benötigten Termine einer Serie über den Status 'GEPLANT' identifiziert und über die Fachlogik entfernt.  
+
+### 6.4 Zwei Fallstricke aus S1, die dokumentiert bleiben sollten
+
+**`--env-file` gilt nur für Docker Compose, nicht für die JVM.** Beim Start mit `./mvnw spring-boot:run`
+kennt der Java-Prozess `DB_USER`/`DB_PASSWORD` nicht. Spring Boots `Binder` reicht unauflösbare
+Platzhalter **wörtlich** durch (`ignoreUnresolvablePlaceholders = true`, anders als `@Value`), weshalb
+die Fehlermeldung `password authentication failed for user "${DB_USER}"` lautet. Gelöst über
+`spring.config.import=optional:file:./.env[.properties]`. Merkregel: Ein `${...}` in einer
+Fehlermeldung bedeutet immer fehlende Auflösung, nie einen falschen Wert.
+
+**Beispielcode gehört nicht in Migrationen.** Ein illustratives `UPDATE ... SET session_id = :sessionId`
+aus der S1-Anleitung war versehentlich in `V003` gelandet; `:name` ist ein JDBC-Parameter und für
+PostgreSQL ein Syntaxfehler (`42601`). Auf PostgreSQL rollt Flyway eine fehlgeschlagene Migration
+vollständig zurück, ein `flyway repair` war nicht nötig.
 
 ## 7. Nächste Schritte
-1. Restpunkte aus Abschnitt 6.2 abarbeiten (mindestens Punkt 1 und 2 vor S1, da beide später teurer
-   werden).
-2. **S1** umsetzen: Flyway-Migrationen `V001`–`V007` für die drei Schemas, alle Tabellen und Constraints
-   sowie den Seed für `skill_kategorie`, `gast_vorlage`, `gast_slot` und `configs.app_config`, dazu das
-   Testcontainers-Grundgerüst. Schrittweise Anleitung: `harness/tmp/S1_UMSETZUNG.md`.
-3. **Profildaten – zwei getrennte Wege** (Entscheidung vom 02.08.2026, Details in `S1_UMSETZUNG.md`,
-   Abschnitte 8.4 bis 8.6):
-   - **Real:** `import_spielerprofile_real.sql` (30 Profile) wird **nicht** eingecheckt und **nicht** von
-     Flyway ausgeführt. Ablage ausserhalb von `PRJ_FuBo/` (Konvention: `~/fubo-lokal/`), Pfad über
-     `FUBO_LOCAL_SEED` in der `.env`. Der Maintainer überträgt die Datei manuell auf das Zielsystem und
-     spielt sie einmalig per `psql` ein; sie ist idempotent. **Erledigt:** Datei aus `harness/tmp/`
-     herausbewegt, `FUBO_LOCAL_SEED` in `.env` und `.env.example` gesetzt.
-   - **Anonymisiert, auf Abruf:** `harness/tmp/spielerprofile_anonym.sql` (30 Profile mit den realen
-     Skillwerten, Namen `Spieler 01`–`30`, gemischte Reihenfolge) kommt nach `scripts/data/`. Enthält
-     keine personenbezogenen Daten. Regelfall für die Arbeit am Teamgenerator; keine Flyway-Migration,
-     damit er nicht in jedem Testlauf geladen wird.
-   - **Einspielhilfe (erledigt):** `scripts/seed-lokal.sh` liegt bereits im Repository und ist ausführbar.
-     Nimmt einen Pfad als Argument oder greift auf `FUBO_LOCAL_SEED` aus der `.env` zurück. Enthält keine
-     Daten.
-4. Danach S2/S2b (Auth/Session, Admin-Reset). Voraussetzung für S2b: SMTP-Zugang festlegen.
-5. Parallel den Endpunktkontrakt als OpenAPI unter
-   `src/main/resources/openapi/fubo-api.yaml` beginnen (Quelle der Wahrheit für den Client-Track).
-6. **Vorab zu klären, obwohl erst in S8 fällig:** Die Domainentscheidung `app.<domain>` / `api.<domain>`
-   muss **vor S2** stehen – nur bei derselben registrierbaren Domain trägt `SameSite=Lax`, sonst ist
-   `SameSite=None; Secure` nötig, und davon hängt das Cookie-Verhalten der gesamten Session-Logik ab.
-   Der Deployment-Entwurf mit Dockerfile, Compose-Ergänzung, nginx-Block, Backup- und Rollout-Vorgehen
-   liegt in `harness/tmp/S8_DEPLOYMENT.md`.
 
+1. **S2 umsetzen** – Auth und Session. Schrittweise Anleitung: `harness/tmp/S2_UMSETZUNG.md`.
+   Reihenfolge dort: Paketstruktur → Entities/Repositories → Token und Hashing → Session-Service mit
+   Zwei-Timer-Modell → Security-Filterchain (inkl. `permitAll` für `/actuator/health`) →
+   Stage-Erzwingung → PIN-Login mit Brute-Force-Schutz → Namensliste/-belegung → Gast-Login →
+   Bootstrap → Fehlerformat → Tests.
+2. **Vor dem Cookie-Code klären:** Die Domainentscheidung `app.<domain>` / `api.<domain>`. Nur bei
+   derselben registrierbaren Domain trägt `SameSite=Lax`; sonst ist `SameSite=None; Secure` nötig – und
+   dann wird CSRF-Schutz zwingend, weil `Lax` dann keine fremden POST-Anfragen mehr blockt. Diese
+   Entscheidung verändert Abschnitt 5 und 6 der S2-Anleitung.
+3. **S2b** (Admin-Passwort-Reset) im Anschluss. Voraussetzung: SMTP-Zugang festlegen und
+   `spring-boot-starter-mail` ergänzen.
+4. **Parallel:** Endpunktkontrakt als OpenAPI unter `src/main/resources/openapi/fubo-api.yaml`
+   beginnen – Quelle der Wahrheit für den Client-Track. Die in S2 entstehenden Auth-Endpunkte sind der
+   erste Inhalt.
+5. **Profildaten** (Vorgehen steht, nichts mehr zu entscheiden): Reale Daten liegen ausserhalb von
+   `PRJ_FuBo/`, Pfad in `FUBO_LOCAL_SEED`, Einspielen über `scripts/seed-lokal.sh`. Der anonymisierte
+   30er-Satz liegt in `scripts/data/`, der 12er-Demosatz läuft automatisch in Dev und Test.
+6. **Deployment (S8):** Entwurf mit Dockerfile, Compose-Ergänzung, nginx-Block, Backup und Rollout liegt
+   in `harness/tmp/S8_DEPLOYMENT.md`.
 ## 8. Weitere Anweisungen
-- **Repository-Konventionen:** Repo-Wurzel ist `server/`. Branch-Namen mit Meilenstein-Präfix
-  (`feature/s0-backend-setup`, `fix/...`, `chore/...`, `docs/...`). Commit-Nachrichten nach Conventional
-  Commits **ohne** Scope `(server)` – die Zuordnung ergibt sich aus dem Repository.
+- **Repository-Konventionen:** Repo-Wurzel ist `server/`. Gearbeitet wird auf dem Entwicklungsbranch
+  **`dev`**; `main` bleibt der freigegebene Stand. Commit-Nachrichten nach Conventional Commits **ohne**
+  Scope `(server)` – die Zuordnung ergibt sich aus dem Repository.
+  *Hinweis:* Frühere Fassungen dieses Dokuments nannten Meilenstein-Branches
+  (`feature/s1-datenmodell`). Praktiziert wird ein durchgehender `dev`-Branch; die Konvention ist hiermit
+  daran angepasst.
 - **Getrennte Repositories:** Änderungen an Server und Client können nicht in einem gemeinsamen Commit
   erfolgen. Vertragsänderungen daher immer zuerst in der OpenAPI-Datei im Server-Repo abbilden und den
   Client-Track separat nachziehen.
