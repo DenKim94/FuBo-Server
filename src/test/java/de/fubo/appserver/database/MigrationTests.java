@@ -1,0 +1,116 @@
+package de.fubo.appserver.database;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.annotation.Transactional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+/**
+ * Prueft, dass die Flyway-Migrationen vollstaendig durchlaufen und die
+ * Referenzdaten wie spezifiziert vorliegen.
+ */
+@SpringBootTest
+@Import(TestcontainersConfiguration.class)
+@Transactional      // jeder Test wird nach dem Durchlauf zurueckgerollt
+class MigrationTests {
+
+    @Autowired
+    private JdbcTemplate jdbc;
+
+    /** Alle drei Schemas muessen nach dem Start existieren. */
+    @Test
+    void schemasSindAngelegt() {
+        var schemas = jdbc.queryForList("""
+                SELECT schema_name FROM information_schema.schemata
+                 WHERE schema_name IN ('profil', 'spieltag', 'configs')
+                """, String.class);
+        assertThat(schemas).containsExactlyInAnyOrder("profil", "spieltag", "configs");
+    }
+
+    /** Der Seed muss genau fuenf Kategorien mit den vorgegebenen Gewichten liefern. */
+    @Test
+    void skillKategorienSindGeseedet() {
+        Integer anzahl = jdbc.queryForObject(
+                "SELECT count(*) FROM profil.skill_kategorie", Integer.class);
+        assertThat(anzahl).isEqualTo(5);
+
+        var gewicht = jdbc.queryForObject(
+                "SELECT gewicht FROM profil.skill_kategorie WHERE schluessel = 'TORWART'",
+                java.math.BigDecimal.class);
+        assertThat(gewicht).isEqualByComparingTo("0.30");
+    }
+
+    /** Der partielle Unique-Index laesst nur einen einzigen Admin zu. */
+    @Test
+    void zweiterAdminWirdAbgelehnt() {
+        jdbc.update("INSERT INTO profil.spieler (name, rolle) VALUES ('Testspieler A', 'ADMIN')");
+
+        assertThatThrownBy(() ->
+                jdbc.update("INSERT INTO profil.spieler (name, rolle) VALUES ('Testspieler B', 'ADMIN')"))
+                .isInstanceOf(DuplicateKeyException.class);
+    }
+
+    /** Der Trigger erzwingt den kategoriespezifischen Wertebereich (Torwart 0..3). */
+    @Test
+    void torwartWertUeberDreiWirdAbgelehnt() {
+        Long id = jdbc.queryForObject(
+                "INSERT INTO profil.spieler (name) VALUES ('Testspieler C') RETURNING id", Long.class);
+
+        assertThatThrownBy(() -> jdbc.update(
+                "INSERT INTO profil.spieler_skill (spieler_id, kategorie, wert) VALUES (?, 'TORWART', 5)", id))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    /**
+     * NULLS NOT DISTINCT: Zwei Kontingentzeilen mit demselben Gast-Slot kollidieren,
+     * obwohl akteur_spieler_id in beiden Zeilen NULL ist.
+     */
+    @Test
+    void kontingentSchluesselIstAuchMitNullEindeutig() {
+        Long terminId = jdbc.queryForObject("""
+                INSERT INTO spieltag.termin (datum, uhrzeit)
+                VALUES (DATE '2099-01-01', TIME '20:00')
+                RETURNING id
+                """, Long.class);
+
+        String einfuegen = """
+                INSERT INTO spieltag.generierung_kontingent
+                       (termin_id, akteur_spieler_id, akteur_gast_slot_id, teilnehmer_version, anzahl)
+                VALUES (?, NULL, 1, 0, 1)
+                """;
+
+        jdbc.update(einfuegen, terminId);
+
+        assertThatThrownBy(() -> jdbc.update(einfuegen, terminId))
+                .isInstanceOf(DuplicateKeyException.class);
+    }
+
+    /** Beispielprofile mit je fuenf Skillwerten, keine Dummy-Vorlage als Spieler. */
+    @Test
+    void beispielprofileSindVollstaendigGeseedet() {
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM profil.spieler", Integer.class))
+                .isEqualTo(12);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM profil.spieler_skill", Integer.class))
+                .isEqualTo(60);
+        assertThat(jdbc.queryForObject(
+                "SELECT count(*) FROM profil.spieler WHERE name LIKE 'Dummy%'", Integer.class))
+                .isZero();
+    }
+
+    /** Der Torwart-Wertebereich 0..3 gilt auch fuer die Beispieldaten. */
+    @Test
+    void torwartWerteLiegenImGueltigenBereich() {
+        assertThat(jdbc.queryForObject("""
+            SELECT count(*) FROM profil.spieler_skill
+             WHERE kategorie = 'TORWART' AND wert NOT BETWEEN 0 AND 3
+            """, Integer.class))
+                .isZero();
+    }
+}

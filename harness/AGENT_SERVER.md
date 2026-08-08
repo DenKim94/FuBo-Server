@@ -35,7 +35,7 @@ Identifikation über den hinterlegten Namen. Rollen: ADMIN, USER, GAST.
   (`Secure`, `SameSite=Lax`); in der DB nur der SHA-256-Hash. Temporäre Gültigkeit (Zwei-Timer-Modell:
   gleitendes 15-Minuten-Fenster plus harte Obergrenze), Erneuerung mit Token-Rotation, sonst
   automatischer Logout. Zweistufiger Login serverseitig erzwungen über das Feld `stage`
-  (`PIN_VERIFIED` → `PLAYER_AUTHENTICATED`), Token-Rotation beim Übergang.
+  (`PIN_VERIFIED` → `PROFILE_AUTHENTICATED`), Token-Rotation beim Übergang.
 - (A22) Genau ein Admin (partieller Unique-Index). Passwort-Reset über eine generierte 5-stellige
   Bestätigungs-PIN per E-Mail (`spring-boot-starter-mail`), abgesichert durch kurze Gültigkeit,
   Versuchs- und Anforderungsbegrenzung sowie Sitzungswiderruf nach der Änderung.
@@ -44,7 +44,7 @@ Identifikation über den hinterlegten Namen. Rollen: ADMIN, USER, GAST.
 - (A12) Teamzuteilung auf Grundlage der Profildaten; Skills auf einer Skala 0 bis 6 (Torwart 0 bis 3).
   **Skillbewertungen dürfen den Server nicht an normale User verlassen.**
 - (A13) Nur der Admin darf Spielerprofile erstellen, bearbeiten oder entfernen (Autorisierung serverseitig).
-- (A10/A11) Minimale (Default 8) und maximale (Default 22) Teilnehmerzahl als Admin-Konfiguration.
+- (A10/A11) Minimale (Default 6) und maximale (Default 22) Teilnehmerzahl als Admin-Konfiguration.
 - (A17) Gäste: drei Skill-Stufen (STARK, MITTEL, SCHWACH), optionale Zuweisung durch den Admin, maximal
   vier Gäste (Default, admin-anpassbar) über feste `gast_slot`-Datensätze mit bedingtem UPDATE.
 
@@ -124,7 +124,7 @@ Da deterministisch, wählt der `seed` die A/B-Zuordnung und – bei Gleichstand 
 
 ### Techstack (Server)
 - Java 25, **Spring Boot 4.1.0**, Maven (Wrapper im Repository). Artefakt `de.fubo:app-server`,
-  Basispaket `de.fubo.app_server` (Umbenennung nach `de.fubo.appserver` empfohlen, siehe Handoff 6.2).
+  Basispaket `de.fubo.appserver` (Umbenennung nach `de.fubo.appserver` empfohlen, siehe Handoff 6.2).
   Hinweis zu Spring Boot 4: Die Starter heissen `spring-boot-starter-webmvc` (statt `-web`) und
   `spring-boot-starter-flyway`; Test-Abhängigkeiten werden je Baustein als `*-test`-Starter eingebunden.
 - PostgreSQL 17, eine Instanz mit drei Schemas `profil`, `spieltag`, `configs`; Flyway für Migrationen.

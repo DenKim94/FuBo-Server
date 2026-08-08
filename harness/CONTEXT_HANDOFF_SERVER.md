@@ -58,7 +58,7 @@ Mid-Level-Entwickler, KI-gestützt, ca. 6,5 h/Woche.
 | S5 | Teamgenerator: `EXHAUSTIV` + `HEURISTIK`, Zielfunktion inkl. Torwart-Gewicht, Kontingent/Seed/Snapshot, Auswechselspieler, Tests | 18 |
 | S6 | Ergebnis & Audit API: „erster Eintrag gilt", Admin-Korrektur, `audit_log` | 8 |
 | S7 | Hallenmodus: E-Mail-Absage, 48-Stunden-Regel, serverseitige Deaktivierung | 6 |
-| S8 | Härtung, Integrationstests, Deployment (Docker/nginx/Cloudflared), API-Doku/OpenAPI | 14 |
+| S8 | Härtung, Integrationstests, Deployment (Docker/nginx/Cloudflared), API-Doku/OpenAPI – Entwurf liegt vor: `harness/tmp/S8_DEPLOYMENT.md` | 14 |
 
 **Summe Server ≈ 120 h → ca. 18–19 Kalenderwochen** bei 6,5 h/Woche (Spanne ±15 %). Kritischer Pfad: S2
 und S5. Abhängigkeit: S2b setzt einen SMTP-Zugang voraus (Anbieter/Absenderadresse festlegen).
@@ -95,7 +95,7 @@ Actuator-Exposure auf `health` beschränkt.
 1. `TestcontainersConfiguration` startet `postgres:latest`. Das muss auf **`postgres:17`** festgelegt
    werden, sonst testet man gegen eine andere Hauptversion als in Produktion (`NULLS NOT DISTINCT`,
    Verhalten von `MERGE` und Planänderungen sind versionsabhängig).
-2. Das Basispaket heisst `de.fubo.app_server` (Unterstrich, aus dem Artefaktnamen abgeleitet). Java-
+2. Das Basispaket heisst `de.fubo.appserver` (Unterstrich, aus dem Artefaktnamen abgeleitet). Java-
    Paketnamen sind konventionell durchgehend klein ohne Trennzeichen. Empfehlung: Umbenennung nach
    `de.fubo.appserver`, solange nur drei Klassen betroffen sind.
 3. `pom.xml` enthält leere Metadaten-Elemente (`<name/>`, `<description/>`, `<licenses><license/></licenses>`,
@@ -149,6 +149,11 @@ dokumentiert. Die wichtigsten für S1:
 4. Danach S2/S2b (Auth/Session, Admin-Reset). Voraussetzung für S2b: SMTP-Zugang festlegen.
 5. Parallel den Endpunktkontrakt als OpenAPI unter
    `src/main/resources/openapi/fubo-api.yaml` beginnen (Quelle der Wahrheit für den Client-Track).
+6. **Vorab zu klären, obwohl erst in S8 fällig:** Die Domainentscheidung `app.<domain>` / `api.<domain>`
+   muss **vor S2** stehen – nur bei derselben registrierbaren Domain trägt `SameSite=Lax`, sonst ist
+   `SameSite=None; Secure` nötig, und davon hängt das Cookie-Verhalten der gesamten Session-Logik ab.
+   Der Deployment-Entwurf mit Dockerfile, Compose-Ergänzung, nginx-Block, Backup- und Rollout-Vorgehen
+   liegt in `harness/tmp/S8_DEPLOYMENT.md`.
 
 ## 8. Weitere Anweisungen
 - **Repository-Konventionen:** Repo-Wurzel ist `server/`. Branch-Namen mit Meilenstein-Präfix

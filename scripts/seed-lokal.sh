@@ -5,12 +5,12 @@
 # Spielt einen Profildatensatz in die lokale Entwicklungsdatenbank ein.
 # Das Skript selbst enthaelt keine Daten und darf eingecheckt werden.
 #
-# Aufruf:
+# Aufruf (Beispiel):
 #   ./scripts/seed-lokal.sh
 #       -> nutzt den Pfad aus FUBO_LOCAL_SEED (.env), typischerweise die
 #          lokale Datei mit realen Namen ausserhalb des Projektordners
 #
-#   ./scripts/seed-lokal.sh scripts/data/spielerprofile_anonym.sql
+#   ./scripts/seed-lokal.sh .src/main/resources/dv/demodata/spielerprofile_anonym.sql
 #       -> nutzt den uebergebenen Pfad (30 Profile, anonymisiert)
 #
 # Voraussetzung: Die Anwendung wurde mindestens einmal gestartet, damit Flyway

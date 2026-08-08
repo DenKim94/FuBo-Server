@@ -1,0 +1,13 @@
+# Testkonfiguration - ergaenzt und ueberschreibt src/main/resources/application.yml.
+spring:
+  datasource:
+    # Platzhalterwerte. Die tatsaechliche Verbindung liefert Testcontainers ueber
+    # @ServiceConnection und hat Vorrang. Ohne diese Eintraege scheitert die
+    # Aufloesung von ${DB_USER}/${DB_PASSWORD}, sobald die Variablen nicht in der
+    # Umgebung stehen - der Kontext startet dann gar nicht erst.
+    username: test
+    password: test
+  flyway:
+    # Zusaetzlich zu den Schemamigrationen die anonymisierten Beispielprofile laden.
+    # In der Produktionskonfiguration steht bewusst nur classpath:db/migration.
+    locations: classpath:db/migration, classpath:db/demodata
