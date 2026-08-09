@@ -11,3 +11,14 @@ spring:
     # Zusaetzlich zu den Schemamigrationen die anonymisierten Beispielprofile laden.
     # In der Produktionskonfiguration steht bewusst nur classpath:db/migration.
     locations: classpath:db/migration, classpath:db/demodata
+
+fubo:
+  session:
+    # Feste Testwerte statt ${FUBO_...}: Der Testlauf darf nicht davon abhaengen, ob
+    # lokal eine .env existiert - sonst ist er auf dem Entwicklungsrechner gruen und
+    # in einer CI-Umgebung rot.
+    cookie-name: FUBO_SESSION
+    cookie-secure: false
+    cookie-same-site: Lax
+  cors:
+    allowed-origins: http://localhost:5173
