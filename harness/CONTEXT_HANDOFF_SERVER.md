@@ -8,7 +8,9 @@
 > **Kein Monorepo.** Das Frontend liegt in einem getrennten Repository (`FuBo-Client`, Ordner `client/`).
 > Der übergeordnete Ordner `PRJ_FuBo/` sowie `PRJ_FuBo/harness/` sind bewusst **nicht** versioniert.
 > Repository ist angelegt: `https://github.com/DenKim94/FuBo-Server.git` (privat).
-> Stand: 08.08.2026, **S0 und S1 abgeschlossen**, Beginn von S2
+> Stand: 09.08.2026, **S0 und S1 abgeschlossen**, **S2 in Arbeit (Abschnitte 1–3 umgesetzt)**
+> (09.08.2026: Domainentscheidung getroffen, siehe Abschnitt 7 Punkt 2; Sitzungsverwaltung
+> implementiert, siehe Abschnitt 6.5)
 > (Vorfassung archiviert unter `harness/archive/CONTEXT_HANDOFF_SERVER_2026-08-02_v2_S0-abgeschlossen.md`)
 
 ---
@@ -51,7 +53,7 @@ Mid-Level-Entwickler, KI-gestützt, ca. 6,5 h/Woche.
 |---|---|---|
 | S0 | Backend-Setup: Spring Boot, Maven, Modulstruktur, `.gitignore`, Docker/Compose-Eintrag – **abgeschlossen** | 8 |
 | S1 | Datenmodell: 3 Schemas, alle Tabellen/Constraints, Flyway-Migrationen, Seed (Kategorien, `gast_vorlage`, anonymisierte Beispielprofile), lokale Datenversorgung, Testcontainers-Grundgerüst – **abgeschlossen** | 15 |
-| S2 | Auth & Session: Security-Filterchain, PIN-Login + Brute-Force-Schutz, `stage`-Erzwingung, opaker Token/HttpOnly, Zwei-Timer-Modell, Namensliste/-belegung, Online-Status – **in Arbeit**, Anleitung `harness/tmp/S2_UMSETZUNG.md` | 22 |
+| S2 | Auth & Session: Security-Filterchain, PIN-Login + Brute-Force-Schutz, `stage`-Erzwingung, opaker Token/HttpOnly, Zwei-Timer-Modell, Namensliste/-belegung, Online-Status, API-Vertrag der Auth-Endpunkte – **in Arbeit, Abschnitte 1–3 fertig (≈ 5 h)**, Anleitung `harness/tmp/S2_UMSETZUNG.md` | 23 |
 | S2b | Admin-Passwort-Reset: `spring-boot-starter-mail`, 5-stellige PIN, Rate-Limit, Sitzungswiderruf | 6 |
 | S3 | Profile & Skills API: Admin-CRUD, Rollen/Autorisierung, `configs` (Import der Referenzdaten entfällt – siehe Abschnitt 7.3) | 11 |
 | S4 | Termine & Teilnahme API: Einzel/Serie, Teilnahme, `teilnehmer_version`, Min/Max + Warteschlange, Gast-Flow/`gast_slot` | 16 |
@@ -61,13 +63,13 @@ Mid-Level-Entwickler, KI-gestützt, ca. 6,5 h/Woche.
 | S8 | Härtung, Integrationstests, Deployment (Docker/nginx/Cloudflared), API-Doku/OpenAPI – Entwurf liegt vor: `harness/tmp/S8_DEPLOYMENT.md` | 14 |
 
 **Korrektur der S2-Schätzung (08.08.2026):** Die Aufschlüsselung in `S2_UMSETZUNG.md` summiert sich auf
-**22 h** statt der ursprünglich veranschlagten 18 h. Die Abweichung entsteht vor allem in der
-Filterchain (4 h) und beim Brute-Force-Schutz (3 h) – beides war in der Top-down-Schätzung zu grob
-angesetzt. Die Summe der Einzelschritte ist verlässlicher als die Gesamtschätzung, deshalb steht hier
+**23 h** statt der ursprünglich veranschlagten 18 h. Die Abweichung entsteht vor allem in der
+Filterchain (4 h), beim Brute-Force-Schutz (3 h) und beim API-Vertrag zum Frontend (1 h) – alle drei
+waren in der Top-down-Schätzung zu grob angesetzt. Die Summe der Einzelschritte ist verlässlicher als die Gesamtschätzung, deshalb steht hier
 der höhere Wert. S1 wurde entsprechend von 14 auf 15 h angehoben, S3 von 12 auf 11 h gesenkt, da der
 Import der Referenzdaten dort entfällt.
 
-**Summe Server ≈ 124 h → ca. 19–20 Kalenderwochen** bei 6,5 h/Woche (Spanne ±15 %). Kritischer Pfad: S2
+**Summe Server ≈ 125 h → ca. 19–20 Kalenderwochen** bei 6,5 h/Woche (Spanne ±15 %). Kritischer Pfad: S2
 und S5. Abhängigkeit: S2b setzt einen SMTP-Zugang voraus (Anbieter/Absenderadresse festlegen).
 
 ## 6. Aktueller Code-Zustand (Stand 08.08.2026, Branch `dev`, Commit `1d90f67`)
@@ -108,11 +110,13 @@ Produktionskonfiguration sieht sie nie.
 in `/PRJ_FuBo/harness/AGENT.md`. `MigrationTests` enthält sieben Tests (Schemas, Seed, partieller
 Admin-Index, Wertebereichs-Trigger, `NULLS NOT DISTINCT`, Demodaten, Torwart-Bereich).
 
-### 6.2 Offene Punkte vor S2
+### 6.2 Offene Punkte vor S2 (Stand nach Abschnitt 3 in Klammern)
 
 1. **Paketstruktur ist unvollständig.** Angelegt (und leer) sind `common/{config,error}`,
    `controller/{auth,config,ergebnis,profil,team,termin}`, `service/{…}`, `repository`, `utils`.
    Es fehlen Pakete für **JPA-Entities** und **DTOs**. Vorschlag in `S2_UMSETZUNG.md`, Abschnitt 1.1.
+   *(Erledigt für `domain/{auth,config}`, `repository/{auth,config}`, `service/{auth,config}` und
+   `common/config`. `dto/` entsteht mit den Endpunkten ab Abschnitt 6.)*
 2. **Es gibt noch keine `SecurityFilterChain`.** Solange keine existiert, konfiguriert Spring Security
    einen Notbehelf: In-Memory-Benutzer `user` mit zufälligem UUID-Passwort, bei jedem Start neu, plus
    Deny-by-default auf allen Endpunkten. Das ist der Grund für die Log-Zeile
@@ -161,17 +165,82 @@ aus der S1-Anleitung war versehentlich in `V003` gelandet; `:name` ist ein JDBC-
 PostgreSQL ein Syntaxfehler (`42601`). Auf PostgreSQL rollt Flyway eine fehlgeschlagene Migration
 vollständig zurück, ein `flyway repair` war nicht nötig.
 
+### 6.5 S2, Abschnitte 1–3 umgesetzt (09.08.2026)
+
+Sitzungsverwaltung mit Zwei-Timer-Modell (A14). Entstandene Dateien:
+
+```
+src/main/java/de/fubo/appserver/
+  domain/auth/        Session (@Entity), Stage, Rolle, GastStufe, AktiveSitzung (record)
+  domain/config/      AppConfig (@Entity, alle 14 Spalten), AlgorithmType
+  repository/auth/    SessionRepository, SessionRepositoryCustom, SessionRepositoryImpl
+  repository/config/  AppConfigRepository
+  service/auth/       SessionService
+  service/config/     ConfigService
+  common/config/      SchedulingConfig
+  utils/              TokenGenerator (bereits vorhanden)
+src/main/resources/
+  db/migration/       V008__session_rolle_optional.sql
+  application.yml     spring.profiles.default=dev, fubo.session.*, fubo.cors.*
+  application-dev.yml lokale Abweichungen (cookie-secure=false, Vite-Origin)
+src/test/java/de/fubo/appserver/
+  service/auth/       SessionServiceTests   (13 Faelle)
+  service/config/     ConfigServiceTests    (2 Faelle)
+```
+
+**Datenmodell geändert:** `V008` macht `profil.session.rolle` optional und ergänzt
+`ck_session_rolle_stage` (ab `PROFILE_AUTHENTICATED` ist die Rolle Pflicht). `V003` hatte die Spalte
+als `NOT NULL` angelegt; eine Sitzung in `PIN_VERIFIED` hat aber noch keine Rolle, das Anlegen wäre an
+der Spalte gescheitert. `ck_session_identitaet` sah den Fall für `spieler_id`/`gast_name` bereits vor,
+die Rolle wurde dort übersehen. **Der Eintrag im Änderungsprotokoll von `/PRJ_FuBo/harness/AGENT.md`
+steht noch aus** (offener Punkt 10 in `S2_UMSETZUNG.md`).
+
+**Behobener Defekt:** Eine erste Fassung der `Session`-Entity führte `stage` als `String` und behielt
+`@Enumerated(EnumType.STRING)`. Hibernate lehnt die Annotation auf einem Nicht-Enum-Typ ab und bricht
+den Kontextstart ab – sichtbar als fehlschlagender `MigrationTests`-Lauf, also an einer Stelle, die mit
+der Ursache nichts zu tun hat. Behoben durch echte Aufzählungstypen.
+
+**Paketnamen vereinheitlicht:** `S2_UMSETZUNG.md` nannte in Abschnitt 1.1 `entity/`, der Beispielcode
+darunter `domain/`. Massgeblich ist `AGENT_SERVER.md` („Paketstruktur, verbindlich ab S2"): das Paket
+heisst **`domain`**. Es enthält neben Entities auch schlanke Wertobjekte wie `AktiveSitzung`, die die
+API-Grenze ebenso wenig überschreiten dürfen. Die Anleitung ist korrigiert.
+
+**Drei Umsetzungsentscheidungen, die von der Anleitung abweichen:**
+
+- `anlegen()` nutzt `saveAndFlush` statt `save`. Die Prüfung läuft über nativen JDBC-Zugriff und sieht
+  nur, was in der Datenbank steht. Bei `IDENTITY` setzt Hibernate das `INSERT` ohnehin sofort ab –
+  sich darauf zu verlassen wäre eine unsichtbare Kopplung an die Generierungsstrategie.
+- `ConfigService` liest ohne Zwischenspeicher. Ein Cache bräuchte Invalidierung ab S3; der Zugriff ist
+  ein Primärschlüssel-Lookup auf eine einzeilige Tabelle in derselben Transaktion.
+- Die Drosselung des Aktivitäts-`UPDATE` aus Abschnitt 3.2 ist **nicht** umgesetzt. Sie bräuchte
+  zwingend einen zweiten, rein lesenden Pfad, sonst hielte der Filter gültige Sitzungen für ungültig.
+  Offener Punkt 4 bleibt damit offen.
+
+**Verifikation:** Der Build wurde bisher nur statisch geprüft (Spaltennamen gegen `V003`/`V004`,
+Paket- und Typreferenzen). `./mvnw clean verify` steht noch aus; Erwartung sind acht Zeilen in
+`flyway_schema_history` und 22 grüne Tests.
+
 ## 7. Nächste Schritte
 
-1. **S2 umsetzen** – Auth und Session. Schrittweise Anleitung: `harness/tmp/S2_UMSETZUNG.md`.
-   Reihenfolge dort: Paketstruktur → Entities/Repositories → Token und Hashing → Session-Service mit
-   Zwei-Timer-Modell → Security-Filterchain (inkl. `permitAll` für `/actuator/health`) →
-   Stage-Erzwingung → PIN-Login mit Brute-Force-Schutz → Namensliste/-belegung → Gast-Login →
-   Bootstrap → Fehlerformat → Tests.
-2. **Vor dem Cookie-Code klären:** Die Domainentscheidung `app.<domain>` / `api.<domain>`. Nur bei
-   derselben registrierbaren Domain trägt `SameSite=Lax`; sonst ist `SameSite=None; Secure` nötig – und
-   dann wird CSRF-Schutz zwingend, weil `Lax` dann keine fremden POST-Anfragen mehr blockt. Diese
-   Entscheidung verändert Abschnitt 5 und 6 der S2-Anleitung.
+1. **S2 fortsetzen** – Auth und Session. Schrittweise Anleitung: `harness/tmp/S2_UMSETZUNG.md`.
+   Erledigt: Paketstruktur → Entities/Repositories → Token und Hashing → Session-Service mit
+   Zwei-Timer-Modell (Abschnitte 1–3, siehe 6.5).
+   Als Nächstes: **Fehlerformat (Abschnitt 4)** → Security-Filterchain inkl. `permitAll` für
+   `/actuator/health` und Stage-Erzwingung (5) → PIN-Login mit Brute-Force-Schutz (6) →
+   Namensliste/-belegung (7) → Gast-Login (8) → Bootstrap (9) → API-Vertrag (10) → Tests (11).
+   *Vor dem nächsten Schritt einmal `./mvnw clean verify` laufen lassen* – der Stand aus 6.5 wurde
+   noch nicht kompiliert.
+2. **Domainentscheidung – erledigt (09.08.2026).** Frontend und API liegen auf Subdomains **derselben
+   registrierbaren Domain** (`app.<domain>` / `api.<domain>`). Damit gilt `SameSite=Lax` und
+   `csrf.disable()` bleibt vertretbar; Abschnitt 5.4/5.5 der S2-Anleitung ist entsprechend festgelegt.
+   Hintergrund: Das Frontend liegt auf Cloudflare Pages und war zunächst nur unter
+   `<projekt>.pages.dev` erreichbar. `pages.dev` steht auf der Public Suffix List, ist für Browser also
+   selbst eine registrierbare Domain – gegenüber `api.<domain>` wäre das cross-site gewesen, mit
+   `SameSite=None; Secure`, zwingendem CSRF-Schutz und einem Session-Cookie, das Safari und der
+   Chrome-Inkognito-Modus als Third-Party-Cookie blockieren. Gelöst über eine **Custom Domain** in
+   Cloudflare Pages (reine Hosting-Konfiguration, kein Code). Offene Folgeaufgaben: Einrichtung der
+   Custom Domain sowie der Umgang mit Pages-Preview-Deployments, in denen der Login bauartbedingt nicht
+   funktioniert (`S2_UMSETZUNG.md`, Abschnitt 0.1 und offene Punkte 8/9).
 3. **S2b** (Admin-Passwort-Reset) im Anschluss. Voraussetzung: SMTP-Zugang festlegen und
    `spring-boot-starter-mail` ergänzen.
 4. **Parallel:** Endpunktkontrakt als OpenAPI unter `src/main/resources/openapi/fubo-api.yaml`
