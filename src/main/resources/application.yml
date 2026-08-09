@@ -1,6 +1,8 @@
 spring:
   application:
-    name: app-server
+    name: fubo-app-server
+  profiles:
+    default: dev
   config:
     # Laedt die lokale .env als Property-Quelle, damit DB_USER/DB_PASSWORD auch beim
     # Start ausserhalb von Docker aufgeloest werden. "optional:" -> kein Fehler, wenn
@@ -34,3 +36,12 @@ management:
   endpoint:
     health:
       show-details: never
+
+fubo:
+  session:
+    cookie-name: FUBO_SESSION
+    cookie-secure: true
+    cookie-same-site: Lax
+  cors:
+    # Kein Default. Fehlt die Variable, bricht der Start ab.
+    allowed-origins: ${FUBO_CORS_ALLOWED_ORIGINS}

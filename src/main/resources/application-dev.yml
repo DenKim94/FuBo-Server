@@ -1,0 +1,8 @@
+# Lokale Entwicklung. Wird automatisch aktiv, wenn kein Profil gesetzt ist
+# (spring.profiles.default=dev in application.yml).
+fubo:
+  session:
+    cookie-secure: false                        # http://localhost sendet sonst kein Cookie
+  cors:
+    # Default fuer den Vite-Entwicklungsserver; ueber die .env ueberschreibbar.
+    allowed-origins: ${FUBO_CORS_ALLOWED_ORIGINS:http://localhost:5173}
