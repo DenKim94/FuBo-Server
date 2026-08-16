@@ -20,5 +20,22 @@ fubo:
     cookie-name: FUBO_SESSION
     cookie-secure: false
     cookie-same-site: Lax
+  brute-force:
+    # Dieselben Werte wie in der Produktionskonfiguration - der Test soll das echte
+    # Verhalten pruefen, nicht ein entschaerftes. Damit die Zaehler eines Testlaufs
+    # nicht in den naechsten hineinwirken, setzt jeder Test sie ueber
+    # BruteForceService#alleZuruecksetzen zurueck.
+    max-versuche-ip: 5
+    max-versuche-global: 30
+    fenster-minuten: 15
+    sperrdauern-minuten:
+      - 1
+      - 5
+      - 15
+  audit:
+    # Wie in der Produktionskonfiguration. Der Test zur Loeschfrist setzt die Zeitstempel
+    # der Pruefdaten direkt, statt die Frist zu verkuerzen - das haelt den Test unabhaengig
+    # vom konfigurierten Wert.
+    aufbewahrung-tage: 90
   cors:
     allowed-origins: http://localhost:5173

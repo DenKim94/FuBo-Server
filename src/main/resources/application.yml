@@ -42,6 +42,22 @@ fubo:
     cookie-name: FUBO_SESSION
     cookie-secure: true
     cookie-same-site: Lax
+  brute-force:
+    # Drosselung des PIN-Endpunkts. Die Werte entsprechen den Vorgaben im Code
+    # (FuboProperties.BruteForce) und stehen hier, damit sie beim Betrieb sichtbar
+    # und ohne Neubau anpassbar sind.
+    max-versuche-ip: 5          # Fehlversuche je Adresse im Zeitfenster
+    max-versuche-global: 30     # Gesamtrate; faengt verteilte Angriffe ab
+    fenster-minuten: 15         # danach verfaellt ein Zaehler ohne neuen Fehlversuch
+    sperrdauern-minuten:        # steigend; der letzte Wert wiederholt sich
+      - 1
+      - 5
+      - 15
+  audit:
+    # Loeschfrist des Audit-Logs. Betriebs- und Rechtsgroesse, deshalb Property und nicht
+    # Teil der Admin-Konfiguration. Betrifft alle Aktionen gleichermassen; eine nach
+    # Aktionsart gestaffelte Frist waere eine Erweiterung des Aufraeumjobs.
+    aufbewahrung-tage: 90
   cors:
     # Kein Default. Fehlt die Variable, bricht der Start ab.
     allowed-origins: ${FUBO_CORS_ALLOWED_ORIGINS}

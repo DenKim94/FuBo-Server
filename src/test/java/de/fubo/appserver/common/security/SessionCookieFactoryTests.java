@@ -19,7 +19,10 @@ class SessionCookieFactoryTests {
     private static SessionCookieFactory fabrik(boolean secure, String sameSite) {
         return new SessionCookieFactory(new FuboProperties(
                 new FuboProperties.Session("FUBO_SESSION", secure, sameSite),
-                new FuboProperties.Cors(List.of("http://localhost:5173"))));
+                new FuboProperties.Cors(List.of("http://localhost:5173")),
+                // Fuer die Cookie-Fabrik ohne Bedeutung.
+                new FuboProperties.BruteForce(5, 30, 15, List.of(1, 5, 15)),
+                new FuboProperties.Audit(90)));
     }
 
     // ------------------------------------------------------------------ Setzen

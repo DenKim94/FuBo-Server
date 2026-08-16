@@ -40,7 +40,10 @@ class SessionAuthFilterTests {
 
     private static final FuboProperties PROPS = new FuboProperties(
             new FuboProperties.Session(COOKIE_NAME, false, "Lax"),
-            new FuboProperties.Cors(List.of("http://localhost:5173")));
+            new FuboProperties.Cors(List.of("http://localhost:5173")),
+            // Fuer den Filter ohne Bedeutung; die Drosselung haengt am PIN-Endpunkt.
+            new FuboProperties.BruteForce(5, 30, 15, List.of(1, 5, 15)),
+            new FuboProperties.Audit(90));
 
     /** Der SecurityContext haengt am Thread und wuerde sonst in den naechsten Test lecken. */
     @AfterEach
