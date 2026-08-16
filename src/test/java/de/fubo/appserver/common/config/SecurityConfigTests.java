@@ -87,11 +87,23 @@ class SecurityConfigTests {
                 .andExpect(status().isOk());
     }
 
-    /** Ohne offenen PIN-Endpunkt kaeme niemand jemals zu einer Sitzung. */
+    /**
+     * Ohne offenen PIN-Endpunkt kaeme niemand jemals zu einer Sitzung.
+     *
+     * <p>Geprueft wird mit einem leeren Anfragekoerper. Die Antwort ist deshalb 400 aus der
+     * Bean Validation - und genau das ist die Aussage: Der Aufruf hat die Filterchain
+     * passiert und den Controller erreicht. Waere der Endpunkt gesperrt, kaeme 401.
+     * Der fachliche Ablauf steht in {@code AuthControllerTests}.
+     */
     @Test
     void pinEndpunktIstOhneCookieErreichbar() throws Exception {
-        mockMvc.perform(post("/api/auth/pin"))
-                .andExpect(status().isOk());
+        String antwort = mockMvc.perform(post("/api/v1/auth/pin/pruefen")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(antwort).contains("\"code\":\"EINGABE_UNGUELTIG\"");
     }
 
     // ------------------------------------------------------------- Deny-by-default
@@ -99,7 +111,7 @@ class SecurityConfigTests {
     /** Alles Uebrige ist gesperrt - und liefert dasselbe Fehlerformat wie fachliche Fehler. */
     @Test
     void ohneCookieLiefert401ImEinheitlichenFehlerformat() throws Exception {
-        String antwort = mockMvc.perform(get("/api/beliebig"))
+        String antwort = mockMvc.perform(get("/api/v1/beliebig"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
                 .andReturn().getResponse().getContentAsString();
@@ -109,7 +121,7 @@ class SecurityConfigTests {
 
     @Test
     void unbekannterTokenLiefert401() throws Exception {
-        mockMvc.perform(get("/api/beliebig").cookie(new Cookie(COOKIE, "gibt-es-nicht")))
+        mockMvc.perform(get("/api/v1/beliebig").cookie(new Cookie(COOKIE, "gibt-es-nicht")))
                 .andExpect(status().isUnauthorized());
     }
 
@@ -120,7 +132,7 @@ class SecurityConfigTests {
         jdbc.update("UPDATE profil.session SET gueltig_bis = now() - interval '1 second' "
                 + "WHERE token_hash = ?", TokenGenerator.hash(token));
 
-        mockMvc.perform(get("/api/beliebig").cookie(new Cookie(COOKIE, token)))
+        mockMvc.perform(get("/api/v1/beliebig").cookie(new Cookie(COOKIE, token)))
                 .andExpect(status().isUnauthorized());
     }
 
@@ -131,7 +143,7 @@ class SecurityConfigTests {
         jdbc.update("UPDATE profil.session SET widerrufen_am = now() WHERE token_hash = ?",
                 TokenGenerator.hash(token));
 
-        mockMvc.perform(get("/api/beliebig").cookie(new Cookie(COOKIE, token)))
+        mockMvc.perform(get("/api/v1/beliebig").cookie(new Cookie(COOKIE, token)))
                 .andExpect(status().isUnauthorized());
     }
 
@@ -140,14 +152,22 @@ class SecurityConfigTests {
     /** In Stufe 1 darf die Namensliste gelesen werden - dafuer ist sie da. */
     @Test
     void pinVerifiedDarfDieNamenslisteLesen() throws Exception {
-        mockMvc.perform(get("/api/auth/users").cookie(new Cookie(COOKIE, pinVerifiedSitzung())))
+        mockMvc.perform(get("/api/v1/auth/users/lesen").cookie(new Cookie(COOKIE, pinVerifiedSitzung())))
                 .andExpect(status().isOk());
     }
 
+    /**
+     * Auch hier ist 400 der Beleg fuer "erlaubt": Der leere Koerper scheitert erst an der
+     * Bean Validation im Controller, also nach der Autorisierung. Die Gegenprobe steht
+     * eine Methode weiter unten - dort liefert dieselbe Anfrage 403.
+     */
     @Test
     void pinVerifiedDarfDieIdentitaetWaehlen() throws Exception {
-        mockMvc.perform(post("/api/auth/user").cookie(new Cookie(COOKIE, pinVerifiedSitzung())))
-                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/auth/user/waehlen")
+                        .cookie(new Cookie(COOKIE, pinVerifiedSitzung()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
     }
 
     /**
@@ -157,7 +177,7 @@ class SecurityConfigTests {
     @Test
     void pinVerifiedDarfKeinenGeschuetztenEndpunktAufrufen() throws Exception {
         String antwort = mockMvc.perform(
-                        get("/api/beliebig").cookie(new Cookie(COOKIE, pinVerifiedSitzung())))
+                        get("/api/v1/beliebig").cookie(new Cookie(COOKIE, pinVerifiedSitzung())))
                 .andExpect(status().isForbidden())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
                 .andReturn().getResponse().getContentAsString();
@@ -168,7 +188,10 @@ class SecurityConfigTests {
     /** Gegenrichtung: Wer bereits eine Identitaet hat, waehlt keine zweite. */
     @Test
     void userDarfDieIdentitaetNichtErneutWaehlen() throws Exception {
-        mockMvc.perform(post("/api/auth/user").cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))
+        mockMvc.perform(post("/api/v1/auth/user/waehlen")
+                        .cookie(new Cookie(COOKIE, sitzung(Rolle.USER)))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
                 .andExpect(status().isForbidden());
     }
 
@@ -180,28 +203,28 @@ class SecurityConfigTests {
      */
     @Test
     void userDarfNichtInDenAdminbereich() throws Exception {
-        mockMvc.perform(get("/api/admin/test").cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))
+        mockMvc.perform(get("/api/v1/admin/test").cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))
                 .andExpect(status().isForbidden());
     }
 
     @Test
     void gastDarfNichtInDenAdminbereich() throws Exception {
-        mockMvc.perform(get("/api/admin/test").cookie(new Cookie(COOKIE, gastSitzung())))
+        mockMvc.perform(get("/api/v1/admin/test").cookie(new Cookie(COOKIE, gastSitzung())))
                 .andExpect(status().isForbidden());
     }
 
     @Test
     void adminDarfInDenAdminbereich() throws Exception {
-        mockMvc.perform(get("/api/admin/test").cookie(new Cookie(COOKIE, sitzung(Rolle.ADMIN))))
+        mockMvc.perform(get("/api/v1/admin/test").cookie(new Cookie(COOKIE, sitzung(Rolle.ADMIN))))
                 .andExpect(status().isOk());
     }
 
     @Test
     void userUndGastDuerfenGeschuetzteEndpunkteAufrufen() throws Exception {
-        mockMvc.perform(get("/api/beliebig").cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))
+        mockMvc.perform(get("/api/v1/beliebig").cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(get("/api/beliebig").cookie(new Cookie(COOKIE, gastSitzung())))
+        mockMvc.perform(get("/api/v1/beliebig").cookie(new Cookie(COOKIE, gastSitzung())))
                 .andExpect(status().isOk());
     }
 
@@ -214,7 +237,7 @@ class SecurityConfigTests {
     @Test
     void esEntstehtKeineHttpSession() throws Exception {
         var ergebnis = mockMvc.perform(
-                        get("/api/beliebig").cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))
+                        get("/api/v1/beliebig").cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))
                 .andExpect(status().isOk())
                 .andReturn();
 
@@ -227,7 +250,7 @@ class SecurityConfigTests {
      */
     @Test
     void keinBrowserPasswortdialogBei401() throws Exception {
-        mockMvc.perform(get("/api/beliebig"))
+        mockMvc.perform(get("/api/v1/beliebig"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(header().doesNotExist(HttpHeaders.WWW_AUTHENTICATE));
     }
@@ -238,7 +261,7 @@ class SecurityConfigTests {
      */
     @Test
     void keineWeiterleitungZumLoginFormular() throws Exception {
-        mockMvc.perform(get("/api/beliebig"))
+        mockMvc.perform(get("/api/v1/beliebig"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(header().doesNotExist(HttpHeaders.LOCATION));
     }
@@ -251,7 +274,7 @@ class SecurityConfigTests {
      */
     @Test
     void preflightVonErlaubterOriginWirdBeantwortet() throws Exception {
-        mockMvc.perform(options("/api/auth/users")
+        mockMvc.perform(options("/api/v1/auth/users/lesen")
                         .header(HttpHeaders.ORIGIN, ERLAUBTE_ORIGIN)
                         .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "GET"))
                 .andExpect(status().isOk())
@@ -262,7 +285,7 @@ class SecurityConfigTests {
     /** Eine fremde Origin wird vom CorsFilter abgewiesen, bevor die Autorisierung greift. */
     @Test
     void preflightVonFremderOriginWirdAbgelehnt() throws Exception {
-        mockMvc.perform(options("/api/auth/users")
+        mockMvc.perform(options("/api/v1/auth/users/lesen")
                         .header(HttpHeaders.ORIGIN, "https://boese-seite.example")
                         .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "GET"))
                 .andExpect(status().isForbidden());
@@ -301,8 +324,15 @@ class SecurityConfigTests {
 
     /**
      * Platzhalter-Endpunkte, damit sich "erlaubt" von "nicht gefunden" unterscheiden laesst.
-     * Sie bilden den Endpunktkontrakt aus Abschnitt 10.4 ab und verschwinden, sobald die
-     * echten Controller in den Abschnitten 6 bis 8 entstehen.
+     *
+     * <p><b>Nur noch fuer Pfade ohne echten Controller.</b> Mit den Abschnitten 6 und 7
+     * sind {@code /api/auth/pin}, {@code /api/auth/users} und {@code /api/auth/user} echte
+     * Endpunkte geworden; ihre Platzhalter mussten hier entfallen. Waeren beide vorhanden,
+     * meldete Spring "Ambiguous mapping" und der Kontext startete gar nicht erst.
+     * {@code /api/{version}/auth/gast/anmelden} folgt in Abschnitt 8.
+     *
+     * <p>Auch die Platzhalter tragen das Versionssegment und ein {@code version}-Attribut.
+     * Ohne beides pruefte der Test eine Filterchain gegen Pfade, die es so nicht gibt.
      *
      * <p><b>Genau eine Registrierung.</b> Die Klasse ist zugleich {@code @TestConfiguration}
      * und {@code @RestController}. Eine geschachtelte {@code @TestConfiguration} eines
@@ -318,27 +348,15 @@ class SecurityConfigTests {
     @RestController
     static class TestEndpunkte {
 
-        @PostMapping("/api/auth/pin")
-        void pin() {
-        }
-
-        @GetMapping("/api/auth/users")
-        void namensliste() {
-        }
-
-        @PostMapping("/api/auth/user")
-        void identitaetWaehlen() {
-        }
-
-        @PostMapping("/api/auth/gast")
+        @PostMapping(value = "/api/{version}/auth/gast/anmelden", version = ApiVersionConfig.VERSION)
         void alsGast() {
         }
 
-        @GetMapping("/api/admin/test")
+        @GetMapping(value = "/api/{version}/admin/test", version = ApiVersionConfig.VERSION)
         void adminbereich() {
         }
 
-        @GetMapping("/api/beliebig")
+        @GetMapping(value = "/api/{version}/beliebig", version = ApiVersionConfig.VERSION)
         void geschuetzt() {
         }
     }

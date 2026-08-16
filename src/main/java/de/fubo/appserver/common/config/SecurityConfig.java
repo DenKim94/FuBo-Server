@@ -47,18 +47,25 @@ public class SecurityConfig {
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .addFilterBefore(sessionFilter, UsernamePasswordAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> auth
-                        // 1) Offen
+                        // Das Sternchen steht fuer genau ein Pfadsegment - hier die
+                        // Version. Die Regeln gelten damit fuer jede Version; welche
+                        // Versionen es gibt, entscheidet ApiVersionConfig, nicht die
+                        // Filterchain. Eine unbekannte Version wird erst danach mit 400
+                        // abgelehnt, nachdem die Autorisierung sie durchgelassen hat.
+
+                        // 1) Offen. /actuator/health bleibt bewusst unversioniert - der
+                        //    Container-Healthcheck ruft einen festen Pfad auf.
                         .requestMatchers("/actuator/health").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/auth/pin").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/*/auth/pin/pruefen").permitAll()
 
                         // 2) Stufe PIN_VERIFIED: nur Namensliste lesen und Identitaet waehlen
-                        .requestMatchers(HttpMethod.GET,  "/api/auth/users")
+                        .requestMatchers(HttpMethod.GET,  "/api/*/auth/users/lesen")
                         .hasAnyRole("PIN_VERIFIED", "USER", "ADMIN", "GAST")
-                        .requestMatchers(HttpMethod.POST, "/api/auth/user").hasRole("PIN_VERIFIED")
-                        .requestMatchers(HttpMethod.POST, "/api/auth/gast").hasRole("PIN_VERIFIED")
+                        .requestMatchers(HttpMethod.POST, "/api/*/auth/user/waehlen").hasRole("PIN_VERIFIED")
+                        .requestMatchers(HttpMethod.POST, "/api/*/auth/gast/anmelden").hasRole("PIN_VERIFIED")
 
                         // 3) Adminbereich
-                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/api/*/admin/**").hasRole("ADMIN")
 
                         // 4) Rest: angemeldet in Stufe PROFILE_AUTHENTICATED
                         .anyRequest().hasAnyRole("USER", "ADMIN", "GAST"))
