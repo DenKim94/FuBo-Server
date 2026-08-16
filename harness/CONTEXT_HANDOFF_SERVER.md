@@ -8,9 +8,9 @@
 > **Kein Monorepo.** Das Frontend liegt in einem getrennten Repository (`FuBo-Client`, Ordner `client/`).
 > Der übergeordnete Ordner `PRJ_FuBo/` sowie `PRJ_FuBo/harness/` sind bewusst **nicht** versioniert.
 > Repository ist angelegt: `https://github.com/DenKim94/FuBo-Server.git` (privat).
-> Stand: 09.08.2026, **S0 und S1 abgeschlossen**, **S2 in Arbeit (Abschnitte 1–3 umgesetzt)**
-> (09.08.2026: Domainentscheidung getroffen, siehe Abschnitt 7 Punkt 2; Sitzungsverwaltung
-> implementiert, siehe Abschnitt 6.5)
+> Stand: 09.08.2026, **S0 und S1 abgeschlossen**, **S2 in Arbeit (Abschnitte 1–5 umgesetzt)**
+> (09.08.2026: Domainentscheidung getroffen, siehe Abschnitt 7 Punkt 2; Sitzungsverwaltung,
+> Fehlerformat und Security-Filterchain implementiert, siehe Abschnitt 6.5)
 > (Vorfassung archiviert unter `harness/archive/CONTEXT_HANDOFF_SERVER_2026-08-02_v2_S0-abgeschlossen.md`)
 
 ---
@@ -53,7 +53,7 @@ Mid-Level-Entwickler, KI-gestützt, ca. 6,5 h/Woche.
 |---|---|---|
 | S0 | Backend-Setup: Spring Boot, Maven, Modulstruktur, `.gitignore`, Docker/Compose-Eintrag – **abgeschlossen** | 8 |
 | S1 | Datenmodell: 3 Schemas, alle Tabellen/Constraints, Flyway-Migrationen, Seed (Kategorien, `gast_vorlage`, anonymisierte Beispielprofile), lokale Datenversorgung, Testcontainers-Grundgerüst – **abgeschlossen** | 15 |
-| S2 | Auth & Session: Security-Filterchain, PIN-Login + Brute-Force-Schutz, `stage`-Erzwingung, opaker Token/HttpOnly, Zwei-Timer-Modell, Namensliste/-belegung, Online-Status, API-Vertrag der Auth-Endpunkte – **in Arbeit, Abschnitte 1–3 fertig (≈ 5 h)**, Anleitung `harness/tmp/S2_UMSETZUNG.md` | 23 |
+| S2 | Auth & Session: Security-Filterchain, PIN-Login + Brute-Force-Schutz, `stage`-Erzwingung, opaker Token/HttpOnly, Zwei-Timer-Modell, Namensliste/-belegung, Online-Status, API-Vertrag der Auth-Endpunkte – **in Arbeit, Abschnitte 1–5 fertig (≈ 10 h)**, Anleitung `harness/tmp/S2_UMSETZUNG.md` | 23 |
 | S2b | Admin-Passwort-Reset: `spring-boot-starter-mail`, 5-stellige PIN, Rate-Limit, Sitzungswiderruf | 6 |
 | S3 | Profile & Skills API: Admin-CRUD, Rollen/Autorisierung, `configs` (Import der Referenzdaten entfällt – siehe Abschnitt 7.3) | 11 |
 | S4 | Termine & Teilnahme API: Einzel/Serie, Teilnahme, `teilnehmer_version`, Min/Max + Warteschlange, Gast-Flow/`gast_slot` | 16 |
@@ -117,7 +117,9 @@ Admin-Index, Wertebereichs-Trigger, `NULLS NOT DISTINCT`, Demodaten, Torwart-Ber
    Es fehlen Pakete für **JPA-Entities** und **DTOs**. Vorschlag in `S2_UMSETZUNG.md`, Abschnitt 1.1.
    *(Erledigt für `domain/{auth,config}`, `repository/{auth,config}`, `service/{auth,config}` und
    `common/config`. `dto/` entsteht mit den Endpunkten ab Abschnitt 6.)*
-2. **Es gibt noch keine `SecurityFilterChain`.** Solange keine existiert, konfiguriert Spring Security
+2. **Es gibt noch keine `SecurityFilterChain`.** *(Erledigt in S2, Abschnitt 5 – siehe 6.5. Zur
+   Log-Zeile „Using generated security password" siehe die Korrektur am Ende von 6.5.)*
+   Solange keine existiert, konfiguriert Spring Security
    einen Notbehelf: In-Memory-Benutzer `user` mit zufälligem UUID-Passwort, bei jedem Start neu, plus
    Deny-by-default auf allen Endpunkten. Das ist der Grund für die Log-Zeile
    „Using generated security password". Kein Konfigurationswert, gehört **nicht** in die `.env`.
@@ -165,9 +167,10 @@ aus der S1-Anleitung war versehentlich in `V003` gelandet; `:name` ist ein JDBC-
 PostgreSQL ein Syntaxfehler (`42601`). Auf PostgreSQL rollt Flyway eine fehlgeschlagene Migration
 vollständig zurück, ein `flyway repair` war nicht nötig.
 
-### 6.5 S2, Abschnitte 1–3 umgesetzt (09.08.2026)
+### 6.5 S2, Abschnitte 1–5 umgesetzt (09.08.2026)
 
-Sitzungsverwaltung mit Zwei-Timer-Modell (A14). Entstandene Dateien:
+Sitzungsverwaltung mit Zwei-Timer-Modell (A14), einheitliches Fehlerformat und Security-Filterchain.
+Entstandene Dateien:
 
 ```
 src/main/java/de/fubo/appserver/
@@ -177,33 +180,62 @@ src/main/java/de/fubo/appserver/
   repository/config/  AppConfigRepository
   service/auth/       SessionService
   service/config/     ConfigService
-  common/config/      SchedulingConfig
-  utils/              TokenGenerator (bereits vorhanden)
+  common/config/      SecurityConfig, CorsConfig, FuboProperties, SchedulingConfig
+  common/security/    SessionAuthFilter, SessionCookieFactory, AuthorizationExceptionHandler
+  common/error/       Fehlercode, FachlicherFehler, GlobalExceptionHandler
+  utils/              TokenGenerator
 src/main/resources/
   db/migration/       V008__session_rolle_optional.sql
   application.yml     spring.profiles.default=dev, fubo.session.*, fubo.cors.*
   application-dev.yml lokale Abweichungen (cookie-secure=false, Vite-Origin)
 src/test/java/de/fubo/appserver/
-  service/auth/       SessionServiceTests   (13 Faelle)
-  service/config/     ConfigServiceTests    (2 Faelle)
+  service/auth/       SessionServiceTests        (13 Faelle)
+  service/config/     ConfigServiceTests         (2 Faelle)
+  common/security/    SessionAuthFilterTests     (11 Faelle, ohne Spring-Kontext)
+                      SessionCookieFactoryTests  (9 Faelle, ohne Spring-Kontext)
+  common/config/      SecurityConfigTests        (18 Faelle, MockMvc)
 ```
 
 **Datenmodell geändert:** `V008` macht `profil.session.rolle` optional und ergänzt
 `ck_session_rolle_stage` (ab `PROFILE_AUTHENTICATED` ist die Rolle Pflicht). `V003` hatte die Spalte
 als `NOT NULL` angelegt; eine Sitzung in `PIN_VERIFIED` hat aber noch keine Rolle, das Anlegen wäre an
 der Spalte gescheitert. `ck_session_identitaet` sah den Fall für `spieler_id`/`gast_name` bereits vor,
-die Rolle wurde dort übersehen. **Der Eintrag im Änderungsprotokoll von `/PRJ_FuBo/harness/AGENT.md`
-steht noch aus** (offener Punkt 10 in `S2_UMSETZUNG.md`).
+die Rolle wurde dort übersehen. Im Änderungsprotokoll von `/PRJ_FuBo/harness/AGENT.md` als **Punkt 14**
+nachgetragen.
 
-**Behobener Defekt:** Eine erste Fassung der `Session`-Entity führte `stage` als `String` und behielt
-`@Enumerated(EnumType.STRING)`. Hibernate lehnt die Annotation auf einem Nicht-Enum-Typ ab und bricht
-den Kontextstart ab – sichtbar als fehlschlagender `MigrationTests`-Lauf, also an einer Stelle, die mit
-der Ursache nichts zu tun hat. Behoben durch echte Aufzählungstypen.
+**Behobene Defekte:**
 
-**Paketnamen vereinheitlicht:** `S2_UMSETZUNG.md` nannte in Abschnitt 1.1 `entity/`, der Beispielcode
-darunter `domain/`. Massgeblich ist `AGENT_SERVER.md` („Paketstruktur, verbindlich ab S2"): das Paket
-heisst **`domain`**. Es enthält neben Entities auch schlanke Wertobjekte wie `AktiveSitzung`, die die
-API-Grenze ebenso wenig überschreiten dürfen. Die Anleitung ist korrigiert.
+1. Eine erste Fassung der `Session`-Entity führte `stage` als `String` und behielt
+   `@Enumerated(EnumType.STRING)`. Hibernate lehnt die Annotation auf einem Nicht-Enum-Typ ab und bricht
+   den Kontextstart ab. Behoben durch echte Aufzählungstypen.
+2. `token_hash` ist in `V003` als `CHAR(64)` angelegt, ein `String` wird von Hibernate aber auf
+   `VARCHAR` abgebildet. `ddl-auto=validate` vergleicht den JDBC-Typcode und brach den Start ab
+   („found [bpchar (Types#CHAR)], but expecting [varchar(64)]"). Behoben durch
+   `@JdbcTypeCode(SqlTypes.CHAR)` an der Entity – das Schema bleibt unverändert, denn falsch war die
+   Abbildung, nicht die Spalte.
+3. `GlobalExceptionHandler` importierte `java.nio.file.AccessDeniedException` statt
+   `org.springframework.security.access.AccessDeniedException`. Der Handler wäre nie ausgelöst worden,
+   und Spring Securitys `AccessDeniedException` aus `@PreAuthorize` (ab S3) wäre im
+   `Exception`-Auffangzweig gelandet – aus einem `403` wäre ein `500` geworden.
+
+Beide Mapping-Fehler äussern sich als Kaskade von `UnsatisfiedDependencyException` beim Start,
+beziehungsweise als fehlschlagender `MigrationTests`-Lauf. Nur die **erste** Logzeile benennt jeweils
+die Ursache. Die daraus abgeleiteten Regeln stehen jetzt verbindlich in `AGENT_SERVER.md`, Abschnitt
+„JPA-Mapping-Regeln (verbindlich ab S2)".
+
+**Paketstruktur präzisiert:** `S2_UMSETZUNG.md` nannte in Abschnitt 1.1 `entity/`, der Beispielcode
+darunter `domain/`. Massgeblich ist `AGENT_SERVER.md`: das Paket heisst **`domain`** und enthält neben
+Entities auch schlanke Wertobjekte wie `AktiveSitzung`. Zusätzlich neu ist **`common/security`** – der
+Filter, die Cookie-Fabrik und der Fehler-Writer sind Laufzeitverhalten und kein Konfigurationscode;
+`common/config` enthält nur noch Beans und Property-Bindung. Beides ist in `AGENT_SERVER.md`
+nachgezogen.
+
+**Neu in `AGENT_SERVER.md`: Abschnitt „JPA-Mapping-Regeln (verbindlich ab S2)".** Er hält fest, was
+`ddl-auto=validate` tatsächlich prüft (Spaltenexistenz und JDBC-Typcode, **nicht** die Zuordnung) und
+enthält eine Tabelle Spaltentyp → Feldtyp. Damit ist auch vorgemerkt, dass die beiden `CHAR(1)`-Spalten
+aus `V006` (`teameinteilung.team`, `ergebnis.sieger`) beim Anlegen der Entities in S5 und S6 als
+`Character` abzubilden sind – dann wählt Hibernate von sich aus `CHAR` und es braucht keine
+Zusatzannotation.
 
 **Drei Umsetzungsentscheidungen, die von der Anleitung abweichen:**
 
@@ -216,20 +248,43 @@ API-Grenze ebenso wenig überschreiten dürfen. Die Anleitung ist korrigiert.
   zwingend einen zweiten, rein lesenden Pfad, sonst hielte der Filter gültige Sitzungen für ungültig.
   Offener Punkt 4 bleibt damit offen.
 
-**Verifikation:** Der Build wurde bisher nur statisch geprüft (Spaltennamen gegen `V003`/`V004`,
-Paket- und Typreferenzen). `./mvnw clean verify` steht noch aus; Erwartung sind acht Zeilen in
-`flyway_schema_history` und 22 grüne Tests.
+**Korrektur zu „Using generated security password" (09.08.2026):** Diese Logzeile erscheint auch bei
+korrekt greifender Filterchain. Sie stammt von `UserDetailsServiceAutoConfiguration`, die nur bei
+einer `AuthenticationManager`-, `AuthenticationProvider`-, `UserDetailsService`- oder
+`AuthenticationManagerResolver`-Bean zurückweicht – eine eigene `SecurityFilterChain` genügt ihr
+nicht. Frühere Fassungen dieses Handoffs und der S2-Anleitung führten das Verschwinden der Zeile als
+Prüfkriterium auf; das war falsch und ist in beiden Dokumenten korrigiert.
+
+Der angelegte Benutzer ist funktionslos (`httpBasic` und `formLogin` sind aus). Damit die Zeile nicht
+dauerhaft in die Irre führt, ist in `AppServerApplication` ausschliesslich diese eine
+Autokonfiguration ausgenommen:
+`@SpringBootApplication(exclude = UserDetailsServiceAutoConfiguration.class)`. Das ist etwas anderes
+als der weiterhin untersagte Ausschluss von `SecurityAutoConfiguration`.
+
+**Ob die Filterchain greift, wird am Verhalten geprüft:** Ein Aufruf ohne Cookie muss `401` mit
+`application/problem+json` und dem Feld `"code":"SESSION_UNGUELTIG"` liefern – dieses Feld kann nur
+aus dem eigenen `AuthorizationExceptionHandler` stammen. Zusätzlich: kein `WWW-Authenticate`-Header
+(sonst wäre `httpBasic` aktiv) und kein `Location`-Header (sonst `formLogin`).
+
+**Verifikation:** Der Anwendungsstart läuft nach der `token_hash`-Korrektur durch.
+`./mvnw clean verify` steht noch aus; Erwartung sind **acht** Zeilen in `flyway_schema_history` und
+**53** grüne Tests (7 Migration, 13 Session-Service, 2 Config, 11 Filter, 9 Cookie, 18 Filterchain).
+
+Zwei Stellen, an denen der erste Testlauf haken könnte: `SecurityConfigTests` baut MockMvc von Hand
+über `SecurityMockMvcConfigurers.springSecurity()` statt über `@AutoConfigureMockMvc`, weil dessen
+Paket durch die Modulaufteilung in Boot 4 verschoben sein könnte. Und `SessionAuthFilterTests`
+verwendet einen handgeschriebenen Ersatz für den `SessionService` statt Mockito, weil unklar ist, ob
+`mockito-core` unter den aufgeteilten Test-Startern noch auf dem Classpath liegt.
 
 ## 7. Nächste Schritte
 
 1. **S2 fortsetzen** – Auth und Session. Schrittweise Anleitung: `harness/tmp/S2_UMSETZUNG.md`.
    Erledigt: Paketstruktur → Entities/Repositories → Token und Hashing → Session-Service mit
-   Zwei-Timer-Modell (Abschnitte 1–3, siehe 6.5).
-   Als Nächstes: **Fehlerformat (Abschnitt 4)** → Security-Filterchain inkl. `permitAll` für
-   `/actuator/health` und Stage-Erzwingung (5) → PIN-Login mit Brute-Force-Schutz (6) →
-   Namensliste/-belegung (7) → Gast-Login (8) → Bootstrap (9) → API-Vertrag (10) → Tests (11).
+   Zwei-Timer-Modell → Fehlerformat → Security-Filterchain (Abschnitte 1–5, siehe 6.5).
+   Als Nächstes: **PIN-Login mit Brute-Force-Schutz (Abschnitt 6)** → Namensliste/-belegung (7) →
+   Gast-Login (8) → Bootstrap (9) → API-Vertrag als OpenAPI (10) → verbleibende Tests (11).
    *Vor dem nächsten Schritt einmal `./mvnw clean verify` laufen lassen* – der Stand aus 6.5 wurde
-   noch nicht kompiliert.
+   noch nicht vollständig getestet.
 2. **Domainentscheidung – erledigt (09.08.2026).** Frontend und API liegen auf Subdomains **derselben
    registrierbaren Domain** (`app.<domain>` / `api.<domain>`). Damit gilt `SameSite=Lax` und
    `csrf.disable()` bleibt vertretbar; Abschnitt 5.4/5.5 der S2-Anleitung ist entsprechend festgelegt.

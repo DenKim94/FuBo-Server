@@ -8,7 +8,8 @@
 ### Deine Rolle
 Du bist ein Senior-Backend-Entwickler mit Schwerpunkt Java (Version 25) und Spring Boot. Du achtest auf
 Good-Practices und Softwarequalität (Testbarkeit, Lesbarkeit/Wartbarkeit, Sicherheit, Performance,
-Skalierbarkeit). Du unterstützt den Haupt-Entwickler und begründest deine Entscheidungen und Annahmen ausführlich, überprüfst die Implementierungen und erklärst - falls nötig - Verbesserungsvorschläge oder stellst Rückfragen bei Unklarheiten. Du kommunizierst sachlich, in deutscher Sprache und ohne Emojis.
+Skalierbarkeit). Du unterstützt den Haupt-Entwickler und begründest deine Entscheidungen und Annahmen ausführlich, überprüfst die Implementierungen und erklärst - falls nötig - Verbesserungsvorschläge oder stellst Rückfragen bei Unklarheiten. 
+Du kommunizierst sachlich, in deutscher Sprache und ohne Emojis.
 Du bearbeitest ausschließlich den Ordner `server/`; das Frontend (`client/`) liegt außerhalb deiner
 Verantwortung und wird über die definierte REST-Schnittstelle bedient.
 
@@ -82,9 +83,18 @@ Identifikation über den hinterlegten Namen. Rollen: ADMIN, USER, GAST.
   `PIN_VERIFIED` darf ausschließlich die Namensliste abrufen und die Namensauswahl absenden.
   Die Security-Auto-Konfiguration wird **nie** über
   `@SpringBootApplication(exclude = SecurityAutoConfiguration.class)` abgeschaltet – das entfernte
-  genau die Deny-by-default-Haltung, die diese Regel verlangt. Solange keine eigene
-  `SecurityFilterChain` existiert, ist die Log-Zeile „Using generated security password" das erwartete
-  Verhalten und kein Konfigurationsfehler.
+  genau die Deny-by-default-Haltung, die diese Regel verlangt.
+- **Zur Log-Zeile „Using generated security password" (korrigiert 09.08.2026):** Sie stammt nicht von
+  der Filterchain, sondern von `UserDetailsServiceAutoConfiguration`. Diese weicht nur zurück, wenn
+  eine `AuthenticationManager`-, `AuthenticationProvider`-, `UserDetailsService`- oder
+  `AuthenticationManagerResolver`-Bean existiert; eine eigene `SecurityFilterChain` genügt ihr
+  **nicht**. Die Zeile ist damit **kein** Indikator dafür, ob die Filterchain greift – weder in die
+  eine noch in die andere Richtung. Deshalb ist ausschliesslich
+  `UserDetailsServiceAutoConfiguration` in `AppServerApplication` ausgenommen. Das ist etwas anderes
+  als der Ausschluss von `SecurityAutoConfiguration` und ausdrücklich erlaubt.
+- **Ob die Filterchain greift, wird am Verhalten geprüft**, nicht am Log: ein Aufruf ohne Cookie muss
+  `401` mit `application/problem+json` und dem Feld `code` liefern (das kann nur aus dem eigenen
+  `AuthorizationExceptionHandler` stammen), und `/actuator/health` muss ohne Cookie `200` liefern.
 - **`/actuator/health` ist in der Filterchain freizugeben** (`permitAll`). Der Container-Healthcheck ruft
   den Endpunkt lokal auf; mit `401` bliebe der Container dauerhaft `unhealthy` und
   `depends_on: condition: service_healthy` würde nie erfüllt. Die Abschottung nach aussen übernimmt
@@ -158,12 +168,16 @@ Basispaket `de.fubo.appserver`. Geschnitten wird zuerst nach Schicht, darunter n
 
 ```
 de/fubo/appserver/
-  common/config      Querschnitt: SecurityConfig, CorsConfig, Scheduling
+  common/config      Beans und Property-Bindung: SecurityConfig, CorsConfig,
+                     FuboProperties, SchedulingConfig
+  common/security    Laufzeitverhalten der Absicherung: SessionAuthFilter,
+                     SessionCookieFactory, AuthorizationExceptionHandler
   common/error       @RestControllerAdvice, Fehlercodes, ProblemDetail-Aufbau
   controller/<b>     nur HTTP: Mapping, Validierung, DTO rein/raus
   service/<b>        Fachlogik, Transaktionsgrenzen (@Transactional)
   repository/<b>     Spring-Data-Repositories
-  domain/<b>         JPA-Entities (verlassen die API-Grenze nie)
+  domain/<b>         Domaenentypen: JPA-Entities und schlanke Wertobjekte
+                     (beide verlassen die API-Grenze nie)
   dto/<b>            Records fuer Ein- und Ausgabe an der API-Grenze
   utils              zustandslose Helfer ohne Spring-Abhaengigkeit
 ```
@@ -171,6 +185,16 @@ de/fubo/appserver/
 `domain` und `dto` getrennt zu halten ist die technische Absicherung der Regel „JPA-Entities verlassen
 die API-Grenze nie" und damit der Skill-Geheimhaltung: Liegt eine Entity in einem anderen Paket als die
 DTOs, fällt beim Lesen sofort auf, wenn ein Controller den falschen Typ zurückgibt.
+
+**Präzisierungen aus S2 (09.08.2026):**
+
+- `common/security` ist gegenüber der ursprünglichen Fassung neu. Filter, Cookie-Fabrik und
+  Fehler-Writer sind **Laufzeitverhalten**, kein Konfigurationscode; ein Paket namens `config`, in dem
+  Verhalten steckt, führt beim Lesen in die Irre. `common/config` enthält nur noch Beans und
+  Property-Bindung.
+- `domain` enthält neben Entities auch schlanke Wertobjekte wie `AktiveSitzung` – das Ergebnis der
+  `RETURNING`-Klausel der Sitzungsprüfung. Für sie gilt dieselbe Regel wie für Entities: Sie
+  überschreiten die API-Grenze nie.
 
 ### Flyway-Konventionen (verbindlich ab S1)
 - Ablage: `src/main/resources/db/migration`. Namensschema `V<nnn>__<kurze_beschreibung>.sql` mit
@@ -187,6 +211,57 @@ DTOs, fällt beim Lesen sofort auf, wenn ein Controller den falschen Typ zurück
   Flyway; Hibernate prüft nur, ob die Entities dazu passen.
 - Jede Migration muss auf einer leeren Datenbank **und** in der bestehenden Reihenfolge durchlaufen; das
   wird durch einen Testcontainers-Integrationstest abgesichert.
+
+### JPA-Mapping-Regeln (verbindlich ab S2)
+
+`ddl-auto=validate` prüft jede Entity gegen das von Flyway erzeugte Schema. Was der Validator dabei
+tatsächlich vergleicht, ist eng: **Spaltenexistenz und JDBC-Typcode.** Daraus folgen zwei Regeln.
+
+**1. `CHAR`-Spalten brauchen eine ausdrückliche Abbildung.** Hibernate bildet ein `String`-Feld
+standardmäßig auf `VARCHAR` ab. PostgreSQL meldet `CHAR(n)` aber als `bpchar` mit Typcode `CHAR`, und
+der Validator bricht den Kontextstart ab:
+
+```
+wrong column type encountered in column [token_hash] in table [profil.session];
+found [bpchar (Types#CHAR)], but expecting [varchar(64) (Types#VARCHAR)]
+```
+
+Der Fehler äussert sich als fehlschlagender `MigrationTests`-Lauf beziehungsweise als Kaskade von
+`UnsatisfiedDependencyException` beim Start – also an einer Stelle, die mit der Ursache nichts zu tun
+hat. Nur die **erste** Logzeile benennt das Problem.
+
+| Spalte | Feldtyp | Zusatz |
+|---|---|---|
+| `CHAR(n)`, n > 1 (`profil.session.token_hash`) | `String` | `@JdbcTypeCode(SqlTypes.CHAR)` |
+| `CHAR(1)` (`spieltag.teameinteilung.team`, `spieltag.ergebnis.sieger`) | `Character` | keiner – Hibernate wählt von sich aus `CHAR` |
+| `VARCHAR(n)` | `String` | keiner |
+| `TEXT` (`configs.app_config.halle_absage_vorlage`) | `String` | keiner – PostgreSQL meldet `TEXT` als `VARCHAR` |
+| `TIMESTAMPTZ` | `OffsetDateTime` | keiner; `LocalDateTime` verlöre die Zeitzone |
+| `SMALLINT` | `short` bzw. `Short` | keiner |
+| `BIGSERIAL` | `Long` | `@GeneratedValue(strategy = IDENTITY)` |
+
+Die beiden `CHAR(1)`-Spalten aus `V006` sind noch nicht gemappt; die Entities entstehen in S5 und S6.
+Die Regel steht hier, damit sie dort von Anfang an stimmen.
+
+**2. Der Validator prüft keine Zuordnung.** Zwei vertauschte Spalten desselben Typs – etwa
+`min_teilnehmer` und `max_teilnehmer` oder die beiden Session-Timer – fallen ihm nicht auf. Jede Entity
+mit mehreren gleichartigen Spalten braucht deshalb einen Test, der die Feldwerte gegen die Seed-Daten
+abgleicht (Vorbild: `ConfigServiceTests`).
+
+Weitere verbindliche Punkte:
+
+- **`schema = "..."` an jeder `@Table`.** Ohne die Angabe sucht Hibernate im `search_path`, also in
+  `public` – dort steht nur `flyway_schema_history`, und `validate` scheitert mit der irreführenden
+  Meldung „table not found".
+- **Keine `@ManyToOne`-Beziehungen, nur Fremdschlüsselwerte.** Eine Assoziation lädt entweder unnötig
+  das ganze Zielobjekt oder erzwingt Lazy-Loading ausserhalb der Transaktion – und `open-in-view=false`
+  ist gesetzt.
+- **`@Version` auf jeder Tabelle mit `version`-Spalte**, die schreibend genutzt wird (A5). Als
+  Wrapper-Typ `Long`, damit Hibernate bei manuell vergebenem Schlüssel einen ungespeicherten Zustand am
+  `null`-Wert erkennt.
+- **Keine Bean-Validation-Annotationen an Entities.** Die Wertebereiche stehen als CHECK-Constraints in
+  der Datenbank und stünden sonst an zwei Orten. Die Eingabeprüfung gehört an die API-Grenze, also ans
+  DTO.
 
 ### Implementierungs-Richtlinien (Server)
 - Funktions- und Variablennamen in camelCase; Konstanten groß mit maximal einem Unterstrich.
