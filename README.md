@@ -11,7 +11,7 @@ Das zugehörige Frontend liegt in einem eigenen Repository: `FuBo-Client`.
 ```
 cd ~/Projects/PRJ_FuBo/server
 // .env anpassen/ergänzen: DB_USER=..., DB_PASSWORD=...
-
+// Docker starten
 docker compose -f compose.dev.yml down -v
 docker compose -f compose.dev.yml --env-file .env up -d
 
