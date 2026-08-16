@@ -107,6 +107,22 @@ Identifikation über den hinterlegten Namen. Rollen: ADMIN, USER, GAST.
   einziger Auslöser für die Kontingent-Rücksetzung und Kennzeichen veralteter Einteilungen.
 - **Teamzuteilung als Snapshot:** jeder Lauf speichert die gültigen Skillwerte und seinen Seed.
 - **Gast-Slots:** feste Datensätze, Belegung per bedingtem UPDATE (keine gezählte Abfrage).
+- **Audit-Log (verbindlich ab S2, entschieden 16.08.2026):**
+  1. **Ausbreitung immer `REQUIRED`, nie `REQUIRES_NEW`.** Ein Protokolleintrag belegt eine
+     *vollzogene* Änderung. Scheitert die Änderung, wird der Eintrag mit ihr zurückgerollt –
+     ein Protokoll, das eine nie erfolgte Änderung behauptet, ist schlechter als eine Lücke.
+  2. **Ausnahmen aus dem Schreibvorgang werden nicht verschluckt.** Innerhalb einer gemeinsamen
+     Transaktion wäre das wirkungslos: Ein fehlgeschlagenes `INSERT` markiert die Transaktion
+     bereits als „rollback-only"; das Abfangen verschöbe den Fehler nur bis zum Commit und
+     ersetzte die Ursache durch eine `UnexpectedRollbackException`.
+  3. **Löschfrist 90 Tage**, konfigurierbar über `fubo.audit.aufbewahrung-tage`, umgesetzt als
+     geplanter Auftrag. Grund ist der Personenbezug (bei PIN-Fehlversuchen steht die Client-IP
+     im Eintrag) – nach der DSGVO gilt Speicherbegrenzung. Die Frist ist eine Betriebs- und
+     Rechtsgröße und gehört deshalb in die Property-Konfiguration, **nicht** in
+     `configs.app_config`: Ein Admin soll die Nachvollziehbarkeit seiner eigenen Änderungen
+     nicht per Formular verkürzen können.
+  4. **Der Aufräumlauf selbst wird nicht ins Audit-Log geschrieben** – das wäre zirkulär und
+     würde die Tabelle genau um das füllen, was sie leeren soll.
 - **Ergänzend:** zentrale Fehlerbehandlung (`@RestControllerAdvice`) mit einheitlichem Fehler-JSON,
   Bean Validation, CORS-Allowlist mit `allowCredentials`, Actuator-Health-Endpunkt, Flyway-Migrationen,
   Audit-Log für Adminaktionen und Generierungsläufe.
@@ -126,6 +142,23 @@ Da deterministisch, wählt der `seed` die A/B-Zuordnung und – bei Gleichstand 
 `O(Iterationen · n²)`; liefert je Seed eine andere, nah-optimale Lösung (erfüllt A15 direkt).
 
 ### Schnittstelle zum Frontend (Vertrag)
+- **Versionierung (verbindlich ab S2):** Jeder Endpunkt liegt unter
+  `/api/{version}/<bereich>/<ressource>/<aktion>`, zum Beispiel
+  `GET /api/v1/auth/users/lesen`. Umgesetzt mit der Bordausstattung von Spring Framework 7
+  (`ApiVersionConfigurer#usePathSegment`, `@RequestMapping(version = …)`), nicht mit einem
+  eigenen Mechanismus. Drei Regeln dazu:
+  1. **Die Version steht als Präfix an Segment-Index 1**, nie als Suffix. Der Index gilt global;
+     bei einem Suffix wanderte er mit der Pfadtiefe und träfe tiefere Pfade nicht mehr.
+  2. **Die Versionierung gilt nur unterhalb von `/api/`.** `usePathSegment` bekommt dazu ein
+     `Predicate<RequestPath>`. Ohne das würde der Resolver auch bei `/actuator/health` ein
+     Versionssegment erwarten und den Container-Healthcheck mit `400` beantworten.
+  3. **Jede Controller-Methode trägt ein `version`-Attribut.** Eine Methode ohne das Attribut
+     bedient jede Version – das ist für einen versionierten Endpunkt nie gewollt.
+  Die Aktion steht zusätzlich als eigenes Pfadsegment (`/lesen`, `/waehlen`, `/pruefen`,
+  `/anmelden`), damit jede Operation einen eigenen, unabhängig versionierbaren Pfad hat.
+  Regeln der Filterchain verwenden für das Versionssegment ein Sternchen
+  (`/api/*/auth/users/lesen`): Welche Versionen es gibt, entscheidet die Versionskonfiguration,
+  nicht die Autorisierung.
 - **Transport:** REST/JSON über HTTPS. Getrennte Origins (`app.<domain>` Frontend, `api.<domain>`
   Backend); CORS-Allowlist mit `allowCredentials=true`. Cookies werden vom Browser automatisch gesendet.
 - **Auth:** opakes Session-Cookie (HttpOnly). Das Frontend liest den Token nie; es ruft mit
@@ -195,6 +228,26 @@ DTOs, fällt beim Lesen sofort auf, wenn ein Controller den falschen Typ zurück
 - `domain` enthält neben Entities auch schlanke Wertobjekte wie `AktiveSitzung` – das Ergebnis der
   `RETURNING`-Klausel der Sitzungsprüfung. Für sie gilt dieselbe Regel wie für Entities: Sie
   überschreiten die API-Grenze nie.
+
+**Ergänzungen aus S2, Abschnitte 6 und 7 (16.08.2026):**
+
+- **`audit` ist ein zusätzlicher Fachbereich** (`domain/audit`, `repository/audit`, `service/audit`).
+  Das Audit-Log gehört keinem der übrigen Bereiche allein: In S2 schreibt der Auth-Bereich hinein, ab
+  S3 die Adminaktionen, ab S5 die Generierungsläufe. Ein eigener Schnitt ist deshalb ehrlicher, als
+  es unter `auth` einzuhängen.
+- **`AuditLogRepository` ist bewusst kein Spring-Data-Repository**, sondern nutzt `JdbcClient` direkt.
+  Ein Audit-Log wird nur angehängt und nie über JPA gelesen oder geändert; die Spalte `details` ist
+  `jsonb` und bräuchte eine eigene Typabbildung. Vorbild ist `SessionRepositoryImpl`, das aus demselben
+  Grund direkt JDBC nutzt.
+- **`common/config/ZeitConfig` stellt eine `Clock`-Bean bereit.** Zeitlogik, die nicht in der Datenbank
+  stattfindet, holt sich die Zeit über diese Bean statt über `Instant.now()` – sonst sind Sperrdauern
+  von 1 bis 15 Minuten (`BruteForceService`) nur mit `Thread.sleep` prüfbar. Zeitpunkte, die in der
+  Datenbank entstehen, werden weiterhin gegen `now()` der Datenbank geprüft; zwei Uhren für denselben
+  Sachverhalt wären eine Fehlerquelle.
+- **`dto` wird nach Fachbereich geschnitten wie die übrigen Schichten** (`dto/auth`, `dto/profil`).
+- **`utils` enthält weiterhin nur zustandslose Helfer ohne Spring-Abhängigkeit** – jetzt neben
+  `TokenGenerator` auch `ClientIpErmittler`. Die Abhängigkeit zu `jakarta.servlet` ist kein
+  Widerspruch: Die Regel richtet sich gegen Spring-Kontext und Zustand, nicht gegen die Servlet-API.
 
 ### Flyway-Konventionen (verbindlich ab S1)
 - Ablage: `src/main/resources/db/migration`. Namensschema `V<nnn>__<kurze_beschreibung>.sql` mit

@@ -8,13 +8,10 @@
 > **Kein Monorepo.** Das Frontend liegt in einem getrennten Repository (`FuBo-Client`, Ordner `client/`).
 > Der übergeordnete Ordner `PRJ_FuBo/` sowie `PRJ_FuBo/harness/` sind bewusst **nicht** versioniert.
 > Repository ist angelegt: `https://github.com/DenKim94/FuBo-Server.git` (privat).
-> Stand: 16.08.2026, **S0 und S1 abgeschlossen**, **S2 in Arbeit (Abschnitte 1–7 sowie der PIN-Teil
-> von 9 umgesetzt)**
-> (16.08.2026: PIN-Login mit Brute-Force-Schutz, Audit-Log, Namensliste/-belegung/-auswahl und
-> PIN-Bootstrap implementiert, siehe Abschnitt 6.6; anschliessend Versionierung der Schnittstelle
-> über ein Pfadsegment, siehe Abschnitt 6.7, sowie Löschfrist und Transaktionskopplung des
-> Audit-Logs, siehe Abschnitt 6.8)
-> (Vorfassung archiviert unter `harness/archive/CONTEXT_HANDOFF_SERVER_2026-08-09_v3_S2-Abschnitte1-5.md`)
+> Stand: 09.08.2026, **S0 und S1 abgeschlossen**, **S2 in Arbeit (Abschnitte 1–5 umgesetzt)**
+> (09.08.2026: Domainentscheidung getroffen, siehe Abschnitt 7 Punkt 2; Sitzungsverwaltung,
+> Fehlerformat und Security-Filterchain implementiert, siehe Abschnitt 6.5)
+> (Vorfassung archiviert unter `harness/archive/CONTEXT_HANDOFF_SERVER_2026-08-02_v2_S0-abgeschlossen.md`)
 
 ---
 
@@ -56,7 +53,7 @@ Mid-Level-Entwickler, KI-gestützt, ca. 6,5 h/Woche.
 |---|---|---|
 | S0 | Backend-Setup: Spring Boot, Maven, Modulstruktur, `.gitignore`, Docker/Compose-Eintrag – **abgeschlossen** | 8 |
 | S1 | Datenmodell: 3 Schemas, alle Tabellen/Constraints, Flyway-Migrationen, Seed (Kategorien, `gast_vorlage`, anonymisierte Beispielprofile), lokale Datenversorgung, Testcontainers-Grundgerüst – **abgeschlossen** | 15 |
-| S2 | Auth & Session: Security-Filterchain, PIN-Login + Brute-Force-Schutz, `stage`-Erzwingung, opaker Token/HttpOnly, Zwei-Timer-Modell, Namensliste/-belegung, Online-Status, API-Vertrag der Auth-Endpunkte – **in Arbeit, Abschnitte 1–7 fertig (≈ 15 h)**, Anleitung `harness/tmp/S2_UMSETZUNG.md` | 23 |
+| S2 | Auth & Session: Security-Filterchain, PIN-Login + Brute-Force-Schutz, `stage`-Erzwingung, opaker Token/HttpOnly, Zwei-Timer-Modell, Namensliste/-belegung, Online-Status, API-Vertrag der Auth-Endpunkte – **in Arbeit, Abschnitte 1–5 fertig (≈ 10 h)**, Anleitung `harness/tmp/S2_UMSETZUNG.md` | 23 |
 | S2b | Admin-Passwort-Reset: `spring-boot-starter-mail`, 5-stellige PIN, Rate-Limit, Sitzungswiderruf | 6 |
 | S3 | Profile & Skills API: Admin-CRUD, Rollen/Autorisierung, `configs` (Import der Referenzdaten entfällt – siehe Abschnitt 7.3) | 11 |
 | S4 | Termine & Teilnahme API: Einzel/Serie, Teilnahme, `teilnehmer_version`, Min/Max + Warteschlange, Gast-Flow/`gast_slot` | 16 |
@@ -141,8 +138,6 @@ Admin-Index, Wertebereichs-Trigger, `NULLS NOT DISTINCT`, Demodaten, Torwart-Ber
 5. **Bootstrap fehlt:** `profil.zugangsdaten` und `profil.admin_konto` sind bewusst leer. Ohne
    Startlogik gibt es keine zentrale PIN und keinen Admin. `FUBO_INITIAL_PIN` steht bereits in der
    `.env`. Gehört zu S2, siehe `S2_UMSETZUNG.md`, Abschnitt 9.
-   *(Zentrale PIN erledigt am 16.08.2026 über `PinBootstrap`, siehe 6.6. Das Admin-Konto steht noch
-   aus; die Auswahl erfolgt über `ADMIN_NAME`/`ADMIN_EMAIL` aus der `.env`, sonst Startabbruch.)*
 
 ### 6.3 Abweichungen, die während S1 bewusst festgelegt wurden
 
@@ -281,200 +276,15 @@ Paket durch die Modulaufteilung in Boot 4 verschoben sein könnte. Und `SessionA
 verwendet einen handgeschriebenen Ersatz für den `SessionService` statt Mockito, weil unklar ist, ob
 `mockito-core` unter den aufgeteilten Test-Startern noch auf dem Classpath liegt.
 
-### 6.6 S2, Abschnitte 6 und 7 umgesetzt (16.08.2026)
-
-PIN-Login mit Brute-Force-Schutz, Audit-Log, Namensliste mit Belegtstatus und Namensauswahl mit
-Token-Rotation. Zusätzlich der PIN-Teil des Bootstraps aus Abschnitt 9 – ohne ihn ist
-`profil.zugangsdaten` leer und der PIN-Endpunkt nur über Tests erreichbar.
-
-```
-src/main/java/de/fubo/appserver/
-  domain/auth/        Zugangsdaten (@Entity)
-  domain/profil/      Spieler (@Entity), NamensEintrag (record)
-  domain/audit/       AuditAktion
-  repository/auth/    ZugangsdatenRepository
-  repository/profil/  SpielerRepository, SpielerRepositoryCustom, SpielerRepositoryImpl
-  repository/audit/   AuditLogRepository        (JdbcClient, kein Spring-Data-Repository)
-  service/auth/       PinService, BruteForceService, NamenService, PinBootstrap
-  service/audit/      AuditService
-  common/config/      ZeitConfig (Clock-Bean); FuboProperties um BruteForce erweitert
-  utils/              ClientIpErmittler
-  dto/auth/           PinLoginRequest, NameAuswahlRequest
-  dto/profil/         NameOption
-  controller/auth/    AuthController, NamenController
-src/main/resources/
-  application.yml     fubo.brute-force.* ergaenzt
-src/test/java/de/fubo/appserver/
-  controller/auth/    AuthControllerTests   (8 Faelle)
-                      NamenControllerTests  (7 Faelle)
-  service/auth/       BruteForceServiceTests (11 Faelle, ohne Spring-Kontext)
-```
-
-**Keine Schemaänderung.** `V008` bleibt die letzte Migration; alle benötigten Tabellen stammen aus
-`V001`–`V007`.
-
-**Endpunkte (Stand jetzt):**
-
-| Methode | Pfad | Erlaubte Stufe | Antwort |
-|---|---|---|---|
-| `POST` | `/api/v1/auth/pin/pruefen` | offen | `204` + Cookie (`PIN_VERIFIED`) |
-| `GET` | `/api/v1/auth/users/lesen` | `PIN_VERIFIED` und höher | `200` Namensliste mit Belegtstatus, **ohne Skillwerte** |
-| `POST` | `/api/v1/auth/user/waehlen` | nur `PIN_VERIFIED` | `204` + **neues** Cookie (Token-Rotation) |
-
-Die Pfade sind seit Abschnitt 6.7 versioniert; die Tabelle zeigt bereits die endgültige Form.
-
-**Pfadentscheidung (16.08.2026):** Die Anleitung nannte in Abschnitt 10.4 `/api/auth/namen` und
-`/api/auth/name`, `SecurityConfig` dagegen `/users` und `/user`. Maßgeblich sind die Pfade aus
-`SecurityConfig` – dort hängt die Autorisierung, und die Regeln waren samt Tests bereits abgenommen.
-Abschnitt 10.4 der Anleitung ist entsprechend korrigiert.
-
-**Sieben Umsetzungsentscheidungen, die von der Anleitung abweichen:**
-
-1. **`BruteForceService` kennt weder Datenbank noch Audit-Log.** `fehlversuchZaehlen` liefert einen
-   `boolean` („dieser Versuch hat gesperrt"); der Controller entscheidet, was protokolliert wird.
-   Dadurch ist der Dienst ohne Spring-Kontext testbar.
-2. **Neue `Clock`-Bean (`common/config/ZeitConfig`).** Sperrdauern von 1 bis 15 Minuten sind mit
-   `Thread.sleep` nicht prüfbar. Zeitpunkte, die in der Datenbank entstehen, werden weiterhin gegen
-   `now()` der Datenbank geprüft.
-3. **Grenzwerte als Konfiguration** (`fubo.brute-force.*`) mit `@DefaultValue`-Vorgaben: 5 Fehlversuche
-   je IP, 30 global, 15 Minuten Fenster, Sperrdauern 1/5/15 Minuten. Fehlt der Block, gelten die
-   Vorgaben – der Schutz ist nie versehentlich aus.
-4. **Der globale Zähler wird bei erfolgreicher Anmeldung nicht geleert**, der IP-Zähler schon. Sonst
-   könnte ein verteilter Angriff sich hinter der normalen Nutzung verstecken.
-5. **`AuditLogRepository` nutzt `JdbcClient` statt einer Entity** – `details` ist `jsonb`, und ein
-   Audit-Log wird nur angehängt. Die Umwandlungen im `INSERT` sind ausdrücklich notiert
-   (`CAST(... AS jsonb)`), weil PostgreSQL den Typ eines `NULL`-fähigen Parameters sonst nicht
-   bestimmen kann. *(Zum Transaktionsverhalten siehe 6.8 – die dort getroffene Entscheidung hat den
-   ursprünglichen `try/catch` abgelöst.)*
-6. **Unbekanntes oder inaktives Profil → `404 INHALT_NICHT_GEFUNDEN`** statt `409`. Das ist neu im
-   Vertrag (Abschnitt 10.2 der Anleitung). Die Unterscheidung ist unkritisch: Die gültigen Ids stehen
-   jeder Sitzung in `PIN_VERIFIED` ohnehin in der Namensliste.
-7. **`PinBootstrap` schreibt die PIN nur dann ins Log, wenn er sie selbst erzeugt hat.** Stammt sie aus
-   `FUBO_INITIAL_PIN`, kennt der Betreiber sie bereits – sie gehört dann nicht zusätzlich ins Log.
-
-**Anpassung bestehender Tests, die beim nächsten Lauf auffällt:** Die Platzhalter-Endpunkte in
-`SecurityConfigTests` mussten für `/api/auth/pin`, `/api/auth/users` und `/api/auth/user` entfallen.
-Es gibt jetzt echte Controller für diese Pfade; wären beide vorhanden, meldete Spring
-„Ambiguous mapping" und der Kontext startete gar nicht erst. Die betroffenen Fälle erwarten nun `400`
-statt `200` – der Aufruf hat die Filterchain passiert und ist erst an der Bean Validation *im*
-Controller hängen geblieben. Zusätzlich brauchten `SessionAuthFilterTests` und
-`SessionCookieFactoryTests` ein drittes Argument beim Bau von `FuboProperties`.
-
-**Verifikation:** `./mvnw clean verify` steht aus (siehe Abschnitt 7, Punkt 1). Erwartung sind
-weiterhin **acht** Zeilen in `flyway_schema_history` und **89** grüne Tests: die bisherigen 53 plus
-8 (`AuthControllerTests`), 7 (`NamenControllerTests`), 11 (`BruteForceServiceTests`),
-5 (`ApiVersionConfigTests`, siehe 6.7) und 5 (`AuditServiceTests`, siehe 6.8).
-
-**Was in S2 noch fehlt:** Gast-Login (Abschnitt 8), Admin-Konto im Bootstrap (Abschnitt 9),
-`GET /api/auth/session`, `POST /api/auth/renew` und `POST /api/auth/logout` (Abschnitt 10.4) sowie der
-OpenAPI-Kontrakt (Abschnitt 10). Offene Punkte 11 bis 15 der Anleitung.
-
-### 6.7 Versionierung der Schnittstelle (16.08.2026)
-
-Alle fachlichen Endpunkte liegen jetzt unter `/api/{version}/<bereich>/<ressource>/<aktion>`.
-Umgesetzt mit der Bordausstattung von **Spring Framework 7** (`ApiVersionConfigurer`,
-`@RequestMapping(version = …)`) – kein eigener Mechanismus.
-
-```
-common/config/      ApiVersionConfig (neu)   Pfadsegment-Strategie, Konstanten API_PRAEFIX und V1
-controller/auth/    AuthController, NamenController   auf versionierte Pfade umgestellt
-common/config/      SecurityConfig            Matcher auf /api/*/… umgestellt
-src/test/…/common/config/  ApiVersionConfigTests (5 Faelle, neu)
-```
-
-**Drei Festlegungen mit Begründung:**
-
-1. **Version als Präfix an Segment-Index 1**, nicht als Suffix. Der Index gilt global für die ganze
-   Anwendung. Bei einem Suffix (`/api/auth/users/lesen/v1`) läge er hier bei 4, beim späteren
-   `/api/admin/spieler/12/lesen/v1` aber bei 5 – ein fester Index kann beides nicht treffen. Ein
-   Suffix bräuchte einen eigenen `ApiVersionResolver`.
-2. **Ein `Predicate<RequestPath>` grenzt die Versionierung auf `/api/` ein.** Ohne das erwartet der
-   Resolver bei *jeder* Anfrage ein Versionssegment und beantwortet `/actuator/health` mit `400` –
-   der Container wäre dauerhaft `unhealthy`. Derselbe Fallstrick wie bei der Filterchain in 6.5, nur
-   an anderer Stelle. `ApiVersionConfigTests` sichert das ab.
-3. **Aktionssegment im Pfad** (`/lesen`, `/waehlen`, `/pruefen`, `/anmelden`), obwohl die HTTP-Methode
-   dieselbe Auskunft gibt. Gewinn: ein eigener Pfad je Operation, damit unabhängig versionierbar und
-   in Log und nginx-Regeln eindeutig. Preis: Die Filterchain kann `GET` und `POST` nicht mehr über
-   denselben Pfad trennen; die Methodenangabe bleibt in den Regeln trotzdem stehen.
-
-**Verhalten bei Abweichungen:** `/api/1/…` wird wie `/api/v1/…` gelesen (der voreingestellte
-`SemanticApiVersionParser` überspringt führende Nicht-Ziffern), `/api/v99/…` liefert `400`, ein
-fehlendes Versionssegment liefert `404` – nicht `400`, weil der Pfad ohne das Segment schlicht auf kein
-Mapping mehr passt. Ein `MissingApiVersionException` kann bei der Pfadstrategie also nie auftreten.
-
-**Regeln der Filterchain verwenden ein Sternchen für das Versionssegment**
-(`/api/*/auth/users/lesen`, `/api/*/admin/**`). Welche Versionen es gibt, entscheidet
-`ApiVersionConfig`, nicht die Autorisierung; eine unbekannte Version wird erst danach abgelehnt, weil
-das `HandlerMapping` hinter der Filterchain läuft.
-
-**Vor dem Sprung auf v2 zu klären** (offener Punkt 16 der Anleitung): Die Mappings tragen feste
-Versionen (`version = "1"`). Ein solches Mapping bedient keine v2-Anfrage – jeder unveränderte
-Endpunkt müsste für v2 erneut deklariert oder auf die Basislinie `"1+"` umgestellt werden. Die
-Basislinien-Semantik war in Spring 7 noch strittig, deshalb heute die feste Version.
-
-**Verbindlich nachgetragen in `AGENT_SERVER.md`**, Abschnitt „Schnittstelle zum Frontend": die drei
-Regeln zur Versionierung.
-
-### 6.8 Audit-Log: Löschfrist und Transaktionskopplung (16.08.2026)
-
-Zwei Entscheidungen des Haupt-Entwicklers, beide umgesetzt und in `AGENT_SERVER.md` als verbindliche
-Regeln nachgetragen.
-
-```
-common/config/      FuboProperties        um den Block Audit erweitert (aufbewahrung-tage, Vorgabe 90)
-repository/audit/   AuditLogRepository    + loescheAelterAls(OffsetDateTime)
-service/audit/      AuditService          + geplanter Auftrag alteEintraegeEntfernen (taeglich 03:45)
-                                          - try/catch entfernt
-src/main/resources/ application.yml       fubo.audit.aufbewahrung-tage: 90
-src/test/…/service/audit/  AuditServiceTests (5 Faelle, neu)
-```
-
-**1. Löschfrist 90 Tage, konfigurierbar über `fubo.audit.aufbewahrung-tage`.**
-
-Grund ist der Personenbezug: Bei einem PIN-Fehlversuch steht die Client-IP im Eintrag, und nach der
-DSGVO gilt Speicherbegrenzung. Nebeneffekt: Die Tabelle bleibt klein – sie ist die einzige, die sonst
-dauerhaft wächst, weil Einträge ausschließlich angehängt werden.
-
-Die Frist liegt bewusst **als Property und nicht in `configs.app_config`**. Sie ist eine Betriebs- und
-Rechtsgröße, keine fachliche Einstellung, und hat im Admin-Bereich (S3) nichts zu suchen: Ein Admin
-soll die Nachvollziehbarkeit seiner eigenen Änderungen nicht per Formular verkürzen können. Zum
-Vergleich – die Aufbewahrung abgelaufener Sitzungen steht als Konstante im `SessionService`, weil dort
-gar kein Anlass zum Verstellen besteht.
-
-**Bewusst in Kauf genommen:** Die Frist gilt einheitlich für alle Aktionen. Eine Ergebniskorrektur aus
-S6 ist damit nach 90 Tagen ebenfalls nicht mehr belegbar. Eine Staffelung je `aktion` wäre eine
-Änderung an genau einer Stelle – offener Punkt 17 der Anleitung, vor S6 zu entscheiden.
-
-**2. Der Audit-Eintrag wird mit einer fehlgeschlagenen Änderung zurückgerollt.**
-
-Ausbreitung bleibt `REQUIRED`; **`REQUIRES_NEW` ist damit untersagt.** Ein Protokolleintrag belegt eine
-*vollzogene* Änderung. Bleibt er nach einem Rollback stehen, behauptet das Protokoll etwas, das nie
-passiert ist – schlechter als eine Lücke.
-
-Folge: Das frühere `try/catch` um den Schreibvorgang ist **entfernt**. Es sollte verhindern, dass ein
-Protokollfehler die Fachlogik abbricht, war innerhalb einer gemeinsamen Transaktion aber wirkungslos –
-ein fehlgeschlagenes `INSERT` markiert die Transaktion bereits als „rollback-only". Das Abfangen
-verschob den Fehler nur bis zum Commit und ersetzte die Ursache durch eine
-`UnexpectedRollbackException`.
-
-Beim PIN-Endpunkt ändert sich nichts: Dort existiert keine umgebende Transaktion, der Fehlversuch
-*ist* das Ereignis und wird sofort festgeschrieben.
-
-**`AuditServiceTests` trägt bewusst kein `@Transactional`** – zwei der fünf Fälle prüfen gerade das
-Transaktionsverhalten, eine umgebende Test-Transaktion machte das Ergebnis vorbestimmt. Die Zeilen
-werden über ein Präfix in `akteur_bezeichnung` von Hand aufgeräumt. Der Rollback-Fall schlägt fehl,
-sobald jemand auf `REQUIRES_NEW` umstellt – das ist seine eigentliche Aufgabe.
-
 ## 7. Nächste Schritte
 
 1. **S2 fortsetzen** – Auth und Session. Schrittweise Anleitung: `harness/tmp/S2_UMSETZUNG.md`.
    Erledigt: Paketstruktur → Entities/Repositories → Token und Hashing → Session-Service mit
-   Zwei-Timer-Modell → Fehlerformat → Security-Filterchain (1–5, siehe 6.5) → PIN-Login mit
-   Brute-Force-Schutz (6) → Namensliste/-belegung/-auswahl (7) → PIN-Teil des Bootstraps (9, siehe 6.6).
-   Als Nächstes: **Gast-Login (Abschnitt 8)** → Admin-Konto im Bootstrap (9) →
-   `GET /api/auth/session`, `/renew`, `/logout` (10.4) → API-Vertrag als OpenAPI (10).
-   *Zuerst `./mvnw clean verify` laufen lassen* – die Stände aus 6.5 und 6.6 sind noch nicht
-   ausgeführt worden. Für den Lauf muss Docker laufen (Testcontainers, `postgres:17`).
+   Zwei-Timer-Modell → Fehlerformat → Security-Filterchain (Abschnitte 1–5, siehe 6.5).
+   Als Nächstes: **PIN-Login mit Brute-Force-Schutz (Abschnitt 6)** → Namensliste/-belegung (7) →
+   Gast-Login (8) → Bootstrap (9) → API-Vertrag als OpenAPI (10) → verbleibende Tests (11).
+   *Vor dem nächsten Schritt einmal `./mvnw clean verify` laufen lassen* – der Stand aus 6.5 wurde
+   noch nicht vollständig getestet.
 2. **Domainentscheidung – erledigt (09.08.2026).** Frontend und API liegen auf Subdomains **derselben
    registrierbaren Domain** (`app.<domain>` / `api.<domain>`). Damit gilt `SameSite=Lax` und
    `csrf.disable()` bleibt vertretbar; Abschnitt 5.4/5.5 der S2-Anleitung ist entsprechend festgelegt.
