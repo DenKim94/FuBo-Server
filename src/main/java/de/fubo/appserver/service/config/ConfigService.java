@@ -34,6 +34,8 @@ public class ConfigService {
     public AppConfig lesen() {
         return appConfigRepository.findById(KONFIG_ID)
                 .orElseThrow(() -> new IllegalStateException(
-                        "configs.app_config enthaelt keine Zeile mit id = 1 - Migrationsstand pruefen (V007)."));
+                        "configs.app_config enthaelt keine Zeile mit id = 1 - Migrationsstand pruefen."));
     }
+
+    // TODO: Konfigurationen aktualisieren
 }
