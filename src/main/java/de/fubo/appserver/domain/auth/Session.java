@@ -8,6 +8,8 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
 
@@ -26,7 +28,15 @@ public class Session {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    /** SHA-256 des Tokens als Hex, 64 Zeichen. Der Token selbst wird nie gespeichert. */
+    /**
+     * SHA-256 des Tokens als Hex, 64 Zeichen. Der Token selbst wird nie gespeichert.
+     *
+     * <p>{@code @JdbcTypeCode(SqlTypes.CHAR)} ist Pflicht: Die Spalte ist in {@code V003} als
+     * {@code CHAR(64)} angelegt, ein {@code String} wird von Hibernate aber standardmaessig auf
+     * {@code VARCHAR} abgebildet. {@code ddl-auto=validate} vergleicht den JDBC-Typcode und
+     * bricht den Start sonst ab: "found [bpchar (Types#CHAR)], but expecting [varchar(64)]".
+     */
+    @JdbcTypeCode(SqlTypes.CHAR)
     @Column(name = "token_hash", nullable = false, length = 64)
     private String tokenHash;
 
