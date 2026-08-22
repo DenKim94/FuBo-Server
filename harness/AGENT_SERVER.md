@@ -99,6 +99,24 @@ Identifikation über den hinterlegten Namen. Rollen: ADMIN, USER, GAST.
   den Endpunkt lokal auf; mit `401` bliebe der Container dauerhaft `unhealthy` und
   `depends_on: condition: service_healthy` würde nie erfüllt. Die Abschottung nach aussen übernimmt
   nginx, nicht die Anwendung.
+- **Das Adminprofil ist ein technisches Konto (verbindlich ab 22.08.2026).** Es erfüllt die
+  Fremdschlüsselpflicht von `admin_konto.spieler_id` und sonst nichts: Es steht **nicht** in der
+  Namensliste, ist über die Namensauswahl **nicht** wählbar (auch nicht über seine Id), nimmt an
+  keinem Termin teil und wird **nie in ein Team eingeteilt**. Seine Skillwerte stehen auf 0 – das
+  macht das Profil vollständig, ist aber **kein Ersatz für den Ausschluss**: Geriete es doch in
+  eine Generierung, bekäme sein Team einen Spieler ohne jede Stärke. Jede Abfrage, die Mitspieler
+  aufzählt (Namensliste, Teilnehmerliste, Datengrundlage des Teamgenerators ab S5), filtert
+  `rolle <> 'ADMIN'`.
+- **Der Ausschluss wird an jeder Grenze wiederholt, nicht nur in der Anzeige.** Ein Endpunkt, der
+  eine Id entgegennimmt, prüft dieselbe Bedingung erneut wie die Liste, aus der die Id stammt.
+  Sonst wäre der Ausschluss reine Darstellung – wer die Id kennt, käme daran vorbei. Beim
+  Adminprofil hinge daran `ROLE_ADMIN` ohne Passwort.
+- **Der Admin meldet sich über sein Passwort an**, nicht über die Namenswahl:
+  `POST /api/{version}/auth/admin/anmelden` gegen `admin_konto.passwort_hash`, ausschliesslich in
+  der Stufe `PIN_VERIFIED`. Die zentrale PIN bleibt auch für ihn Pflicht – sie grenzt den Kreis
+  der Zugreifenden ein (A1), das Passwort die Rechte innerhalb dieses Kreises. Der
+  Brute-Force-Zähler ist derselbe wie am PIN-Endpunkt: Es ist derselbe Absender, der dieselbe
+  Anwendung angreift.
 - **Skill-Geheimhaltung:** DTOs für USER/GAST enthalten keine Skillwerte. Der Teamgenerator liegt
   serverseitig; die Skillwerte verlassen den Server nicht. Admin-DTOs dürfen Skills enthalten.
 - **Brute-Force-Schutz** am PIN-Endpunkt; echte Client-IP aus `X-Forwarded-For`, daher
@@ -106,7 +124,13 @@ Identifikation über den hinterlegten Namen. Rollen: ADMIN, USER, GAST.
 - **Teilnehmer-Version:** je Termin ein Zähler, der bei jeder Teilnehmeränderung transaktional steigt;
   einziger Auslöser für die Kontingent-Rücksetzung und Kennzeichen veralteter Einteilungen.
 - **Teamzuteilung als Snapshot:** jeder Lauf speichert die gültigen Skillwerte und seinen Seed.
-- **Gast-Slots:** feste Datensätze, Belegung per bedingtem UPDATE (keine gezählte Abfrage).
+- **Gast-Slots (präzisiert 22.08.2026):** feste Datensätze, Belegung per bedingtem UPDATE (keine
+  gezählte Abfrage). Die Admin-Konfiguration `configs.app_config.anz_guests` wirkt über
+  `id <= :maxGaeste`, nicht über die Zahl der Zeilen – eine Änderung ist damit sofort wirksam, ohne
+  Datensätze anzulegen oder zu löschen. **`fk_gast_slot_session` hat kein `ON DELETE`:** Jeder
+  Vorgang, der Sitzungen löscht, muss vorher die zugehörigen Plätze freigeben, sonst scheitert er an
+  einer Fremdschlüsselverletzung und bricht vollständig ab. Freigabe und Widerruf einer Sitzung
+  gehören in dieselbe Transaktion.
 - **Audit-Log (verbindlich ab S2, entschieden 16.08.2026):**
   1. **Ausbreitung immer `REQUIRED`, nie `REQUIRES_NEW`.** Ein Protokolleintrag belegt eine
      *vollzogene* Änderung. Scheitert die Änderung, wird der Eintrag mit ihr zurückgerollt –
@@ -123,6 +147,28 @@ Identifikation über den hinterlegten Namen. Rollen: ADMIN, USER, GAST.
      nicht per Formular verkürzen können.
   4. **Der Aufräumlauf selbst wird nicht ins Audit-Log geschrieben** – das wäre zirkulär und
      würde die Tabelle genau um das füllen, was sie leeren soll.
+- **Start-Bootstrap (verbindlich ab S2, entschieden 22.08.2026):** Zentrale PIN und Admin-Konto
+  entstehen beim Start über `ApplicationRunner`, nie über eine Flyway-Migration – ein BCrypt-Hash in
+  einer Migration wäre ein Geheimnis in der unveränderlichen Git-Historie. Drei Regeln:
+  1. **Beide Runner sind idempotent.** Existiert der Datensatz, passiert nichts; ein geändertes
+     Passwort wird nie auf den Wert aus der Umgebung zurückgesetzt. Nur so dürfen `FUBO_INITIAL_PIN`
+     und `ADMIN_PASSWORD` nach dem ersten Start aus der Umgebung verschwinden.
+  2. **Unvollständige Admin-Angaben führen zum Startabbruch**, nicht zu einer Notlösung. Ein
+     willkürlich gewählter Admin wäre ein stilles Sicherheitsproblem, und für das Adminpasswort gibt
+     es mit dem Reset per E-Mail (S2b) einen zweiten Weg, der genau die Adresse braucht, die dann
+     ebenfalls fehlen könnte. Die Meldung nennt alle fehlenden Werte auf einmal. Für die zentrale PIN
+     gilt das bewusst **nicht**: Dort wird eine Zufalls-PIN erzeugt und einmalig protokolliert.
+  3. **Was der Bootstrap braucht, legt er an** (ergänzt 22.08.2026). Fehlt das Profil zu
+     `ADMIN_NAME`, wird es erzeugt – der Abbruch gilt der fehlenden *Angabe*, nicht der fehlenden
+     *Zeile*. Sonst wäre der Erststart auf einer leeren Datenbank ein Zweischritt, und die
+     Datenbank müsste vorbereitet sein, bevor die Anwendung sie überhaupt anlegen konnte. Der
+     Preis – ein Tippfehler legt ein überflüssiges Profil an – wird durch eine Logmeldung
+     aufgefangen, die „übernommen" und „neu angelegt" unterscheidet. Jede Prüfung, die einen
+     Abbruch auslösen kann, läuft **vor** der ersten Änderung; andernfalls bliebe bei jedem
+     fehlgeschlagenen Start ein Rest zurück, der den nächsten Versuch behindert.
+  4. **Folge für Tests:** Ohne `ADMIN_NAME`, `ADMIN_EMAIL` und `ADMIN_PASSWORD` startet kein
+     Anwendungskontext. Die Werte gehören in `src/test/resources/application.yml`, und das gewählte
+     Adminprofil darf mit keiner Testerwartung kollidieren.
 - **Ergänzend:** zentrale Fehlerbehandlung (`@RestControllerAdvice`) mit einheitlichem Fehler-JSON,
   Bean Validation, CORS-Allowlist mit `allowCredentials`, Actuator-Health-Endpunkt, Flyway-Migrationen,
   Audit-Log für Adminaktionen und Generierungsläufe.
@@ -142,6 +188,34 @@ Da deterministisch, wählt der `seed` die A/B-Zuordnung und – bei Gleichstand 
 `O(Iterationen · n²)`; liefert je Seed eine andere, nah-optimale Lösung (erfüllt A15 direkt).
 
 ### Schnittstelle zum Frontend (Vertrag)
+- **Der Kontrakt ist eine Datei, kein Abschnitt (verbindlich ab 22.08.2026):**
+  `server/fubo-api.json` – OpenAPI 3.1 in JSON, auf der Wurzel des Server-Repositories und damit
+  mitversioniert. Sie ist bei Abweichungen massgeblich. Ablageort und Format sind eine Festlegung des
+  Haupt-Entwicklers; die Begründung steht in `CONTEXT_HANDOFF_SERVER.md`, Abschnitt 4. Zwei Regeln:
+  1. **Vertragsänderungen zuerst dort abbilden**, dann im Code, dann in den Anleitungen. Server und
+     Client liegen in getrennten Repositories, ein gemeinsamer Commit ist unmöglich – die Datei ist
+     der einzige Übergabepunkt.
+  2. **Nur beschreiben, was umgesetzt ist.** Spekulative Endpunkte wären ein Vertrag über etwas, das
+     es nicht gibt; der Client-Track entwickelte dagegen. S3 bis S6 tragen ihre Endpunkte jeweils bei
+     Fertigstellung nach.
+- **Hintergrundaufrufe verlängern die Sitzung nicht (verbindlich ab 22.08.2026):** Ein Aufruf mit dem
+  Anfrageheader `X-FuBo-Kein-Refresh: true` läuft über einen rein lesenden Prüfpfad – weder wandert
+  `gueltig_bis` nach hinten noch wird `letzte_aktivitaet_am` fortgeschrieben. Damit misst das
+  Leerlauf-Fenster die Untätigkeit des Nutzers und nicht die eines offenen Browser-Tabs, der pollt.
+  Drei Punkte dazu: Nur der Wert `true` zählt (ein Tippfehler führt zum bisherigen Verhalten, nicht
+  zu unerwartet ablaufenden Sitzungen); der Header ist eine Bitte und **kein Sicherheitsmerkmal** –
+  Missbrauch verkürzt nur die eigene Sitzung; und **jeder eigene Anfrageheader muss in
+  `allowedHeaders` der CORS-Konfiguration stehen**, sonst lehnt der Browser bereits den Preflight ab.
+- **Zeitangaben an den Client gehören maschinenlesbar in Header oder Felder, nie nur in den
+  Meldungstext.** `detail` ist Anzeigetext und darf sich ohne Vertragsänderung ändern; Programmlogik
+  stützt sich ausschliesslich auf `code`, den Statuscode und eigene Felder. Umgesetzt beim `429` des
+  PIN-Endpunkts: `Retry-After` (RFC 9110) **und** das Feld `wartesekunden`. Antwortheader, auf die
+  sich das Frontend stützen soll, gehören zusätzlich in `exposedHeaders` – bei einer
+  Cross-Origin-Antwort sind sie sonst unsichtbar.
+- **Das einheitliche Fehlerformat gilt ausnahmslos**, auch für einen unlesbaren Anfragekörper.
+  `handleHttpMessageNotReadable` ist deshalb überschrieben: Die Basisklasse liefert zwar `400`, aber
+  ohne das Feld `code` – das Frontend hätte zwei Formate zu unterscheiden. Die Meldung der
+  Serialisierungsbibliothek nennt Klassennamen und Feldpfade und geht ins Log, nicht in die Antwort.
 - **Versionierung (verbindlich ab S2):** Jeder Endpunkt liegt unter
   `/api/{version}/<bereich>/<ressource>/<aktion>`, zum Beispiel
   `GET /api/v1/auth/users/lesen`. Umgesetzt mit der Bordausstattung von Spring Framework 7
@@ -171,8 +245,14 @@ Da deterministisch, wählt der `seed` die A/B-Zuordnung und – bei Gleichstand 
   `teilnehmer_version` und Veraltet-Kennzeichen.
 - **Fehlerformat:** einheitliches JSON (`@RestControllerAdvice`) mit maschinenlesbarem Code und
   deutschsprachiger Meldung.
-- Der finale Schema-/Endpunktkontrakt wird mit dem Client-Agenten abgestimmt (OpenAPI-Beschreibung
-  empfohlen) und in `CONTEXT_HANDOFF_SERVER.md` bzw. `CONTEXT_HANDOFF_CLIENT.md` festgehalten.
+- **Sitzungsverwaltung ist ab `PIN_VERIFIED` erreichbar**, nicht erst ab `PROFILE_AUTHENTICATED`.
+  `/auth/session/lesen`, `/auth/session/erneuern` und `/auth/session/beenden` gelten für beide
+  Stufen. Grund: Nach einem Seitenneuladen zwischen PIN-Eingabe und Namenswahl muss das Frontend
+  erfahren, in welcher Stufe es steht – mit `403` liefe es zurück zur PIN-Eingabe, obwohl die Sitzung
+  gültig ist. Und einen angefangenen Login abzubrechen muss möglich sein.
+- Der Kontrakt wird mit dem Client-Agenten abgestimmt; der Stand wird zusätzlich in
+  `CONTEXT_HANDOFF_SERVER.md` bzw. `CONTEXT_HANDOFF_CLIENT.md` erläutert. Massgeblich ist bei
+  Abweichungen aber `server/fubo-api.json`.
 
 ### Techstack (Server)
 - Java 25, **Spring Boot 4.1.0**, Maven (Wrapper im Repository). Artefakt `de.fubo:app-server`,
@@ -249,9 +329,38 @@ DTOs, fällt beim Lesen sofort auf, wenn ein Controller den falschen Typ zurück
   `TokenGenerator` auch `ClientIpErmittler`. Die Abhängigkeit zu `jakarta.servlet` ist kein
   Widerspruch: Die Regel richtet sich gegen Spring-Kontext und Zustand, nicht gegen die Servlet-API.
 
+**Ergänzungen aus S2, Abschnitte 8 bis 10 (22.08.2026):**
+
+- **Repositories ohne Entity sind erlaubt, wenn die Tabelle nur angehängt oder nur bedingt
+  aktualisiert wird** – `AuditLogRepository` und `GastSlotRepository` nutzen beide `JdbcClient`
+  direkt. Bei `gast_slot` wäre eine Entity mit `@Version` sogar nachteilig: Optimistic Locking meldet
+  den Konflikt erst beim Schreiben und verlangt eine Wiederholung, während das bedingte `UPDATE` den
+  Wettlauf ohne Wiederholung entscheidet. Wird eine `version`-Spalte per SQL geändert, ist sie von
+  Hand fortzuschreiben (`version = version + 1`).
+- **Die Auslegung des Anfragekörpers gehört ins DTO**, nicht in den Service: Vorgabewerte für
+  fehlende Felder (`GastAnmeldungRequest#stufeOderVorgabe`) und das Entfernen von Randleerzeichen
+  stehen dort. Sie sind Teil der API-Grenze, nicht der Fachlogik.
+- **`SessionService` ist der einzige Ort für Sitzungsübergänge** – anlegen, prüfen, rotieren,
+  erneuern, abmelden, aufräumen. Ein Fachbereich, der eine Sitzung verändert (etwa der Gast-Login),
+  ruft ihn auf, statt selbst zu schreiben. Andernfalls verteilte sich das Zwei-Timer-Modell über
+  mehrere Klassen.
+
 ### Flyway-Konventionen (verbindlich ab S1)
 - Ablage: `src/main/resources/db/migration`. Namensschema `V<nnn>__<kurze_beschreibung>.sql` mit
   dreistelliger, lückenlos aufsteigender Nummer (`V001__schemas.sql`).
+  **Der Trenner ist ein doppelter Unterstrich.** Ein Name, der nicht passt, wird von Flyway in
+  der Voreinstellung **stillschweigend ignoriert** – kein Fehler, kein INFO-Log, die Migration
+  läuft einfach nie. Deshalb ist `spring.flyway.validate-migration-naming: true` gesetzt
+  (verbindlich ab 22.08.2026, nachdem `V009_admin_profil.sql` mit einem Unterstrich genau so
+  wirkungslos blieb). Damit bricht der Start stattdessen mit einer benennenden Meldung ab.
+- **Migrationen enthalten keine installationsabhängigen Daten und keine Platzhalter.**
+  `spring.flyway.placeholders` wird nicht verwendet. Zwei Gründe: Eine Migration muss auf jeder
+  Installation dasselbe Ergebnis erzeugen – mit Platzhaltern erzeugt sie bei *gleicher
+  Prüfsumme* unterschiedliche Daten, und Flyway kann die Abweichung nicht bemerken, weil die
+  Prüfsumme nur den Dateiinhalt abdeckt. Und ein Platzhalter ohne Vorgabewert lässt die
+  Migration scheitern, sobald die Variable aus der Umgebung verschwindet – was für
+  `ADMIN_PASSWORD` und `FUBO_INITIAL_PIN` nach dem Erststart ausdrücklich vorgesehen ist.
+  Installationsabhängige Daten entstehen im Start-Bootstrap.
 - **Migrationen sind unveränderlich.** Eine bereits ausgeführte Datei wird nie nachträglich editiert –
   Flyway prüft Prüfsummen und bricht sonst ab. Korrekturen erfolgen ausschliesslich über eine neue
   Migration.
