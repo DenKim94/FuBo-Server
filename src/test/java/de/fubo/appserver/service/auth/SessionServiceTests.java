@@ -267,6 +267,107 @@ class SessionServiceTests {
         assertThat(aktuelle).isEqualTo(1);
     }
 
+    /**
+     * Der Aufraeumjob gibt zuerst die Gastplaetze abgelaufener Sitzungen frei.
+     *
+     * <p>Das ist nicht nur Kosmetik: {@code fk_gast_slot_session} hat kein
+     * {@code ON DELETE}. Ohne die Freigabe scheiterte das {@code DELETE} auf einer noch
+     * referenzierten Sitzung mit einer Fremdschluesselverletzung - und der gesamte
+     * Aufraeumlauf braeche ab, nicht nur dieser eine Datensatz.
+     */
+    @Test
+    void aufraeumjobGibtGastplaetzeAbgelaufenerSitzungenFrei() {
+        Long abgelaufene = jdbc.queryForObject("""
+                INSERT INTO profil.session
+                       (token_hash, stage, rolle, gast_name, gueltig_bis, absolut_gueltig_bis)
+                VALUES (?, 'PROFILE_AUTHENTICATED', 'GAST', 'Testgast alt',
+                        now() - interval '40 days', now() - interval '40 days')
+                RETURNING id
+                """, Long.class, TokenGenerator.hash("alte-gastsitzung"));
+
+        jdbc.update("""
+                UPDATE profil.gast_slot
+                   SET belegt = TRUE, session_id = ?, belegt_seit = now() - interval '40 days'
+                 WHERE id = 1
+                """, abgelaufene);
+
+        sessionService.alteSitzungenEntfernen();
+
+        assertThat(jdbc.queryForObject(
+                "SELECT belegt FROM profil.gast_slot WHERE id = 1", Boolean.class))
+                .as("Der Platz muss wieder frei sein")
+                .isFalse();
+
+        assertThat(jdbc.queryForObject(
+                "SELECT count(*) FROM profil.session WHERE id = ?", Integer.class, abgelaufene))
+                .as("Die Sitzung selbst wird geloescht - das gelingt nur nach der Freigabe")
+                .isZero();
+    }
+
+    // ------------------------------------------------ Pruefung ohne Verlaengerung
+
+    /**
+     * Der rein lesende Pfad liefert dieselbe Auskunft, verschiebt aber weder
+     * {@code gueltig_bis} noch {@code letzte_aktivitaet_am}.
+     *
+     * <p>Er ist die Grundlage dafuer, dass das Pollen des Belegtstatus (A6) nicht als
+     * Nutzeraktivitaet zaehlt - sonst liefe das Leerlauf-Fenster nie ab, solange irgendein
+     * Browser-Tab offen ist (Abschnitt 10.8).
+     */
+    @Test
+    void pruefenOhneVerlaengerungLaesstDieZeitstempelStehen() {
+        String token = sessionService.anlegen(Stage.PIN_VERIFIED, null, null);
+        Long id = sitzungsIdZu(token);
+
+        jdbc.update("""
+                UPDATE profil.session
+                   SET gueltig_bis = now() + interval '1 minute',
+                       letzte_aktivitaet_am = now() - interval '5 minutes'
+                 WHERE id = ?
+                """, id);
+
+        var vorher = jdbc.queryForMap(
+                "SELECT gueltig_bis, letzte_aktivitaet_am FROM profil.session WHERE id = ?", id);
+
+        Optional<AktiveSitzung> ergebnis = sessionService.pruefen(token);
+
+        assertThat(ergebnis).isPresent();
+        assertThat(ergebnis.orElseThrow().stage()).isEqualTo(Stage.PIN_VERIFIED);
+
+        var nachher = jdbc.queryForMap(
+                "SELECT gueltig_bis, letzte_aktivitaet_am FROM profil.session WHERE id = ?", id);
+        assertThat(nachher).isEqualTo(vorher);
+    }
+
+    /** Auch der lesende Pfad lehnt eine abgelaufene Sitzung ab - dieselben Bedingungen. */
+    @Test
+    void pruefenOhneVerlaengerungLehntAbgelaufeneSitzungAb() {
+        String token = sessionService.anlegen(Stage.PIN_VERIFIED, null, null);
+
+        jdbc.update("UPDATE profil.session SET gueltig_bis = now() - interval '1 second' WHERE id = ?",
+                sitzungsIdZu(token));
+
+        assertThat(sessionService.pruefen(token)).isEmpty();
+    }
+
+    /**
+     * Die Auskunft traegt beide Ablaufzeitpunkte. Sie stammen aus derselben Abfrage, die
+     * die Sitzung ohnehin prueft - {@code GET /auth/session/lesen} braucht dafuer keinen
+     * zweiten Lesezugriff.
+     */
+    @Test
+    void diePruefungLiefertBeideAblaufzeitpunkte() {
+        String token = sessionService.anlegen(Stage.PROFILE_AUTHENTICATED, ersterSpieler(), Rolle.USER);
+
+        AktiveSitzung sitzung = sessionService.pruefenUndVerlaengern(token).orElseThrow();
+
+        assertThat(sitzung.gueltigBis()).isNotNull();
+        assertThat(sitzung.absolutGueltigBis()).isNotNull();
+        assertThat(sitzung.gueltigBis())
+                .as("Das gleitende Fenster darf die harte Obergrenze nie ueberschreiten")
+                .isBeforeOrEqualTo(sitzung.absolutGueltigBis());
+    }
+
     // ------------------------------------------------------------------ Hilfsmittel
 
     /** Liefert die Id der zum Token gehoerenden Sitzung. */

@@ -80,9 +80,14 @@ public class AuthController {
      * Zaehlung genau steht.
      *
      * <p><b>Zur bestehenden Sitzung:</b> Meldet sich jemand erneut an, obwohl noch ein
-     * gueltiges Cookie vorliegt, wird die alte Sitzung widerrufen. Ohne das bliebe sie bis
+     * gueltiges Cookie vorliegt, wird die alte Sitzung abgemeldet. Ohne das bliebe sie bis
      * zum Ablauf gueltig - und bei einem Profil, das bereits einen Namen belegt, waere der
      * Name unnoetig lange blockiert (A6).
+     *
+     * <p>Abgemeldet, nicht nur widerrufen (Korrektur 22.08.2026): War die alte Sitzung eine
+     * Gastsitzung, haelt sie einen der festen Gastplaetze. Ein blosser Widerruf liesse den
+     * Platz bis zum naechtlichen Aufraeumlauf besetzt - bei vier Plaetzen faellt das sofort
+     * auf. {@code SessionService#abmelden} gibt ihn in derselben Transaktion frei.
      *
      * @param anfrage           Klartext-PIN aus dem Anfragekoerper
      * @param request           fuer die Ermittlung der Client-IP
@@ -111,7 +116,7 @@ public class AuthController {
         bruteForceService.zuruecksetzen(clientIp);
 
         if (bestehendeSitzung != null) {
-            sessionService.widerrufen(bestehendeSitzung.id());
+            sessionService.abmelden(bestehendeSitzung.id());
         }
 
         String token = sessionService.anlegen(Stage.PIN_VERIFIED, null, null);

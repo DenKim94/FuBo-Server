@@ -4,7 +4,9 @@ import de.fubo.appserver.common.config.FuboProperties;
 import de.fubo.appserver.domain.auth.AktiveSitzung;
 import de.fubo.appserver.domain.auth.Rolle;
 import de.fubo.appserver.domain.auth.Stage;
+import de.fubo.appserver.repository.auth.GastSlotRepository;
 import de.fubo.appserver.repository.auth.SessionRepository;
+import de.fubo.appserver.repository.profil.SpielerRepository;
 import de.fubo.appserver.service.auth.SessionService;
 import de.fubo.appserver.service.config.ConfigService;
 import jakarta.servlet.http.Cookie;
@@ -17,6 +19,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -172,6 +175,69 @@ class SessionAuthFilterTests {
         assertThat(kette.getRequest()).isNotNull();       // fortgesetzt
     }
 
+    // ------------------------------------------------------------- Polling ohne Verlaengerung
+
+    /**
+     * Der Regelfall: Ohne Header wird das Leerlauf-Fenster verlaengert. Diese Richtung ist
+     * die Vorgabe, damit ein Tippfehler im Headernamen zum bisherigen Verhalten fuehrt und
+     * nicht zu Sitzungen, die unerwartet ablaufen.
+     */
+    @Test
+    void ohneHeaderWirdDieSitzungVerlaengert() throws Exception {
+        MockHttpServletRequest req = new MockHttpServletRequest();
+        req.setCookies(new Cookie(COOKIE_NAME, "gueltiger-token"));
+
+        SessionServiceErsatz service = new SessionServiceErsatz(
+                Optional.of(sitzung(Stage.PROFILE_AUTHENTICATED, Rolle.USER)));
+        filterAusfuehren(req, service);
+
+        assertThat(service.verlaengertePfadBenutzt).isTrue();
+        assertThat(service.lesenderPfadBenutzt).isFalse();
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNotNull();
+    }
+
+    /**
+     * Mit {@code X-FuBo-Kein-Refresh: true} laeuft die rein lesende Pruefung. Der Aufruf
+     * gilt damit nicht als Nutzeraktivitaet - genau darum geht es beim Pollen des
+     * Belegtstatus (A6, Abschnitt 10.8).
+     *
+     * <p>Wichtig: Der Kontext entsteht trotzdem. Der Header schaltet die Verlaengerung ab,
+     * nicht die Anmeldung.
+     */
+    @Test
+    void mitHeaderWirdDieSitzungNichtVerlaengert() throws Exception {
+        MockHttpServletRequest req = new MockHttpServletRequest();
+        req.setCookies(new Cookie(COOKIE_NAME, "gueltiger-token"));
+        req.addHeader(SessionAuthFilter.HEADER_KEIN_REFRESH, "true");
+
+        SessionServiceErsatz service = new SessionServiceErsatz(
+                Optional.of(sitzung(Stage.PROFILE_AUTHENTICATED, Rolle.USER)));
+        filterAusfuehren(req, service);
+
+        assertThat(service.lesenderPfadBenutzt).isTrue();
+        assertThat(service.verlaengertePfadBenutzt).isFalse();
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNotNull();
+    }
+
+    /**
+     * Nur der Wert {@code true} zaehlt. Ein anderer Wert bedeutet "normaler Aufruf" - ein
+     * Client, der versehentlich {@code X-FuBo-Kein-Refresh: 1} sendet, soll nicht
+     * ueberraschend eine ablaufende Sitzung bekommen.
+     */
+    @Test
+    void einAndererHeaderwertGiltAlsNormalerAufruf() throws Exception {
+        MockHttpServletRequest req = new MockHttpServletRequest();
+        req.setCookies(new Cookie(COOKIE_NAME, "gueltiger-token"));
+        req.addHeader(SessionAuthFilter.HEADER_KEIN_REFRESH, "1");
+
+        SessionServiceErsatz service = new SessionServiceErsatz(
+                Optional.of(sitzung(Stage.PROFILE_AUTHENTICATED, Rolle.USER)));
+        filterAusfuehren(req, service);
+
+        assertThat(service.verlaengertePfadBenutzt).isTrue();
+        assertThat(service.lesenderPfadBenutzt).isFalse();
+    }
+
     // ------------------------------------------------------------- Hilfsmittel
 
     /** Fuehrt den Filter mit dem uebergebenen Request aus und liefert die benutzte Kette. */
@@ -195,7 +261,9 @@ class SessionAuthFilterTests {
     private static AktiveSitzung sitzung(Stage stage, Rolle rolle) {
         Long spielerId = (rolle == null || rolle == Rolle.GAST) ? null : 7L;
         String gastName = (rolle == Rolle.GAST) ? "Gast 1" : null;
-        return new AktiveSitzung(42L, spielerId, gastName, rolle, stage);
+        OffsetDateTime jetzt = OffsetDateTime.now();
+        return new AktiveSitzung(42L, spielerId, gastName, rolle, stage,
+                jetzt.plusMinutes(15), jetzt.plusHours(1));
     }
 
     private static List<String> autoritaeten(Authentication auth) {
@@ -204,21 +272,37 @@ class SessionAuthFilterTests {
 
     /**
      * Minimaler Ersatz fuer den {@link SessionService}. Die Konstruktorparameter bleiben leer,
-     * weil ausschliesslich die ueberschriebene Methode aufgerufen wird.
+     * weil ausschliesslich die ueberschriebenen Methoden aufgerufen werden.
+     *
+     * <p>Der Ersatz merkt sich zusaetzlich, <b>welcher</b> der beiden Pruefpfade benutzt
+     * wurde. Genau das ist der Unterschied, den der Filter anhand des Headers
+     * {@code X-FuBo-Kein-Refresh} macht - und von aussen ist er sonst nicht sichtbar, weil
+     * beide Pfade dasselbe Ergebnis liefern.
      */
     private static class SessionServiceErsatz extends SessionService {
 
         private final Optional<AktiveSitzung> ergebnis;
         private String zuletztGeprueft;
+        private boolean verlaengertePfadBenutzt;
+        private boolean lesenderPfadBenutzt;
 
         SessionServiceErsatz(Optional<AktiveSitzung> ergebnis) {
-            super((SessionRepository) null, (ConfigService) null);
+            super((SessionRepository) null, (GastSlotRepository) null,
+                    (SpielerRepository) null, (ConfigService) null);
             this.ergebnis = ergebnis;
         }
 
         @Override
         public Optional<AktiveSitzung> pruefenUndVerlaengern(String token) {
             this.zuletztGeprueft = token;
+            this.verlaengertePfadBenutzt = true;
+            return ergebnis;
+        }
+
+        @Override
+        public Optional<AktiveSitzung> pruefen(String token) {
+            this.zuletztGeprueft = token;
+            this.lesenderPfadBenutzt = true;
             return ergebnis;
         }
     }

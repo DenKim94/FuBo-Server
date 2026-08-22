@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 import java.security.SecureRandom;
@@ -21,12 +22,16 @@ import java.security.SecureRandom;
  * diesem Zeitpunkt sicher durch. Er ist idempotent: Existiert die Zeile bereits, passiert
  * nichts.
  *
- * <p><b>Noch offen (Abschnitt 9):</b> Das Admin-Konto wird hier nicht angelegt. Dafuer
- * braucht es die Auswahl ueber {@code ADMIN_NAME}/{@code ADMIN_EMAIL} aus der {@code .env}
- * samt Startabbruch, wenn kein passendes Profil existiert.
+ * <p>Das Admin-Konto legt der {@code AdminBootstrap} an; er laeuft ueber {@code @Order}
+ * nach diesem Runner. Damit steht die Meldung zur zentralen PIN immer vor der zum
+ * Admin-Konto im Log, und ein Startabbruch dort laesst die bereits angelegte PIN unberuehrt.
  */
 @Component
+@Order(PinBootstrap.REIHENFOLGE)
 public class PinBootstrap implements ApplicationRunner {
+
+    /** Laeuft vor {@code AdminBootstrap} (dort {@code 20}). */
+    static final int REIHENFOLGE = 10;
 
     private static final Logger LOG = LoggerFactory.getLogger(PinBootstrap.class);
 

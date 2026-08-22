@@ -20,7 +20,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.context.WebApplicationContext;
 
@@ -195,6 +194,63 @@ class SecurityConfigTests {
                 .andExpect(status().isForbidden());
     }
 
+    /**
+     * Der Adminzugang <i>verleiht</i> die Rolle und ist deshalb nur in der Stufe
+     * {@code PIN_VERIFIED} erreichbar - nicht zu verwechseln mit dem Adminbereich, der sie
+     * voraussetzt.
+     *
+     * <p>{@code 400} ist hier der Beleg fuer "erlaubt": Der leere Koerper scheitert erst an
+     * der Bean Validation im Controller, also nach der Autorisierung.
+     */
+    @Test
+    void pinVerifiedDarfSichAlsAdminAnmelden() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/admin/anmelden")
+                        .cookie(new Cookie(COOKIE, pinVerifiedSitzung()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    /** Gegenrichtung: Wer bereits eine Identitaet hat, holt sich keine zweite. */
+    @Test
+    void userDarfSichNichtAlsAdminAnmelden() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/admin/anmelden")
+                        .cookie(new Cookie(COOKIE, sitzung(Rolle.USER)))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isForbidden());
+    }
+
+    // ------------------------------------------------------------- Sitzungsverwaltung
+
+    /**
+     * Die drei Sitzungsendpunkte sind bereits ab {@code PIN_VERIFIED} erlaubt und nicht
+     * erst ab {@code PROFILE_AUTHENTICATED}. Laedt jemand die Seite zwischen PIN-Eingabe und
+     * Namenswahl neu, muss das Frontend erfahren, in welcher Stufe es steht - mit
+     * {@code 403} liefe es zurueck zur PIN-Eingabe, obwohl die Sitzung gueltig ist.
+     */
+    @Test
+    void pinVerifiedDarfDieSitzungLesen() throws Exception {
+        mockMvc.perform(get("/api/v1/auth/session/lesen")
+                        .cookie(new Cookie(COOKIE, pinVerifiedSitzung())))
+                .andExpect(status().isOk());
+    }
+
+    /** Einen angefangenen Login abzubrechen muss ebenfalls in Stufe 1 moeglich sein. */
+    @Test
+    void pinVerifiedDarfSichAbmelden() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/session/beenden")
+                        .cookie(new Cookie(COOKIE, pinVerifiedSitzung())))
+                .andExpect(status().isNoContent());
+    }
+
+    /** Gegenprobe: ohne Cookie bleibt es bei 401 - die Endpunkte sind nicht offen. */
+    @Test
+    void sitzungLesenOhneCookieLiefert401() throws Exception {
+        mockMvc.perform(get("/api/v1/auth/session/lesen"))
+                .andExpect(status().isUnauthorized());
+    }
+
     // ------------------------------------------------------------- Rollentrennung
 
     /**
@@ -325,11 +381,13 @@ class SecurityConfigTests {
     /**
      * Platzhalter-Endpunkte, damit sich "erlaubt" von "nicht gefunden" unterscheiden laesst.
      *
-     * <p><b>Nur noch fuer Pfade ohne echten Controller.</b> Mit den Abschnitten 6 und 7
-     * sind {@code /api/auth/pin}, {@code /api/auth/users} und {@code /api/auth/user} echte
+     * <p><b>Nur noch fuer Pfade ohne echten Controller.</b> Mit den Abschnitten 6 bis 10
+     * sind {@code /auth/pin}, {@code /auth/users}, {@code /auth/user},
+     * {@code /auth/gast/anmelden} und die drei {@code /auth/session/...}-Pfade echte
      * Endpunkte geworden; ihre Platzhalter mussten hier entfallen. Waeren beide vorhanden,
      * meldete Spring "Ambiguous mapping" und der Kontext startete gar nicht erst.
-     * {@code /api/{version}/auth/gast/anmelden} folgt in Abschnitt 8.
+     * Uebrig bleiben nur noch {@code /api/{version}/admin/test} und
+     * {@code /api/{version}/beliebig} - fuer sie gibt es bis S3 keinen Controller.
      *
      * <p>Auch die Platzhalter tragen das Versionssegment und ein {@code version}-Attribut.
      * Ohne beides pruefte der Test eine Filterchain gegen Pfade, die es so nicht gibt.
@@ -347,10 +405,6 @@ class SecurityConfigTests {
     @TestConfiguration(proxyBeanMethods = false)
     @RestController
     static class TestEndpunkte {
-
-        @PostMapping(value = "/api/{version}/auth/gast/anmelden", version = ApiVersionConfig.VERSION)
-        void alsGast() {
-        }
 
         @GetMapping(value = "/api/{version}/admin/test", version = ApiVersionConfig.VERSION)
         void adminbereich() {

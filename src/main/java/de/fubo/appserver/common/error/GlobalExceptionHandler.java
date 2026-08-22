@@ -2,9 +2,13 @@ package de.fubo.appserver.common.error;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.*;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -21,10 +25,31 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     private static final Logger LOG = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
-    /** Erwartete fachliche Fehler. */
+    /**
+     * Erwartete fachliche Fehler.
+     *
+     * <p>Rueckgabetyp ist {@link ResponseEntity} und nicht mehr nur {@link ProblemDetail}:
+     * Eine Restwartezeit gehoert zusaetzlich in den {@code Retry-After}-Header (RFC 9110,
+     * Abschnitt 10.2.3), und Header lassen sich nur ueber die {@code ResponseEntity}
+     * setzen. Der Koerper ist unveraendert dasselbe Problem-Detail.
+     */
     @ExceptionHandler(FachlicherFehler.class)
-    ProblemDetail behandle(FachlicherFehler e) {
-        return problem(e.getCode(), e.getMessage());
+    ResponseEntity<ProblemDetail> behandle(FachlicherFehler e) {
+        ProblemDetail pd = problem(e.getCode(), e.getMessage());
+
+        ResponseEntity.BodyBuilder antwort = ResponseEntity.status(e.getCode().getStatus());
+
+        Long wartesekunden = e.getWartesekunden();
+        if (wartesekunden != null) {
+            // Doppelt gefuehrt, und zwar mit Absicht: Der Header ist die genormte Form,
+            // die auch ein Zwischenspeicher oder eine Bibliothek auswertet; das Feld im
+            // Koerper erspart dem Frontend den Zugriff auf die Header, der bei einer
+            // Cross-Origin-Antwort ohne Access-Control-Expose-Headers gar nicht moeglich
+            // waere.
+            pd.setProperty("wartesekunden", wartesekunden);
+            antwort = antwort.header(HttpHeaders.RETRY_AFTER, Long.toString(wartesekunden));
+        }
+        return antwort.body(pd);
     }
 
     /**
@@ -60,6 +85,31 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         pd.setProperty("felder", felder);
 
         // code.getStatus() ist ein HttpStatus und damit ein HttpStatusCode.
+        return handleExceptionInternal(ex, pd, headers, code.getStatus(), request);
+    }
+
+    /**
+     * Unlesbarer oder unpassender Anfragekoerper - fehlerhaftes JSON, ein falscher
+     * Feldtyp oder ein unbekannter Aufzaehlungswert.
+     *
+     * <p>Ohne diese Ueberschreibung antwortete die Basisklasse zwar ebenfalls mit
+     * {@code 400}, aber ohne das Feld {@code code}. Das Frontend haette dann zwei
+     * Fehlerformate zu unterscheiden - genau das, was der einheitliche Vertrag
+     * (Abschnitt 10.2) vermeiden soll.
+     *
+     * <p><b>Die Ursache steht bewusst nicht in der Antwort.</b> Die Meldung von Jackson
+     * nennt Klassennamen und Feldpfade; das gehoert ins Log, nicht zum Aufrufer.
+     */
+    @Override
+    protected ResponseEntity<Object> handleHttpMessageNotReadable(
+            HttpMessageNotReadableException ex, HttpHeaders headers,
+            HttpStatusCode status, WebRequest request) {
+
+        LOG.debug("Anfragekoerper nicht lesbar", ex);
+
+        Fehlercode code = Fehlercode.EINGABE_UNGUELTIG;
+        ProblemDetail pd = problem(code, "Der Anfragekoerper ist unvollstaendig oder fehlerhaft.");
+
         return handleExceptionInternal(ex, pd, headers, code.getStatus(), request);
     }
 

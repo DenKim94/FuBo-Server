@@ -31,6 +31,16 @@ class SpielerRepositoryImpl implements SpielerRepositoryCustom {
      *
      * <p>{@code now()} ist die Datenbankuhr - dieselbe, gegen die auch die Sitzung geprueft
      * wird. Eine abweichende JVM-Uhr kann den Belegtstatus damit nicht verfaelschen.
+     *
+     * <p><b>{@code rolle <> 'ADMIN'} schliesst das Adminprofil aus</b> (Entscheidung des
+     * Haupt-Entwicklers vom 22.08.2026). Es ist ein technisches Konto und kein Mitspieler:
+     * Es nimmt weder an Terminen noch an der Teamgenerierung teil und hat deshalb in der
+     * Auswahlliste nichts zu suchen. Der Admin meldet sich ueber
+     * {@code POST /auth/admin/anmelden} mit seinem Passwort an, nicht ueber die Namenswahl.
+     *
+     * <p>Der Filter allein genuegt nicht: {@code NamenService#waehleName} nimmt eine Id
+     * entgegen und muss dieselbe Bedingung erneut pruefen. Sonst bliebe der Ausschluss reine
+     * Anzeige - wer die Id kennt, koennte das Profil weiterhin waehlen.
      */
     private static final String SQL_NAMENSLISTE = """
             SELECT s.id,
@@ -43,6 +53,7 @@ class SpielerRepositoryImpl implements SpielerRepositoryCustom {
                               AND se.absolut_gueltig_bis > now()) AS belegt
               FROM profil.spieler s
              WHERE s.aktiv
+               AND s.rolle <> 'ADMIN'
              ORDER BY s.name
             """;
 

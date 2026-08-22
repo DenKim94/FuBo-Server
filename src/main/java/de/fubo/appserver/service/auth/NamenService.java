@@ -2,6 +2,7 @@ package de.fubo.appserver.service.auth;
 
 import de.fubo.appserver.common.error.FachlicherFehler;
 import de.fubo.appserver.common.error.Fehlercode;
+import de.fubo.appserver.domain.auth.Rolle;
 import de.fubo.appserver.domain.profil.Spieler;
 import de.fubo.appserver.dto.profil.NameOption;
 import de.fubo.appserver.repository.auth.SessionRepository;
@@ -37,7 +38,7 @@ public class NamenService {
      * koennte. Das Frontend pollt diesen Endpunkt (A6), ein Push-Kanal ist nicht noetig.
      */
     @Transactional(readOnly = true)
-    public List<NameOption> namensliste() {
+    public List<NameOption> getNamensListe() {
         return spielerRepository.findeNamensliste().stream()
                 .map(eintrag -> new NameOption(eintrag.id(), eintrag.name(), eintrag.belegt()))
                 .toList();
@@ -62,19 +63,31 @@ public class NamenService {
      * dreissig Nutzern, die sich nacheinander anmelden, ist das Fenster praktisch
      * unerreichbar; die Folge waere ausserdem nur eine doppelte Anmeldung, kein Datenverlust.
      *
+     * <p><b>Das Adminprofil ist hier nicht waehlbar</b> (22.08.2026). Es ist ein technisches
+     * Konto und kein Mitspieler; der Admin meldet sich ueber
+     * {@code POST /auth/admin/anmelden} mit seinem Passwort an. Die Ablehnung erfolgt als
+     * {@code 404} und nicht als {@code 403}: Fuer den Aufrufer ist das Profil schlicht nicht
+     * vorhanden - es steht auch nicht in der Liste, aus der er gewaehlt hat. Ein eigener
+     * Statuscode wuerde nur verraten, dass es die Id gibt.
+     *
      * @param sessionId Id der aufrufenden Sitzung, aus dem Sicherheitskontext
      * @param spielerId Id des gewaehlten Profils
      * @return der neue Klartext-Token fuer das Cookie
-     * @throws FachlicherFehler {@code 404}, wenn das Profil fehlt oder inaktiv ist;
+     * @throws FachlicherFehler {@code 404}, wenn das Profil fehlt, inaktiv ist oder das
+     *                          Adminprofil ist;
      *                          {@code 409}, wenn der Name bereits belegt ist;
      *                          {@code 401}, wenn die Sitzung zwischenzeitlich ungueltig wurde
      */
     @Transactional
-    public String nameWaehlen(Long sessionId, Long spielerId) {
+    public String waehleName(Long sessionId, Long spielerId) {
+        // Dieselbe Bedingung wie in der Namensliste - und zwar bewusst noch einmal: Der
+        // Endpunkt nimmt eine Id entgegen, nicht einen Eintrag der Liste. Ohne die zweite
+        // Pruefung waere der Ausschluss des Adminprofils reine Anzeige.
         Spieler spieler = spielerRepository.findById(spielerId)
                 .filter(Spieler::isAktiv)
+                .filter(profil -> profil.getRolle() != Rolle.ADMIN)
                 .orElseThrow(() -> new FachlicherFehler(Fehlercode.INHALT_NICHT_GEFUNDEN,
-                        "Das gewaehlte Profil existiert nicht oder ist nicht aktiv."));
+                        "Das gewaehlte Profil existiert nicht oder steht nicht zur Auswahl."));
 
         if (sessionRepository.existiertAktiveSitzungFuer(spielerId)) {
             throw new FachlicherFehler(Fehlercode.NAME_BELEGT);

@@ -23,6 +23,25 @@ import java.util.Optional;
 /** Prueft das Session-Cookie und setzt den SecurityContext. Laeuft vor jedem Controller. */
 public class SessionAuthFilter extends OncePerRequestFilter {
 
+    /**
+     * Kennzeichnet einen Hintergrundaufruf, der das Leerlauf-Fenster <b>nicht</b>
+     * verlaengern soll (Abschnitt 10.8, entschieden am 22.08.2026).
+     *
+     * <p>Das Frontend pollt den Belegtstatus der Namen (A6). Ohne diesen Schalter
+     * verschoebe jeder dieser Aufrufe {@code gueltig_bis} nach hinten, und "15 Minuten
+     * Inaktivitaet" wuerde den offenen Browser-Tab messen statt den Nutzer.
+     *
+     * <p><b>Der Header ist eine Bitte, kein Sicherheitsmerkmal.</b> Er wird vom Client
+     * gesetzt und laesst sich nicht pruefen. Missbrauch schadet aber nur dem Absender: Wer
+     * ihn an jeden Aufruf haengt, laesst seine eigene Sitzung frueher ablaufen. Die
+     * umgekehrte Richtung - laenger gueltig als erlaubt - ist damit nicht erreichbar,
+     * weil {@code absolut_gueltig_bis} unabhaengig davon gilt.
+     *
+     * <p>Der Header muss in der CORS-Allowlist stehen ({@code CorsConfig}), sonst lehnt
+     * der Browser bereits den Preflight ab.
+     */
+    public static final String HEADER_KEIN_REFRESH = "X-FuBo-Kein-Refresh";
+
     private final SessionService sessionService;
     private final String cookieName;
 
@@ -35,11 +54,27 @@ public class SessionAuthFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain)
             throws ServletException, IOException {
 
+        boolean verlaengern = !istHintergrundaufruf(req);
+
         cookieLesen(req)
-                .flatMap(sessionService::pruefenUndVerlaengern)
+                .flatMap(token -> verlaengern
+                        ? sessionService.pruefenUndVerlaengern(token)
+                        : sessionService.pruefen(token))
                 .ifPresent(this::kontextSetzen);
 
         chain.doFilter(req, res);   // Der Filter lehnt NIE selbst ab.
+    }
+
+    /**
+     * Wertet {@link #HEADER_KEIN_REFRESH} aus. Nur der Wert {@code true} zaehlt; jede
+     * andere Angabe und ein fehlender Header bedeuten "normaler Aufruf".
+     *
+     * <p>Bewusst diese Richtung: Der Standardfall bleibt die Verlaengerung. Ein Tippfehler
+     * im Header fuehrt damit zum bisherigen Verhalten und nicht zu Sitzungen, die
+     * unerwartet ablaufen.
+     */
+    private static boolean istHintergrundaufruf(HttpServletRequest req) {
+        return "true".equalsIgnoreCase(req.getHeader(HEADER_KEIN_REFRESH));
     }
 
     /** Legt einen frischen SecurityContext an und traegt die Sitzung als Principal ein. */

@@ -17,5 +17,18 @@ public enum AuditAktion {
     PIN_FEHLVERSUCH,
 
     /** Der PIN-Endpunkt wurde fuer eine Adresse oder insgesamt gesperrt. */
-    PIN_GESPERRT
+    PIN_GESPERRT,
+
+    /** Anmeldeversuch am Adminzugang mit falschem Passwort. */
+    ADMIN_LOGIN_FEHLVERSUCH,
+
+    /**
+     * Erfolgreiche Anmeldung des Admins.
+     *
+     * <p>Anders als bei den Spielern wird der <i>Erfolg</i> hier protokolliert und nicht nur
+     * der Fehlversuch: Der Adminzugang ist der einzige mit erhoehten Rechten, und spaetere
+     * Adminaktionen (S3, S6) lassen sich nur dann einer konkreten Sitzung zuordnen, wenn
+     * deren Beginn im Protokoll steht.
+     */
+    ADMIN_ANGEMELDET
 }

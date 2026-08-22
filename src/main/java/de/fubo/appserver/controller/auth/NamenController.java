@@ -53,7 +53,7 @@ public class NamenController {
      */
     @GetMapping(value = "/users/lesen", version = ApiVersionConfig.VERSION)
     public List<NameOption> namensliste() {
-        return namenService.namensliste();
+        return namenService.getNamensListe();
     }
 
     /**
@@ -72,7 +72,7 @@ public class NamenController {
     public ResponseEntity<Void> nameWaehlen(@Valid @RequestBody NameAuswahlRequest anfrage,
                                             @AuthenticationPrincipal AktiveSitzung sitzung) {
 
-        String neuerToken = namenService.nameWaehlen(sitzung.id(), anfrage.spielerId());
+        String neuerToken = namenService.waehleName(sitzung.id(), anfrage.spielerId());
 
         return ResponseEntity.noContent()
                 .header(HttpHeaders.SET_COOKIE, sessionCookieFactory.setzen(neuerToken).toString())

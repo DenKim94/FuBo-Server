@@ -149,10 +149,19 @@ public class BruteForceService {
         return zaehlerJeIp.computeIfAbsent(clientIp, unbenutzt -> new Zaehler());
     }
 
-    /** Einheitliche Ablehnung mit Restwartezeit im Meldungstext. */
+    /**
+     * Einheitliche Ablehnung mit Restwartezeit.
+     *
+     * <p>Die Wartezeit steht sowohl im Meldungstext als auch als eigener Wert im Fehler.
+     * Der Text ist Anzeigetext und darf sich aendern; der Wert wird vom
+     * {@code GlobalExceptionHandler} in den {@code Retry-After}-Header und in das Feld
+     * {@code wartesekunden} des Problem-Details uebersetzt und ist damit der Teil des
+     * Vertrags, auf den sich das Frontend stuetzen darf.
+     */
     private static FachlicherFehler gesperrt(long restSekunden) {
         return new FachlicherFehler(Fehlercode.PIN_GESPERRT,
-                "Zu viele Fehlversuche. Bitte in %d Sekunden erneut versuchen.".formatted(restSekunden));
+                "Zu viele Fehlversuche. Bitte in %d Sekunden erneut versuchen.".formatted(restSekunden),
+                restSekunden);
     }
 
     /**

@@ -63,11 +63,27 @@ public class SecurityConfig {
                         .hasAnyRole("PIN_VERIFIED", "USER", "ADMIN", "GAST")
                         .requestMatchers(HttpMethod.POST, "/api/*/auth/user/waehlen").hasRole("PIN_VERIFIED")
                         .requestMatchers(HttpMethod.POST, "/api/*/auth/gast/anmelden").hasRole("PIN_VERIFIED")
+                        // Nicht zu verwechseln mit /api/*/admin/** weiter unten: Dieser
+                        // Endpunkt *verleiht* die Adminrolle, jener *setzt sie voraus*.
+                        .requestMatchers(HttpMethod.POST, "/api/*/auth/admin/anmelden").hasRole("PIN_VERIFIED")
 
-                        // 3) Adminbereich
+                        // 3) Sitzungsverwaltung: ab PIN_VERIFIED erlaubt, nicht erst ab
+                        //    PROFILE_AUTHENTICATED. Nach einem Seitenneuladen zwischen
+                        //    PIN-Eingabe und Namenswahl muss das Frontend erfahren, in
+                        //    welcher Stufe es steht - mit 403 liefe es zurueck zur
+                        //    PIN-Eingabe, obwohl die Sitzung gueltig ist. Und einen
+                        //    angefangenen Login abzubrechen muss ebenfalls moeglich sein.
+                        .requestMatchers(HttpMethod.GET,  "/api/*/auth/session/lesen")
+                        .hasAnyRole("PIN_VERIFIED", "USER", "ADMIN", "GAST")
+                        .requestMatchers(HttpMethod.POST, "/api/*/auth/session/erneuern")
+                        .hasAnyRole("PIN_VERIFIED", "USER", "ADMIN", "GAST")
+                        .requestMatchers(HttpMethod.POST, "/api/*/auth/session/beenden")
+                        .hasAnyRole("PIN_VERIFIED", "USER", "ADMIN", "GAST")
+
+                        // 4) Adminbereich
                         .requestMatchers("/api/*/admin/**").hasRole("ADMIN")
 
-                        // 4) Rest: angemeldet in Stufe PROFILE_AUTHENTICATED
+                        // 5) Rest: angemeldet in Stufe PROFILE_AUTHENTICATED
                         .anyRequest().hasAnyRole("USER", "ADMIN", "GAST"))
                 .exceptionHandling(e -> e
                         .authenticationEntryPoint((req, res, ex) ->

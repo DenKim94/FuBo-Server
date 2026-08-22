@@ -24,6 +24,16 @@ spring:
     create-schemas: true
     locations: classpath:db/migration   # Demodaten nur im Testprofil, siehe src/test/resources/application.yml
     validate-on-migrate: true
+    # Ein Dateiname, der nicht dem Schema V<nnn>__<beschreibung>.sql entspricht, wird von
+    # Flyway per Voreinstellung STILLSCHWEIGEND ignoriert - kein Fehler, kein INFO-Log.
+    # Genau so blieb V009_admin_profil.sql (ein Unterstrich) am 22.08.2026 unbemerkt wirkungslos.
+    # Mit dieser Einstellung bricht der Start stattdessen mit einer benennenden Meldung ab.
+    validate-migration-naming: true
+    # Bewusst KEINE Platzhalter (spring.flyway.placeholders). Sie machten die
+    # Datenbankmigration von der Anwendungskonfiguration abhaengig: Ein Wert ohne Default
+    # laesst schon die Aufloesung scheitern, sobald er aus der Umgebung entfernt wird - und
+    # genau das ist fuer ADMIN_PASSWORD und FUBO_INITIAL_PIN nach dem Erststart vorgesehen.
+    # Installationsabhaengige Daten entstehen im Bootstrap, nicht in einer Migration.
 
 server:
   forward-headers-strategy: NATIVE   # echte Client-IP hinter nginx (Brute-Force-Schutz)

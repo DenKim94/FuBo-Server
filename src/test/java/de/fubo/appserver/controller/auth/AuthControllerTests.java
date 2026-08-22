@@ -165,6 +165,38 @@ class AuthControllerTests {
                 .contains("Sekunden");
     }
 
+    /**
+     * Die Restwartezeit ist maschinenlesbar (offener Punkt 13, erledigt am 22.08.2026):
+     * als {@code Retry-After}-Header nach RFC 9110 und als Feld {@code wartesekunden} im
+     * Problem-Detail.
+     *
+     * <p><b>Warum beides:</b> Der Header ist die genormte Form, die auch ein
+     * Zwischenspeicher oder eine Bibliothek auswertet. Das Feld im Koerper erspart dem
+     * Frontend den Zugriff auf die Header - bei einer Cross-Origin-Antwort waere der ohne
+     * {@code Access-Control-Expose-Headers} gar nicht moeglich. Bisher stand die Wartezeit
+     * nur im deutschen Meldungstext, den das Frontend haette parsen muessen.
+     */
+    @Test
+    void dieSperreNenntDieRestwartezeitMaschinenlesbar() throws Exception {
+        String ip = "203.0.113.9";
+
+        for (int versuch = 1; versuch <= 5; versuch++) {
+            mockMvc.perform(pinAnfrage(FALSCHE_PIN, ip)).andExpect(status().isUnauthorized());
+        }
+
+        MvcResult ergebnis = mockMvc.perform(pinAnfrage(FALSCHE_PIN, ip))
+                .andExpect(status().isTooManyRequests())
+                .andReturn();
+
+        String retryAfter = ergebnis.getResponse().getHeader(HttpHeaders.RETRY_AFTER);
+        assertThat(retryAfter).isNotNull();
+        assertThat(Long.parseLong(retryAfter))
+                .as("Erste Sperrstufe: eine Minute, aufgerundet")
+                .isBetween(1L, 61L);
+
+        assertThat(ergebnis.getResponse().getContentAsString()).contains("\"wartesekunden\":");
+    }
+
     /** Die Sperre trifft nur die betroffene Adresse - sonst waere sie selbst der Angriff. */
     @Test
     void dieSperreTrifftNichtDieUebrigenNutzer() throws Exception {

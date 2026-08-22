@@ -39,3 +39,15 @@ fubo:
     aufbewahrung-tage: 90
   cors:
     allowed-origins: http://localhost:5173
+
+# Admin-Konto fuer den AdminBootstrap (Abschnitt 9). Ohne diese drei Werte braeche der
+# Start ab und kein einziger @SpringBootTest kaeme hoch - der Bootstrap laesst bewusst
+# keine unvollstaendige Konfiguration durch.
+#
+# "Beispielspieler 12" ist bewusst gewaehlt: Die Testklassen greifen ueber
+# "ORDER BY name LIMIT 1" bzw. "OFFSET 1" auf die ersten beiden Profile zu und erwarten
+# dort die Rolle USER. Der letzte Eintrag der Demodaten kollidiert damit nicht.
+# Die Adresse ist eine Beispieladresse nach RFC 2606 und existiert nicht.
+ADMIN_NAME: Beispielspieler 12
+ADMIN_EMAIL: admin@example.invalid
+ADMIN_PASSWORD: test-admin-passwort

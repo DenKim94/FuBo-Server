@@ -47,9 +47,20 @@ class MigrationTests {
         assertThat(gewicht).isEqualByComparingTo("0.30");
     }
 
-    /** Der partielle Unique-Index laesst nur einen einzigen Admin zu. */
+    /**
+     * Der partielle Unique-Index laesst nur einen einzigen Admin zu.
+     *
+     * <p><b>Warum die Rolle zuerst entzogen wird:</b> Seit Abschnitt 9 legt der
+     * {@code AdminBootstrap} beim Start des Testkontexts ein Admin-Konto an und hebt dabei
+     * ein Demoprofil auf die Rolle {@code ADMIN}. Ohne das {@code UPDATE} scheiterte
+     * bereits das erste {@code INSERT} - der Test wuerde dann zwar weiterhin gruen sein,
+     * aber die falsche Aussage pruefen. Die Aenderung wird mit der Test-Transaktion
+     * zurueckgerollt.
+     */
     @Test
     void zweiterAdminWirdAbgelehnt() {
+        jdbc.update("UPDATE profil.spieler SET rolle = 'USER' WHERE rolle = 'ADMIN'");
+
         jdbc.update("INSERT INTO profil.spieler (name, rolle) VALUES ('Testspieler A', 'ADMIN')");
 
         assertThatThrownBy(() ->

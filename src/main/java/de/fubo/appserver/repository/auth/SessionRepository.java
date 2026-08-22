@@ -63,6 +63,48 @@ public interface SessionRepository extends JpaRepository<Session, Long>, Session
                                       @Param("spielerId") Long spielerId,
                                       @Param("rolle") String rolle);
 
+    /**
+     * Setzt eine Sitzung auf {@code PROFILE_AUTHENTICATED} und traegt die Gastidentitaet
+     * ein. Wird in Abschnitt 8 (Gast-Login) verwendet.
+     *
+     * <p>Dieselbe Bedingung wie beim Namenswechsel: nur aus {@code PIN_VERIFIED} heraus und
+     * nur, solange die Sitzung nicht widerrufen ist. Damit kann sich eine bereits
+     * angemeldete Sitzung nicht zusaetzlich in eine Gastsitzung verwandeln.
+     *
+     * @return Anzahl geaenderter Zeilen
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = """
+            UPDATE profil.session
+               SET stage      = 'PROFILE_AUTHENTICATED',
+                   rolle      = 'GAST',
+                   gast_name  = :gastName,
+                   gast_stufe = :gastStufe
+             WHERE id = :id
+               AND stage = 'PIN_VERIFIED'
+               AND widerrufen_am IS NULL
+            """, nativeQuery = true)
+    int aufGastSetzen(@Param("id") Long id,
+                      @Param("gastName") String gastName,
+                      @Param("gastStufe") String gastStufe);
+
+    /**
+     * Prueft, ob ein Gastname bereits von einer aktiven Sitzung belegt ist.
+     *
+     * <p>Der Vergleich ist absichtlich unabhaengig von Gross- und Kleinschreibung: "Max"
+     * und "max" waeren in der Teilnehmerliste zwei Eintraege, die niemand auseinanderhaelt.
+     * Randleerzeichen entfernt bereits die Eingabepruefung am DTO.
+     */
+    @Query(value = """
+            SELECT EXISTS (SELECT 1
+                             FROM profil.session
+                            WHERE lower(gast_name) = lower(:gastName)
+                              AND widerrufen_am IS NULL
+                              AND gueltig_bis > now()
+                              AND absolut_gueltig_bis > now())
+            """, nativeQuery = true)
+    boolean existiertAktiveGastSitzungMit(@Param("gastName") String gastName);
+
     /** Widerruft eine einzelne Sitzung (Logout). */
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query(value = """

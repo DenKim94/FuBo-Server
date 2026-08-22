@@ -115,6 +115,35 @@ class NamenControllerTests {
         assertThat(antwort).doesNotContain((String) spieler.get("name"));
     }
 
+    /**
+     * Das Adminprofil ist ein technisches Konto und steht nicht zur Auswahl (22.08.2026).
+     * Der Admin meldet sich ueber {@code POST /auth/admin/anmelden} an.
+     */
+    @Test
+    void adminprofilStehtNichtInDerNamensliste() throws Exception {
+        String antwort = mockMvc.perform(get("/api/v1/auth/users/lesen")
+                        .cookie(new Cookie(COOKIE, pinVerifiedSitzung())))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(antwort).doesNotContain(adminName());
+    }
+
+    /**
+     * Der Ausschluss darf nicht nur Anzeige sein: Der Endpunkt nimmt eine Id entgegen, nicht
+     * einen Eintrag der Liste. Ohne die zweite Pruefung im Service koennte jemand, der die Id
+     * kennt, sich das Adminprofil trotzdem greifen - und damit {@code ROLE_ADMIN} ohne das
+     * Admin-Passwort erhalten.
+     */
+    @Test
+    void adminprofilKannNichtUeberSeineIdGewaehltWerden() throws Exception {
+        String antwort = mockMvc.perform(nameAuswahl(pinVerifiedSitzung(), adminSpielerId()))
+                .andExpect(status().isNotFound())
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(antwort).contains("\"code\":\"INHALT_NICHT_GEFUNDEN\"");
+    }
+
     // ------------------------------------------------------------------ Namensauswahl
 
     /**
@@ -219,6 +248,18 @@ class NamenControllerTests {
     private Long sitzungsIdZu(String token) {
         return jdbc.queryForObject("SELECT id FROM profil.session WHERE token_hash = ?",
                 Long.class, TokenGenerator.hash(token));
+    }
+
+    private Long adminSpielerId() {
+        return jdbc.queryForObject(
+                "SELECT spieler_id FROM profil.admin_konto WHERE id = 1", Long.class);
+    }
+
+    private String adminName() {
+        return jdbc.queryForObject(
+                "SELECT s.name FROM profil.spieler s"
+                        + " JOIN profil.admin_konto a ON a.spieler_id = s.id"
+                        + " WHERE a.id = 1", String.class);
     }
 
     private Map<String, Object> ersterAktiverSpieler() {
