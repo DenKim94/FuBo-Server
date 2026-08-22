@@ -1,0 +1,868 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "FuBo Server API",
+    "version": "1.0.0",
+    "summary": "Vertrag zwischen FuBo-Server und FuBo-Client.",
+    "description": "Maßgebliche Beschreibung der REST-Schnittstelle des FuBo-Servers.\n\n**Diese Datei ist die Quelle der Wahrheit für den Client-Track.** Server und Client liegen in getrennten Repositories; eine Vertragsänderung wird deshalb immer zuerst hier abgebildet und der Client anschließend nachgezogen.\n\n**Stand:** S2 (Auth und Session) vollständig. Profile, Termine, Teams und Ergebnisse folgen mit S3 bis S6 und stehen bewusst noch nicht hier – spekulative Endpunkte wären ein Vertrag über etwas, das es nicht gibt.\n\n### Versionierung\nJeder fachliche Endpunkt liegt unter `/api/{version}/<bereich>/<ressource>/<aktion>`. Die Version steht als Präfix an Segment-Index 1, die Aktion als eigenes Segment am Ende. Umgesetzt mit `ApiVersionConfigurer#usePathSegment` aus Spring Framework 7.\n\n- `/api/v1/...` und `/api/1/...` werden beide als Version 1 gelesen; nach außen wird durchgängig `v1` verwendet.\n- Eine unbekannte Version (`/api/v99/...`) liefert `400`.\n- Ein fehlendes Versionssegment liefert `404` – ohne das Segment passt der Pfad schlicht auf kein Mapping.\n\n### Authentifizierung\nOpakes Session-Cookie (`FUBO_SESSION`, `HttpOnly`, `Secure`, `SameSite=Lax`, kein Ablaufdatum). Das Frontend kann den Token weder lesen noch prüfen und muss das auch nicht: Die Validierung passiert ausschließlich serverseitig in der Filterchain. Alle Aufrufe erfolgen mit `credentials: 'include'`.\n\nDer Login ist zweistufig und wird serverseitig erzwungen:\n1. `PIN_VERIFIED` – zentrale PIN geprüft, Identität noch offen.\n2. `PROFILE_AUTHENTICATED` – erst hier existiert eine Rolle. Es führen drei Wege dorthin: Namensauswahl (`USER`), Gast-Login (`GAST`) und Admin-Login mit Passwort (`ADMIN`).\n\n**Das Adminprofil ist ein technisches Konto.** Es steht nicht in der Namensliste, nimmt an keinem Termin teil und wird nie in ein Team eingeteilt; seine Skillwerte stehen auf 0. Der Admin meldet sich deshalb über `POST /api/v1/auth/admin/anmelden` mit seinem Passwort an – die Namensauswahl lehnt das Adminprofil auch dann ab, wenn seine Id bekannt ist.\n\nBei jedem Stufenwechsel und bei jeder Erneuerung wird der Token rotiert (Schutz vor Session Fixation). Die `session.id` bleibt dabei erhalten.\n\n### Sitzungsdauer (Zwei-Timer-Modell)\n`gueltigBis` ist ein gleitendes Leerlauf-Fenster (Vorgabe 15 Minuten) und wandert bei jedem Aufruf nach hinten. `absolutGueltigBis` ist eine harte Obergrenze (Vorgabe 1 Stunde) und wird nie verschoben – auch nicht durch `/auth/session/erneuern`.\n\nHintergrundaufrufe (etwa das Pollen des Belegtstatus) sollen das Leerlauf-Fenster **nicht** verlängern und senden dazu `X-FuBo-Kein-Refresh: true`. Ohne diesen Header würde „15 Minuten Inaktivität\" den offenen Browser-Tab messen statt den Nutzer.\n\n### CORS\nFrontend und API liegen auf Subdomains derselben registrierbaren Domain (`app.<domain>` / `api.<domain>`). Der Server führt eine Allowlist mit `allowCredentials=true`; erlaubte Anfrageheader sind `Content-Type` und `X-FuBo-Kein-Refresh`, freigegebener Antwortheader ist `Retry-After`.\n\n### Datenschutz\nSkillbewertungen verlassen den Server nie in Richtung USER oder GAST (Anforderung A12). Kein Antwortobjekt dieser Beschreibung enthält Skillwerte; die Teamgenerierung läuft vollständig serverseitig.\n\n### Nicht enthalten\n`GET /actuator/health` bleibt bewusst unversioniert und ist kein Teil der fachlichen API. Der Endpunkt dient dem Container-Healthcheck und wird von nginx nach außen abgeschottet.",
+    "contact": {
+      "name": "FuBo-Server",
+      "url": "https://github.com/DenKim94/FuBo-Server"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8080",
+      "description": "Lokale Entwicklung (Profil dev, cookie-secure=false)"
+    },
+    {
+      "url": "https://api.{domain}",
+      "description": "Betrieb auf dem Raspberry Pi hinter nginx und Cloudflared",
+      "variables": {
+        "domain": {
+          "default": "example.org",
+          "description": "Registrierbare Domain; das Frontend liegt unter app.{domain}"
+        }
+      }
+    }
+  ],
+  "tags": [
+    {
+      "name": "Auth",
+      "description": "Erste Login-Stufe: zentrale PIN (A3)."
+    },
+    {
+      "name": "Identität",
+      "description": "Zweite Login-Stufe: Namensliste, Namensauswahl, Gast-Login (A4, A6, A8, A17)."
+    },
+    {
+      "name": "Admin",
+      "description": "Adminzugang über Passwort (A22) – die dritte Variante der zweiten Login-Stufe."
+    },
+    {
+      "name": "Sitzung",
+      "description": "Auskunft, Erneuerung und Abmeldung der laufenden Sitzung (A14)."
+    }
+  ],
+  "security": [
+    {
+      "sitzungsCookie": []
+    }
+  ],
+  "paths": {
+    "/api/v1/auth/pin/pruefen": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "operationId": "pinPruefen",
+        "summary": "Zentrale PIN prüfen und Sitzung eröffnen",
+        "description": "Erste Stufe des Logins. Bei Erfolg entsteht eine Sitzung in der Stufe `PIN_VERIFIED`; das Session-Cookie kommt im `Set-Cookie`-Header.\n\nDer Endpunkt ist der einzige ohne Sitzung erreichbare fachliche Endpunkt und deshalb gedrosselt (Vorgabe: 5 Fehlversuche je Adresse, 30 insgesamt, Fenster 15 Minuten, Sperrdauern 1/5/15 Minuten).\n\nZwei Feinheiten:\n- Der Fehlversuch, der die Sperre auslöst, wird weiterhin mit `401 PIN_FALSCH` beantwortet, nicht mit `429`. Die Sperre wirkt ab dem nächsten Aufruf – sonst verriete der Statuscode, an welcher Stelle die Zählung steht.\n- Liegt bereits ein gültiges Cookie vor, wird die alte Sitzung widerrufen. Ohne das bliebe ein belegter Name unnötig lange blockiert.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PinLoginRequest"
+              },
+              "examples": {
+                "standard": {
+                  "value": {
+                    "pin": "123456"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "PIN korrekt. Sitzung in Stufe `PIN_VERIFIED` angelegt.",
+            "headers": {
+              "Set-Cookie": {
+                "$ref": "#/components/headers/SetSessionCookie"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/EingabeUngueltig"
+          },
+          "401": {
+            "description": "PIN falsch. Kein Cookie in der Antwort.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Die PIN ist nicht korrekt.",
+                  "code": "PIN_FALSCH"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Der Endpunkt ist für diese Adresse oder insgesamt gesperrt.",
+            "headers": {
+              "Retry-After": {
+                "description": "Sekunden bis zum nächsten zulässigen Versuch (RFC 9110). Derselbe Wert steht als Feld `wartesekunden` im Antwortkörper – für den Fall, dass der Header ohne `Access-Control-Expose-Headers` nicht lesbar ist.",
+                "schema": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 1
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ProblemDetail"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "wartesekunden": {
+                          "type": "integer",
+                          "format": "int64",
+                          "minimum": 1,
+                          "description": "Restwartezeit in Sekunden."
+                        }
+                      },
+                      "required": [
+                        "wartesekunden"
+                      ]
+                    }
+                  ]
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Too Many Requests",
+                  "status": 429,
+                  "detail": "Zu viele Fehlversuche. Bitte in 58 Sekunden erneut versuchen.",
+                  "code": "PIN_GESPERRT",
+                  "wartesekunden": 58
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/users/lesen": {
+      "get": {
+        "tags": [
+          "Identität"
+        ],
+        "operationId": "namenslisteLesen",
+        "summary": "Namensliste mit Belegtstatus",
+        "description": "Liefert alle aktiven Profile, nach Namen sortiert, mit abgeleitetem Belegtstatus (A4, A6).\n\nDer Status wird nicht gespeichert, sondern aus den aktiven Sitzungen abgeleitet – er kann deshalb nicht veralten. Das Frontend pollt diesen Endpunkt; ein Push-Kanal ist nicht vorgesehen.\n\n**Das Adminprofil ist nicht enthalten** – es ist ein technisches Konto und kein Mitspieler.\n\nDer Endpunkt ist bereits ab `PIN_VERIFIED` erreichbar und damit die am weitesten geöffnete Stelle der API. Er enthält deshalb **niemals** Skillwerte (A12).",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/KeinRefresh"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Liste der wählbaren Namen.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/NameOption"
+                  }
+                },
+                "example": [
+                  {
+                    "id": 12,
+                    "name": "Beispielspieler 03",
+                    "belegt": false
+                  },
+                  {
+                    "id": 13,
+                    "name": "Beispielspieler 04",
+                    "belegt": true
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/user/waehlen": {
+      "post": {
+        "tags": [
+          "Identität"
+        ],
+        "operationId": "nameWaehlen",
+        "summary": "Profil wählen (zweite Login-Stufe)",
+        "description": "Hebt die Sitzung von `PIN_VERIFIED` auf `PROFILE_AUTHENTICATED` und trägt das gewählte Profil ein. Die Rolle wird dabei aus dem Profil übernommen.\n\nDie Antwort trägt ein **neues** Cookie: Beim Stufenwechsel wird der Token rotiert. Das Frontend muss dafür nichts tun, solange es mit `credentials: 'include'` aufruft.\n\nAusschließlich in der Stufe `PIN_VERIFIED` erlaubt – eine bereits angemeldete Sitzung erhält `403`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NameAuswahlRequest"
+              },
+              "examples": {
+                "standard": {
+                  "value": {
+                    "spielerId": 12
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Identität übernommen, Token rotiert.",
+            "headers": {
+              "Set-Cookie": {
+                "$ref": "#/components/headers/SetSessionCookie"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/EingabeUngueltig"
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
+          },
+          "404": {
+            "description": "Das Profil existiert nicht, ist nicht aktiv oder ist das Adminprofil (`INHALT_NICHT_GEFUNDEN`). Für den Aufrufer ist das dasselbe – keiner der drei Fälle steht in der Liste, aus der er gewählt hat. Die Prüfung wiederholt bewusst die Bedingung der Namensliste: Sonst könnte jemand, der die Id kennt, sich das Adminprofil greifen und damit `ROLE_ADMIN` ohne das Admin-Passwort erhalten.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "Das gewaehlte Profil existiert nicht oder ist nicht aktiv.",
+                  "code": "INHALT_NICHT_GEFUNDEN"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Der Name ist bereits von einer aktiven Sitzung belegt (`NAME_BELEGT`).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Conflict",
+                  "status": 409,
+                  "detail": "Dieser Name ist bereits angemeldet.",
+                  "code": "NAME_BELEGT"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/gast/anmelden": {
+      "post": {
+        "tags": [
+          "Identität"
+        ],
+        "operationId": "alsGastAnmelden",
+        "summary": "Als Gast anmelden (zweite Login-Stufe)",
+        "description": "Alternative zur Namensauswahl für Teilnehmer ohne Profil (A8, A17).\n\nDer Gast gibt einen temporären Namen und optional eine Selbsteinschätzung an. Fehlt die Stufe, gilt `MITTEL`. Die Skillwerte dazu stammen aus `profil.gast_vorlage` und werden erst bei der Teamgenerierung herangezogen.\n\nDie Zahl gleichzeitig angemeldeter Gäste ist über feste Plätze begrenzt (Vorgabe 4, admin-anpassbar). Sind alle belegt, wird die Anmeldung mit `409 KEIN_GAST_SLOT_FREI` abgelehnt und die Sitzung bleibt in `PIN_VERIFIED`.\n\nDer Anzeigename wird ohne den Zusatz „(Gast)\" gespeichert – das Anhängen ist Sache des Frontends (Anforderung 8).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GastAnmeldungRequest"
+              },
+              "examples": {
+                "mitSelbsteinschaetzung": {
+                  "summary": "Mit Selbsteinschätzung",
+                  "value": {
+                    "gastName": "Gast Anton",
+                    "stufe": "STARK"
+                  }
+                },
+                "ohneSelbsteinschaetzung": {
+                  "summary": "Ohne Angabe – es gilt MITTEL",
+                  "value": {
+                    "gastName": "Gast Berta"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Gastsitzung angelegt, Platz belegt, Token rotiert.",
+            "headers": {
+              "Set-Cookie": {
+                "$ref": "#/components/headers/SetSessionCookie"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/EingabeUngueltig"
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
+          },
+          "409": {
+            "description": "Der Name ist bereits vergeben (`NAME_BELEGT`) oder alle Gastplätze sind belegt (`KEIN_GAST_SLOT_FREI`).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                },
+                "examples": {
+                  "keinPlatzFrei": {
+                    "value": {
+                      "type": "about:blank",
+                      "title": "Conflict",
+                      "status": 409,
+                      "detail": "Es sind bereits alle Gastplätze belegt.",
+                      "code": "KEIN_GAST_SLOT_FREI"
+                    }
+                  },
+                  "nameVergeben": {
+                    "value": {
+                      "type": "about:blank",
+                      "title": "Conflict",
+                      "status": 409,
+                      "detail": "Dieser Name ist bereits vergeben. Bitte einen anderen waehlen.",
+                      "code": "NAME_BELEGT"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/admin/anmelden": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "operationId": "adminAnmelden",
+        "summary": "Als Admin anmelden (zweite Login-Stufe)",
+        "description": "Prüft das Admin-Passwort und hebt die Sitzung auf `PROFILE_AUTHENTICATED` mit der Rolle `ADMIN`. Eingetragen wird das Profil aus `admin_konto.spieler_id`.\n\n**Auch der Admin braucht zuerst die zentrale PIN.** Der Endpunkt ist ausschliesslich in der Stufe `PIN_VERIFIED` erreichbar – die PIN grenzt den Kreis der Zugreifenden ein, das Passwort die Rechte innerhalb dieses Kreises.\n\nDie Antwort trägt ein **neues** Cookie: Beim Stufenwechsel wird der Token rotiert.\n\n**Nicht zu verwechseln mit `/api/v1/admin/…`** (ab S3): Jener Bereich *setzt* `ROLE_ADMIN` voraus, dieser Endpunkt *verleiht* sie.\n\n**Zur Drosselung:** Es ist derselbe Zähler wie am PIN-Endpunkt – wer fünf Admin-Passwörter rät, soll anschliessend auch keine PINs mehr durchprobieren können. Sichtbare Folge: Die Ablehnung trägt den Code `PIN_GESPERRT`, obwohl sie hier auf ein Passwort antwortet. Das ist die ehrliche Bezeichnung derselben Sperre.\n\n**Eine bereits laufende Adminsitzung blockiert nicht.** Anders als bei der Namensauswahl gibt es keine Belegtprüfung: Es existiert nur ein Admin, und ihn nach einem Browserabsturz bis zum Ablauf der Sitzung auszusperren wäre ein Schaden ohne Nutzen.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminLoginRequest"
+              },
+              "examples": {
+                "standard": {
+                  "value": {
+                    "passwort": "geheim"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Passwort korrekt. Sitzung trägt jetzt die Rolle `ADMIN`, Token rotiert.",
+            "headers": {
+              "Set-Cookie": {
+                "$ref": "#/components/headers/SetSessionCookie"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/EingabeUngueltig"
+          },
+          "401": {
+            "description": "Passwort falsch (`ADMIN_PASSWORT_FALSCH`) oder keine gültige Sitzung (`SESSION_UNGUELTIG`). Kein Cookie in der Antwort.\n\nDass sich beide Fälle am Code unterscheiden lassen, ist unkritisch: Wer hier ankommt, hat die zentrale PIN bereits bestanden.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Das Admin-Passwort ist nicht korrekt.",
+                  "code": "ADMIN_PASSWORT_FALSCH"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
+          },
+          "429": {
+            "description": "Gesperrt – derselbe Zähler wie am PIN-Endpunkt, deshalb der Code `PIN_GESPERRT`. `Retry-After` und `wartesekunden` wie dort.",
+            "headers": {
+              "Retry-After": {
+                "description": "Sekunden bis zum nächsten zulässigen Versuch (RFC 9110).",
+                "schema": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 1
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/session/lesen": {
+      "get": {
+        "tags": [
+          "Sitzung"
+        ],
+        "operationId": "sitzungLesen",
+        "summary": "Zustand der eigenen Sitzung",
+        "description": "Der „Wer bin ich\"-Endpunkt. Er stellt den Zustand nach jedem Seitenneuladen wieder her – die Anwendung im Browser weiß nach `F5` nichts mehr und kann den Token nicht lesen.\n\nDas ist der Unterschied zum verbreiteten Muster „JWT aus dem `localStorage` dekodieren\": Die Auskunft kommt vom Server und stimmt deshalb. Es gibt im Frontend keine Stelle, an der Rolle oder Ablaufzeit aus einem Token gelesen werden.\n\nBereits ab `PIN_VERIFIED` erreichbar: Lädt jemand die Seite zwischen PIN-Eingabe und Namenswahl neu, muss das Frontend erfahren, dass es die Namensauswahl anzeigen soll und nicht erneut die PIN-Eingabe.\n\nWird der Endpunkt für einen Countdown zyklisch abgerufen, gehört `X-FuBo-Kein-Refresh: true` dazu – sonst hält allein die Abfrage der Restlaufzeit die Sitzung am Leben.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/KeinRefresh"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Auskunft über die laufende Sitzung.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SitzungInfo"
+                },
+                "examples": {
+                  "angemeldeterSpieler": {
+                    "summary": "Zweite Stufe, Rolle USER",
+                    "value": {
+                      "stage": "PROFILE_AUTHENTICATED",
+                      "rolle": "USER",
+                      "anzeigeName": "Beispielspieler 03",
+                      "gueltigBis": "2026-08-22T16:12:00Z",
+                      "absolutGueltigBis": "2026-08-22T17:00:00Z"
+                    }
+                  },
+                  "nurPinGeprueft": {
+                    "summary": "Erste Stufe – Identität noch offen",
+                    "value": {
+                      "stage": "PIN_VERIFIED",
+                      "rolle": null,
+                      "anzeigeName": null,
+                      "gueltigBis": "2026-08-22T16:12:00Z",
+                      "absolutGueltigBis": "2026-08-22T17:00:00Z"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/session/erneuern": {
+      "post": {
+        "tags": [
+          "Sitzung"
+        ],
+        "operationId": "sitzungErneuern",
+        "summary": "Sitzung ausdrücklich verlängern",
+        "description": "Verschiebt das Leerlauf-Fenster nach hinten und tauscht dabei den Token aus.\n\n**Die harte Obergrenze wandert nicht mit.** `absolutGueltigBis` bleibt unverändert; eine Sitzung lässt sich durch wiederholtes Erneuern also nicht endlos am Leben halten. Genau dafür existiert der zweite Timer.\n\nDer Aufruf darf `X-FuBo-Kein-Refresh` nicht tragen – er würde genau das verhindern, worum es hier geht.",
+        "responses": {
+          "204": {
+            "description": "Sitzung verlängert, Token rotiert.",
+            "headers": {
+              "Set-Cookie": {
+                "$ref": "#/components/headers/SetSessionCookie"
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/session/beenden": {
+      "post": {
+        "tags": [
+          "Sitzung"
+        ],
+        "operationId": "sitzungBeenden",
+        "summary": "Abmelden",
+        "description": "Widerruft die Sitzung serverseitig, gibt einen belegten Gastplatz frei und löscht das Cookie.\n\n**Der Widerruf ist der wirksame Teil.** Selbst wenn der Browser das Cookie behielte, wäre der Token sofort wertlos – genau diese sofortige Widerrufbarkeit ist der Grund für den serverseitig gespeicherten Token statt eines JWT.\n\nAuch in der Stufe `PIN_VERIFIED` erlaubt: Einen angefangenen Login abzubrechen muss möglich sein.",
+        "responses": {
+          "204": {
+            "description": "Sitzung widerrufen, Cookie gelöscht.",
+            "headers": {
+              "Set-Cookie": {
+                "description": "Löscht das Session-Cookie: gleicher Name und Pfad, leerer Wert, `Max-Age=0`.",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "FUBO_SESSION=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Secure; HttpOnly; SameSite=Lax"
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sitzungsCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "FUBO_SESSION",
+        "description": "Opaker, serverseitig gespeicherter Token (A14). In der Datenbank steht nur sein SHA-256-Hash. Der Browser sendet das Cookie automatisch, sofern der Aufruf mit `credentials: 'include'` erfolgt. Das Cookie ist `HttpOnly` und für Skripte im Frontend nicht lesbar – die Angabe hier beschreibt den Transportweg, nicht etwas, das der Client selbst setzen könnte."
+      }
+    },
+    "parameters": {
+      "KeinRefresh": {
+        "name": "X-FuBo-Kein-Refresh",
+        "in": "header",
+        "required": false,
+        "description": "Mit dem Wert `true` gilt der Aufruf als Hintergrundaufruf: Die Sitzung wird geprüft, das Leerlauf-Fenster aber **nicht** verlängert und `letzte_aktivitaet_am` nicht fortgeschrieben.\n\nGedacht für zyklische Abrufe – allen voran das Pollen des Belegtstatus. Ohne den Header liefe das gleitende Fenster nie ab, solange ein Browser-Tab offen ist.\n\nJeder andere Wert und ein fehlender Header bedeuten „normaler Aufruf\". Die Richtung ist bewusst so gewählt: Ein Tippfehler führt zum bisherigen Verhalten und nicht zu Sitzungen, die unerwartet ablaufen.\n\nDer Header ist eine Bitte, kein Sicherheitsmerkmal – Missbrauch schadet nur dem Absender, der seine eigene Sitzung früher ablaufen lässt.",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "true"
+          ]
+        }
+      }
+    },
+    "headers": {
+      "SetSessionCookie": {
+        "description": "Setzt das Session-Cookie. Ohne `Max-Age` und ohne `Expires` – es ist ein Sitzungscookie; maßgeblich sind allein die Zeitstempel in der Datenbank. `Secure` entfällt in der lokalen Entwicklung (Profil `dev`), weil ein Secure-Cookie über `http://` verworfen würde.",
+        "schema": {
+          "type": "string"
+        },
+        "example": "FUBO_SESSION=Zm9vYmFyLW9wYWtlci10b2tlbi13ZXJ0; Path=/; Secure; HttpOnly; SameSite=Lax"
+      }
+    },
+    "responses": {
+      "EingabeUngueltig": {
+        "description": "Der Anfragekörper ist ungültig (Bean Validation) oder nicht lesbar. Bei Feldfehlern nennt `felder` die betroffenen Felder.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "felder": {
+                      "type": "object",
+                      "description": "Feldname zu Meldung. Fehlt, wenn der Körper als Ganzes unlesbar war.",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "example": {
+              "type": "about:blank",
+              "title": "Bad Request",
+              "status": 400,
+              "detail": "Ungültige Eingabedaten.",
+              "code": "EINGABE_UNGUELTIG",
+              "felder": {
+                "pin": "Die PIN darf nicht leer sein."
+              }
+            }
+          }
+        }
+      },
+      "SitzungUngueltig": {
+        "description": "Keine, abgelaufene oder widerrufene Sitzung. Das Frontend leert seinen Zwischenspeicher und zeigt den Login.\n\nDie Antwort trägt bewusst **keinen** `WWW-Authenticate`-Header (sonst öffnete der Browser einen Passwortdialog) und **keinen** `Location`-Header (sonst käme eine Weiterleitung statt eines auswertbaren Statuscodes).",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetail"
+            },
+            "example": {
+              "type": "about:blank",
+              "title": "Unauthorized",
+              "status": 401,
+              "detail": "Die Sitzung ist abgelaufen.",
+              "code": "SESSION_UNGUELTIG"
+            }
+          }
+        }
+      },
+      "KeineBerechtigung": {
+        "description": "Angemeldet, aber in der falschen Stufe oder Rolle.\n\n**Die Unterscheidung zu `401` ist nicht kosmetisch:** Eine Weiterleitung zum Login wäre hier falsch – der Nutzer ist angemeldet und liefe in eine Schleife. Häufigster Fall: Eine Sitzung in `PIN_VERIFIED` ruft einen Endpunkt auf, der `PROFILE_AUTHENTICATED` verlangt.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetail"
+            },
+            "example": {
+              "type": "about:blank",
+              "title": "Forbidden",
+              "status": 403,
+              "detail": "Für diese Aktion fehlt die Berechtigung.",
+              "code": "KEINE_BERECHTIGUNG"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ProblemDetail": {
+        "type": "object",
+        "description": "Einheitliches Fehlerformat nach RFC 9457, erzeugt von einem `@RestControllerAdvice`.\n\n**Maßgeblich ist `code`, nicht `detail`.** Der Meldungstext ist Anzeigetext und darf sich ohne Vertragsänderung ändern; Programmlogik im Frontend stützt sich ausschließlich auf `code` und den Statuscode.",
+        "properties": {
+          "type": {
+            "type": "string",
+            "format": "uri",
+            "default": "about:blank"
+          },
+          "title": {
+            "type": "string",
+            "description": "Standardbezeichnung des Statuscodes, englisch."
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "detail": {
+            "type": "string",
+            "description": "Deutschsprachiger Anzeigetext."
+          },
+          "instance": {
+            "type": "string",
+            "format": "uri"
+          },
+          "code": {
+            "$ref": "#/components/schemas/Fehlercode"
+          }
+        },
+        "required": [
+          "status",
+          "code",
+          "detail"
+        ]
+      },
+      "Fehlercode": {
+        "type": "string",
+        "description": "Maschinenlesbarer Fehlercode. Die Liste wächst mit den Meilensteinen; ein unbekannter Wert ist vom Frontend wie ein allgemeiner Fehler zu behandeln.",
+        "enum": [
+          "PIN_FALSCH",
+          "PIN_GESPERRT",
+          "ADMIN_PASSWORT_FALSCH",
+          "SESSION_UNGUELTIG",
+          "KEINE_BERECHTIGUNG",
+          "NAME_BELEGT",
+          "KEIN_GAST_SLOT_FREI",
+          "EINGABE_UNGUELTIG",
+          "INHALT_NICHT_GEFUNDEN",
+          "INTERNER_FEHLER"
+        ]
+      },
+      "Stage": {
+        "type": "string",
+        "description": "Stufe des zweistufigen Logins. Wird serverseitig erzwungen.",
+        "enum": [
+          "PIN_VERIFIED",
+          "PROFILE_AUTHENTICATED"
+        ]
+      },
+      "Rolle": {
+        "type": "string",
+        "description": "Rolle der angemeldeten Identität. In der Stufe `PIN_VERIFIED` noch nicht gesetzt.\n\nDass das Frontend die Rolle kennt, ist unkritisch: Sie steuert nur, was gerendert wird. Ein Routen-Schutz im Browser ist Bequemlichkeit, keine Sicherheit – die zugehörigen Aufrufe beantwortet der Server mit `403`.",
+        "enum": [
+          "ADMIN",
+          "USER",
+          "GAST"
+        ]
+      },
+      "GastStufe": {
+        "type": "string",
+        "description": "Selbsteinschätzung eines Gastes (A17). Bestimmt, welche Werte aus der Gast-Vorlage bei der Teamgenerierung herangezogen werden.",
+        "enum": [
+          "STARK",
+          "MITTEL",
+          "SCHWACH"
+        ]
+      },
+      "PinLoginRequest": {
+        "type": "object",
+        "properties": {
+          "pin": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 72,
+            "description": "Klartext der zentralen PIN.\n\nEine **Mindest**länge steht bewusst nicht im Vertrag – sie wäre eine Auskunft über das Format der echten PIN. Die Obergrenze ist keine fachliche Vorgabe, sondern schützt vor unnötig teuren Hash-Berechnungen."
+          }
+        },
+        "required": [
+          "pin"
+        ]
+      },
+      "NameAuswahlRequest": {
+        "type": "object",
+        "properties": {
+          "spielerId": {
+            "type": "integer",
+            "format": "int64",
+            "exclusiveMinimum": 0,
+            "description": "Id des gewählten Profils aus der Namensliste.\n\nÜbertragen wird die Id und nicht der Name: Der Name ist zwar eindeutig, ändert sich aber über das Admin-CRUD (S3). Eine Auswahl über die Id bleibt davon unberührt."
+          }
+        },
+        "required": [
+          "spielerId"
+        ]
+      },
+      "AdminLoginRequest": {
+        "type": "object",
+        "properties": {
+          "passwort": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 72,
+            "description": "Klartext des Admin-Passworts.\n\nEs wird ausschliesslich das Passwort übertragen, keine Kennung: Es gibt genau einen Admin, ein Benutzername wäre ein Feld ohne Auswahl.\n\nEine **Mindest**länge steht bewusst nicht im Vertrag – sie wäre eine Auskunft über das Format des echten Passworts. Die Obergrenze schützt vor unnötig teuren BCrypt-Berechnungen."
+          }
+        },
+        "required": [
+          "passwort"
+        ]
+      },
+      "GastAnmeldungRequest": {
+        "type": "object",
+        "properties": {
+          "gastName": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 40,
+            "description": "Temporärer Anzeigename. Randleerzeichen werden entfernt. Der Name darf weder von einer aktiven Gastsitzung noch von einem angelegten Profil belegt sein – der Vergleich ignoriert Groß- und Kleinschreibung.\n\nOhne den Zusatz „(Gast)\" senden; das Anhängen ist Sache des Frontends."
+          },
+          "stufe": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/GastStufe"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Selbsteinschätzung. Fehlt der Wert oder ist er `null`, gilt `MITTEL`."
+          }
+        },
+        "required": [
+          "gastName"
+        ]
+      },
+      "NameOption": {
+        "type": "object",
+        "description": "Ein Eintrag der Namensliste. **Enthält keine Skillwerte** (A12).",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Wird bei der Namensauswahl unverändert zurückgesendet."
+          },
+          "name": {
+            "type": "string"
+          },
+          "belegt": {
+            "type": "boolean",
+            "description": "`true`, wenn zu diesem Profil eine aktive Sitzung besteht. Der Wert ist abgeleitet und nicht gespeichert; er kann deshalb nicht veralten."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "belegt"
+        ]
+      },
+      "SitzungInfo": {
+        "type": "object",
+        "description": "Zustand der eigenen Sitzung.\n\n**Was bewusst nicht enthalten ist:** keine Skillwerte, keine interne Profil-Id, kein Token und keine Selbsteinschätzung eines Gastes.",
+        "properties": {
+          "stage": {
+            "$ref": "#/components/schemas/Stage"
+          },
+          "rolle": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Rolle"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`null` in der Stufe `PIN_VERIFIED`."
+          },
+          "anzeigeName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Profilname, Gastname oder `null` in der Stufe `PIN_VERIFIED`."
+          },
+          "gueltigBis": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Ende des gleitenden Leerlauf-Fensters. Grundlage für Countdown und Schaltfläche „Sitzung verlängern\".\n\nDer Countdown ist reine Darstellung: Geht die Uhr im Browser falsch, ändert das nichts – der Server prüft beide Zeitpunkte bei jedem Aufruf selbst."
+          },
+          "absolutGueltigBis": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Harte Obergrenze. Wird nie verschoben, auch nicht durch `/auth/session/erneuern`. Nähert sich der Countdown diesem Zeitpunkt, hilft ein „Verlängern\" nicht mehr weiter."
+          }
+        },
+        "required": [
+          "stage",
+          "gueltigBis",
+          "absolutGueltigBis"
+        ]
+      }
+    }
+  }
+}
