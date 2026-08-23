@@ -202,6 +202,25 @@ Identifikation über den hinterlegten Namen. Rollen: ADMIN, USER, GAST.
      PIN vierstellig ist.** Das Format gilt dem *Setzen* über `/admin/pin/aendern`;
      `/auth/pin/pruefen` schreibt der Eingabe weiterhin kein Format vor, damit ein abweichender
      Bestandswert aus `FUBO_INITIAL_PIN` eingebbar bleibt.
+- **Spielerverwaltung durch den Admin (verbindlich ab S2b, 23.08.2026).** Vier Regeln:
+  1. **Ein neues Profil bekommt vollständige Skillwerte, nie Nullen.** Fehlen Angaben ganz oder
+     teilweise, gelten die Vorgaben der Stufe `MITTEL` aus `profil.gast_vorlage`. Nullen sind dem
+     Adminprofil vorbehalten – das ist ein technisches Konto und wird nie eingeteilt; ein
+     Spielerprofil mit lauter Nullen bekäme dagegen ein Team ohne jede Stärke, ohne dass jemand
+     den Grund sähe.
+  2. **Skillwerte werden gegen `profil.skill_kategorie` geprüft, bevor sie geschrieben werden.**
+     Der Trigger `pruefe_skill_wertebereich` bleibt die letzte Instanz, brächte aber einen `500`
+     statt einer Meldung, die Kategorie und Wertebereich nennt. Die Kategorien kommen aus der
+     Datenbank, nie aus einer Liste im Code – auch der Torwart-Bereich (0 bis 3) ist kein
+     Sonderfall im Code.
+  3. **Löschen nur, solange nichts darauf verweist.** Offene Sitzungen räumt der Vorgang selbst ab
+     – sie sind flüchtig und gehören der Anwendung. Belege (Teilnahmen, Terminserien,
+     Generierungsläufe, Kontingente, Ergebnisse, Audit-Log) verhindern das Löschen und führen zu
+     `409 PROFIL_IN_VERWENDUNG`; dann ist Sperren der richtige Weg. Ein Beleg darf nicht
+     verschwinden, weil jemand ein Profil aufräumt.
+  4. **Sperren widerruft die Sitzungen des Profils sofort**, und **das Adminprofil ist gegen
+     Löschen wie Sperren geschützt** (`409 PROFIL_GESCHUETZT`) – sonst spärrte sich der Admin mit
+     einem einzigen Aufruf selbst aus. Geprüft wird über die Rolle, nicht über die Id.
 - **Externe Zugänge werden über `fubo.*` gebunden und beim Start geprüft (ab S2b).** Der SMTP-Zugang
   steht unter `fubo.mail.*`, und die `JavaMailSender`-Bean entsteht in `common/config/MailConfig`.
   Grund: Spring Boots `Binder` reicht einen unauflösbaren Platzhalter **wörtlich** durch – über
