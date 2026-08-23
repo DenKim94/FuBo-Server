@@ -10,6 +10,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
+
 /**
  * Anmeldung des Admins ueber das Passwort aus {@code profil.admin_konto} (A22).
  *
@@ -100,6 +102,44 @@ public class AdminService {
         }
 
         return sessionService.rotieren(sessionId);
+    }
+
+    /**
+     * Setzt ein neues Admin-Passwort (S2b).
+     *
+     * <p>Wird von zwei Wegen aufgerufen: vom Reset per Bestaetigungs-PIN und von der
+     * Aenderung im angemeldeten Zustand. Die Pruefung, <i>ob</i> geaendert werden darf,
+     * liegt beim Aufrufer - hier steht nur, <i>wie</i>.
+     *
+     * <p><b>Der Aufrufer ist dafuer zustaendig, anschliessend die Sitzungen des Admins zu
+     * widerrufen</b> ({@code SessionService#widerrufenFuerSpieler}). Ohne das bliebe eine
+     * uebernommene Sitzung nach einem Reset weiter gueltig - genau der Fall, gegen den der
+     * Reset gedacht ist.
+     *
+     * <p>{@code passwort_geaendert_am} wird ausdruecklich gesetzt und nicht dem
+     * Spaltendefault ueberlassen: Der Default gilt nur beim {@code INSERT}.
+     *
+     * @param neuesPasswort Klartext; die Laengengrenzen prueft die Bean Validation am DTO
+     */
+    @Transactional
+    public void passwortSetzen(String neuesPasswort) {
+        AdminKonto konto = konto();
+        konto.setPasswortHash(passwortEncoder.encode(neuesPasswort));
+        konto.setPasswortGeaendertAm(OffsetDateTime.now());
+
+        adminKontoRepository.save(konto);
+    }
+
+    /**
+     * Liefert die hinterlegte E-Mail-Adresse des Admins - die Zieladresse der
+     * Bestaetigungs-PIN beim Passwort-Reset (S2b).
+     *
+     * <p>Die Adresse wird bewusst <b>nicht</b> nach aussen gegeben: Der Reset-Endpunkt
+     * antwortet mit {@code 204} und verraet weder Adresse noch PIN.
+     */
+    @Transactional(readOnly = true)
+    public String email() {
+        return konto().getEmail();
     }
 
     /** Profil-Id des Admins - fuer den Audit-Eintrag der Anmeldung. */

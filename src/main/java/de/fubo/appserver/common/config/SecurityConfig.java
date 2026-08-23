@@ -67,6 +67,18 @@ public class SecurityConfig {
                         // Endpunkt *verleiht* die Adminrolle, jener *setzt sie voraus*.
                         .requestMatchers(HttpMethod.POST, "/api/*/auth/admin/anmelden").hasRole("PIN_VERIFIED")
 
+                        // Passwort-Reset (S2b): ebenfalls nur in der Stufe PIN_VERIFIED.
+                        // Der Endpunkt kann NICHT unter /api/*/admin/** liegen, obwohl es
+                        // um das Adminpasswort geht - wer es vergessen hat, traegt die
+                        // Rolle ADMIN gerade nicht. Zugleich liegt er bewusst nicht offen:
+                        // Er verschickt E-Mails, und die zentrale PIN ist der aeussere Zaun
+                        // aus A1. Preis: Wer Passwort UND zentrale PIN vergisst, braucht
+                        // die Datenbank.
+                        .requestMatchers(HttpMethod.POST, "/api/*/auth/passwort/zuruecksetzen")
+                        .hasRole("PIN_VERIFIED")
+                        .requestMatchers(HttpMethod.POST, "/api/*/auth/passwort/bestaetigen")
+                        .hasRole("PIN_VERIFIED")
+
                         // 3) Sitzungsverwaltung: ab PIN_VERIFIED erlaubt, nicht erst ab
                         //    PROFILE_AUTHENTICATED. Nach einem Seitenneuladen zwischen
                         //    PIN-Eingabe und Namenswahl muss das Frontend erfahren, in
