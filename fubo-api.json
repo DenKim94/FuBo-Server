@@ -4,7 +4,7 @@
     "title": "FuBo Server API",
     "version": "1.0.0",
     "summary": "Vertrag zwischen FuBo-Server und FuBo-Client.",
-    "description": "Maßgebliche Beschreibung der REST-Schnittstelle des FuBo-Servers.\n\n**Diese Datei ist die Quelle der Wahrheit für den Client-Track.** Server und Client liegen in getrennten Repositories; eine Vertragsänderung wird deshalb immer zuerst hier abgebildet und der Client anschließend nachgezogen.\n\n**Stand:** S2 (Auth und Session) und S2b (Zugangsdatenpflege: Passwort-Reset per E-Mail, Passwortänderung im angemeldeten Zustand, Wechsel der zentralen PIN) vollständig. Profile, Termine, Teams und Ergebnisse folgen mit S3 bis S6 und stehen bewusst noch nicht hier – spekulative Endpunkte wären ein Vertrag über etwas, das es nicht gibt.\n\n### Versionierung\nJeder fachliche Endpunkt liegt unter `/api/{version}/<bereich>/<ressource>/<aktion>`. Die Version steht als Präfix an Segment-Index 1, die Aktion als eigenes Segment am Ende. Umgesetzt mit `ApiVersionConfigurer#usePathSegment` aus Spring Framework 7.\n\n- `/api/v1/...` und `/api/1/...` werden beide als Version 1 gelesen; nach außen wird durchgängig `v1` verwendet.\n- Eine unbekannte Version (`/api/v99/...`) liefert `400`.\n- Ein fehlendes Versionssegment liefert `404` – ohne das Segment passt der Pfad schlicht auf kein Mapping.\n\n### Authentifizierung\nOpakes Session-Cookie (`FUBO_SESSION`, `HttpOnly`, `Secure`, `SameSite=Lax`, kein Ablaufdatum). Das Frontend kann den Token weder lesen noch prüfen und muss das auch nicht: Die Validierung passiert ausschließlich serverseitig in der Filterchain. Alle Aufrufe erfolgen mit `credentials: 'include'`.\n\n**Die zentrale PIN besteht aus vier Ziffern.** Das Eingabefeld im Frontend darf darauf ausgelegt werden. `POST /auth/pin/pruefen` schreibt der Eingabe trotzdem **kein** Format vor – ein abweichender Bestandswert aus der Erstkonfiguration muss eingebbar bleiben, und eine Mindestlänge im Vertrag wäre eine Auskunft über das Format der echten PIN. Verbindlich ist das Format nur beim *Setzen* über `POST /admin/pin/aendern`.\n\nDer Login ist zweistufig und wird serverseitig erzwungen:\n1. `PIN_VERIFIED` – zentrale PIN geprüft, Identität noch offen.\n2. `PROFILE_AUTHENTICATED` – erst hier existiert eine Rolle. Es führen drei Wege dorthin: Namensauswahl (`USER`), Gast-Login (`GAST`) und Admin-Login mit Passwort (`ADMIN`).\n\n**Das Adminprofil ist ein technisches Konto.** Es steht nicht in der Namensliste, nimmt an keinem Termin teil und wird nie in ein Team eingeteilt; seine Skillwerte stehen auf 0. Der Admin meldet sich deshalb über `POST /api/v1/auth/admin/anmelden` mit seinem Passwort an – die Namensauswahl lehnt das Adminprofil auch dann ab, wenn seine Id bekannt ist.\n\nBei jedem Stufenwechsel und bei jeder Erneuerung wird der Token rotiert (Schutz vor Session Fixation). Die `session.id` bleibt dabei erhalten.\n\n### Sitzungsdauer (Zwei-Timer-Modell)\n`gueltigBis` ist ein gleitendes Leerlauf-Fenster (Vorgabe 15 Minuten) und wandert bei jedem Aufruf nach hinten. `absolutGueltigBis` ist eine harte Obergrenze (Vorgabe 1 Stunde) und wird nie verschoben – auch nicht durch `/auth/session/erneuern`.\n\nHintergrundaufrufe (etwa das Pollen des Belegtstatus) sollen das Leerlauf-Fenster **nicht** verlängern und senden dazu `X-FuBo-Kein-Refresh: true`. Ohne diesen Header würde „15 Minuten Inaktivität\" den offenen Browser-Tab messen statt den Nutzer.\n\n### CORS\nFrontend und API liegen auf Subdomains derselben registrierbaren Domain (`app.<domain>` / `api.<domain>`). Der Server führt eine Allowlist mit `allowCredentials=true`; erlaubte Anfrageheader sind `Content-Type` und `X-FuBo-Kein-Refresh`, freigegebener Antwortheader ist `Retry-After`.\n\n### Datenschutz\nSkillbewertungen verlassen den Server nie in Richtung USER oder GAST (Anforderung A12). Kein Antwortobjekt dieser Beschreibung enthält Skillwerte; die Teamgenerierung läuft vollständig serverseitig.\n\n### Nicht enthalten\n`GET /actuator/health` bleibt bewusst unversioniert und ist kein Teil der fachlichen API. Der Endpunkt dient dem Container-Healthcheck und wird von nginx nach außen abgeschottet.",
+    "description": "Maßgebliche Beschreibung der REST-Schnittstelle des FuBo-Servers.\n\n**Diese Datei ist die Quelle der Wahrheit für den Client-Track.** Server und Client liegen in getrennten Repositories; eine Vertragsänderung wird deshalb immer zuerst hier abgebildet und der Client anschließend nachgezogen.\n\n**Stand:** S2 (Auth und Session) und S2b vollständig. S2b umfasst die Zugangsdatenpflege (Passwort-Reset per E-Mail, Passwortänderung im angemeldeten Zustand, Wechsel der zentralen PIN) und das Anlegen, Entfernen und Sperren von Spielerprofilen durch den Admin. Profile, Termine, Teams und Ergebnisse folgen mit S3 bis S6 und stehen bewusst noch nicht hier – spekulative Endpunkte wären ein Vertrag über etwas, das es nicht gibt.\n\n### Versionierung\nJeder fachliche Endpunkt liegt unter `/api/{version}/<bereich>/<ressource>/<aktion>`. Die Version steht als Präfix an Segment-Index 1, die Aktion als eigenes Segment am Ende. Umgesetzt mit `ApiVersionConfigurer#usePathSegment` aus Spring Framework 7.\n\n- `/api/v1/...` und `/api/1/...` werden beide als Version 1 gelesen; nach außen wird durchgängig `v1` verwendet.\n- Eine unbekannte Version (`/api/v99/...`) liefert `400`.\n- Ein fehlendes Versionssegment liefert `404` – ohne das Segment passt der Pfad schlicht auf kein Mapping.\n\n### Authentifizierung\nOpakes Session-Cookie (`FUBO_SESSION`, `HttpOnly`, `Secure`, `SameSite=Lax`, kein Ablaufdatum). Das Frontend kann den Token weder lesen noch prüfen und muss das auch nicht: Die Validierung passiert ausschließlich serverseitig in der Filterchain. Alle Aufrufe erfolgen mit `credentials: 'include'`.\n\n**Die zentrale PIN besteht aus vier Ziffern.** Das Eingabefeld im Frontend darf darauf ausgelegt werden. `POST /auth/pin/pruefen` schreibt der Eingabe trotzdem **kein** Format vor – ein abweichender Bestandswert aus der Erstkonfiguration muss eingebbar bleiben, und eine Mindestlänge im Vertrag wäre eine Auskunft über das Format der echten PIN. Verbindlich ist das Format nur beim *Setzen* über `POST /admin/pin/aendern`.\n\nDer Login ist zweistufig und wird serverseitig erzwungen:\n1. `PIN_VERIFIED` – zentrale PIN geprüft, Identität noch offen.\n2. `PROFILE_AUTHENTICATED` – erst hier existiert eine Rolle. Es führen drei Wege dorthin: Namensauswahl (`USER`), Gast-Login (`GAST`) und Admin-Login mit Passwort (`ADMIN`).\n\n**Das Adminprofil ist ein technisches Konto.** Es steht nicht in der Namensliste, nimmt an keinem Termin teil und wird nie in ein Team eingeteilt; seine Skillwerte stehen auf 0. Der Admin meldet sich deshalb über `POST /api/v1/auth/admin/anmelden` mit seinem Passwort an – die Namensauswahl lehnt das Adminprofil auch dann ab, wenn seine Id bekannt ist.\n\nBei jedem Stufenwechsel und bei jeder Erneuerung wird der Token rotiert (Schutz vor Session Fixation). Die `session.id` bleibt dabei erhalten.\n\n### Sitzungsdauer (Zwei-Timer-Modell)\n`gueltigBis` ist ein gleitendes Leerlauf-Fenster (Vorgabe 15 Minuten) und wandert bei jedem Aufruf nach hinten. `absolutGueltigBis` ist eine harte Obergrenze (Vorgabe 1 Stunde) und wird nie verschoben – auch nicht durch `/auth/session/erneuern`.\n\nHintergrundaufrufe (etwa das Pollen des Belegtstatus) sollen das Leerlauf-Fenster **nicht** verlängern und senden dazu `X-FuBo-Kein-Refresh: true`. Ohne diesen Header würde „15 Minuten Inaktivität\" den offenen Browser-Tab messen statt den Nutzer.\n\n### CORS\nFrontend und API liegen auf Subdomains derselben registrierbaren Domain (`app.<domain>` / `api.<domain>`). Der Server führt eine Allowlist mit `allowCredentials=true`; erlaubte Anfrageheader sind `Content-Type` und `X-FuBo-Kein-Refresh`, freigegebener Antwortheader ist `Retry-After`.\n\n### Datenschutz\nSkillbewertungen verlassen den Server nie in Richtung USER oder GAST (Anforderung A12). Kein Antwortobjekt dieser Beschreibung enthält Skillwerte; die Teamgenerierung läuft vollständig serverseitig.\n\n### Nicht enthalten\n`GET /actuator/health` bleibt bewusst unversioniert und ist kein Teil der fachlichen API. Der Endpunkt dient dem Container-Healthcheck und wird von nginx nach außen abgeschottet.",
     "contact": {
       "name": "FuBo-Server",
       "url": "https://github.com/DenKim94/FuBo-Server"
@@ -42,6 +42,10 @@
     {
       "name": "Zugangsdaten",
       "description": "Pflege der Anmeldedaten: Passwort-Reset per E-Mail, Passwortänderung im angemeldeten Zustand und Wechsel der zentralen PIN (A3, A22)."
+    },
+    {
+      "name": "Spielerverwaltung",
+      "description": "Anlegen, Entfernen und Sperren von Spielerprofilen durch den Admin (A13). Die Bearbeitung bestehender Profile folgt mit S3."
     },
     {
       "name": "Sitzung",
@@ -843,6 +847,238 @@
           }
         }
       }
+    },
+    "/api/v1/admin/user/anlegen": {
+      "post": {
+        "tags": [
+          "Spielerverwaltung"
+        ],
+        "operationId": "spielerAnlegen",
+        "summary": "Spielerprofil anlegen",
+        "description": "Legt ein neues Profil mit der Rolle `USER` an und setzt es aktiv. Verlangt die Rolle `ADMIN`.\n\n**Skillwerte sind optional.** Fehlen sie ganz oder teilweise, gelten die Vorgaben der Stufe `MITTEL` aus `profil.gast_vorlage`. Das ist bewusst kein Nullwert: Ein Profil mit lauter Nullen bekäme in der Teamgenerierung (S5) ein Team ohne jede Stärke zugeteilt, ohne dass jemand den Grund sähe.\n\nDie Skillpflege bestehender Profile gehört nach S3; dieser Endpunkt schreibt sie nur beim Anlegen.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpielerAnlegenRequest"
+              },
+              "examples": {
+                "nurName": {
+                  "summary": "Ohne Skillwerte – alle Kategorien auf die Vorgabe MITTEL",
+                  "value": {
+                    "name": "Beispielspieler 31"
+                  }
+                },
+                "mitSkills": {
+                  "summary": "Teilweise gesetzt – der Rest bleibt auf der Vorgabe",
+                  "value": {
+                    "name": "Beispielspieler 32",
+                    "skills": {
+                      "ANGRIFF": 5,
+                      "TORWART": 2
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Profil angelegt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpielerAngelegt"
+                },
+                "example": {
+                  "spielerId": 31,
+                  "name": "Beispielspieler 31"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/EingabeUngueltig"
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
+          },
+          "409": {
+            "description": "Ein Profil dieses Namens existiert bereits – auch dann, wenn es inaktiv ist oder sich nur in der Gross- und Kleinschreibung unterscheidet.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Conflict",
+                  "status": 409,
+                  "detail": "Dieser Name ist bereits angemeldet.",
+                  "code": "NAME_BELEGT"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/user/entfernen": {
+      "post": {
+        "tags": [
+          "Spielerverwaltung"
+        ],
+        "operationId": "spielerEntfernen",
+        "summary": "Spielerprofil endgültig entfernen",
+        "description": "Löscht das Profil samt seiner Skillwerte (`ON DELETE CASCADE`). Verlangt die Rolle `ADMIN`.\n\n**Offene Sitzungen des Profils werden vorher abgeräumt** – sie sind flüchtig und gehören der Anwendung. Hängen danach noch fachliche Daten am Profil (Teilnahmen, Terminserien, Generierungsläufe, Ergebnisse oder Einträge im Audit-Log), bleibt es bestehen und der Aufruf endet mit `409 PROFIL_IN_VERWENDUNG`. Das Löschen würde sonst Belege vernichten, auf die sich andere Datensätze berufen.\n\n**Gedacht ist der Endpunkt für den frisch angelegten Fehlgriff** – ein Profil, das noch nie benutzt wurde, etwa nach einem Tippfehler. Für alles andere ist `blockieren` der richtige Weg.\n\n**Das Adminprofil lässt sich nicht entfernen** (`409 PROFIL_GESCHUETZT`): `admin_konto.spieler_id` verweist darauf, und ohne Adminprofil käme niemand mehr in den Adminbereich.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpielerIdRequest"
+              },
+              "examples": {
+                "standard": {
+                  "value": {
+                    "spielerId": 31
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Profil entfernt."
+          },
+          "400": {
+            "$ref": "#/components/responses/EingabeUngueltig"
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
+          },
+          "404": {
+            "description": "Kein Profil mit dieser Id.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "Der gesuchte Inhalt wurde nicht gefunden.",
+                  "code": "INHALT_NICHT_GEFUNDEN"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Das Profil ist geschützt (`PROFIL_GESCHUETZT`, Adminprofil) oder bereits in Verwendung (`PROFIL_IN_VERWENDUNG`). In beiden Fällen bleibt es unverändert; `blockieren` ist die Alternative.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Conflict",
+                  "status": 409,
+                  "detail": "Das Profil wird bereits verwendet und kann nicht entfernt werden. Es lässt sich stattdessen blockieren.",
+                  "code": "PROFIL_IN_VERWENDUNG"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/user/blockieren": {
+      "post": {
+        "tags": [
+          "Spielerverwaltung"
+        ],
+        "operationId": "spielerBlockieren",
+        "summary": "Spielerprofil sperren oder wieder freigeben",
+        "description": "Setzt `aktiv` auf `false` (`blockieren: true`) oder zurück auf `true` (`blockieren: false`). Verlangt die Rolle `ADMIN`.\n\n**Beim Sperren werden die offenen Sitzungen des Profils widerrufen.** Ohne das bliebe der Gesperrte bis zum Ablauf seiner Sitzung angemeldet – die Sperre wirkte erst mit Verzögerung, und genau in dem Moment, in dem sie gebraucht wird, gar nicht.\n\nEin gesperrtes Profil verschwindet aus der Namensliste und ist auch über seine Id nicht wählbar. Der Name bleibt belegt: Er ist über `uq_spieler_name` eindeutig, und ein Gast darf sich ebenfalls nicht so nennen.\n\n**Das Adminprofil lässt sich nicht sperren** (`409 PROFIL_GESCHUETZT`) – der Adminzugang wäre danach unerreichbar.\n\nDer Aufruf ist wiederholbar: Ein bereits gesperrtes Profil erneut zu sperren ändert nichts und liefert ebenfalls `204`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpielerBlockierenRequest"
+              },
+              "examples": {
+                "sperren": {
+                  "summary": "Sperren",
+                  "value": {
+                    "spielerId": 31,
+                    "blockieren": true
+                  }
+                },
+                "freigeben": {
+                  "summary": "Wieder freigeben",
+                  "value": {
+                    "spielerId": 31,
+                    "blockieren": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Profil gesperrt bzw. wieder freigegeben."
+          },
+          "400": {
+            "$ref": "#/components/responses/EingabeUngueltig"
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
+          },
+          "404": {
+            "description": "Kein Profil mit dieser Id.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Das Adminprofil lässt sich nicht sperren (`PROFIL_GESCHUETZT`).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Conflict",
+                  "status": 409,
+                  "detail": "Das Adminprofil ist geschützt und kann weder entfernt noch gesperrt werden.",
+                  "code": "PROFIL_GESCHUETZT"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1002,6 +1238,8 @@
           "RESET_UNGUELTIG",
           "RESET_GEDROSSELT",
           "VERSAND_FEHLGESCHLAGEN",
+          "PROFIL_GESCHUETZT",
+          "PROFIL_IN_VERWENDUNG",
           "INTERNER_FEHLER"
         ]
       },
@@ -1215,6 +1453,76 @@
         },
         "required": [
           "neuePin"
+        ]
+      },
+      "SpielerAnlegenRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60,
+            "description": "Anzeigename des Profils. Randleerzeichen werden entfernt.\n\nDer Name ist eindeutig (`uq_spieler_name`) und wird unabhängig von Groß- und Kleinschreibung geprüft: „Max\" und „max\" wären in Teilnehmerliste und Teameinteilung zwei Einträge, die niemand auseinanderhält. Ein belegter Name liefert `409 NAME_BELEGT`."
+          },
+          "skills": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Skillwerte je Kategorieschlüssel, etwa `{\"ANGRIFF\": 4, \"TORWART\": 2}`. **Optional und auch teilweise erlaubt.**\n\nNicht genannte Kategorien bekommen die Vorgabe der Stufe `MITTEL` aus `profil.gast_vorlage` – dieselben Werte, mit denen ein Gast ohne Selbsteinschätzung in die Teamgenerierung eingeht. Fehlt das Feld ganz, gilt die Vorgabe für alle Kategorien.\n\nJede Kategorie hat ihren eigenen Wertebereich: 0 bis 6, für `TORWART` 0 bis 3. Ein unbekannter Schlüssel oder ein Wert ausserhalb des Bereichs liefert `400 EINGABE_UNGUELTIG` und nennt die betroffene Kategorie.\n\n**Die Skillwerte verlassen den Server nie wieder** (A12) – es gibt keinen Endpunkt, der sie ausliefert."
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "SpielerAngelegt": {
+        "type": "object",
+        "properties": {
+          "spielerId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Id des neu angelegten Profils."
+          },
+          "name": {
+            "type": "string",
+            "description": "Der übernommene Name, bereits von Randleerzeichen befreit."
+          }
+        },
+        "required": [
+          "spielerId",
+          "name"
+        ]
+      },
+      "SpielerIdRequest": {
+        "type": "object",
+        "properties": {
+          "spielerId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Id des betroffenen Profils, wie sie `GET /auth/users/lesen` liefert."
+          }
+        },
+        "required": [
+          "spielerId"
+        ]
+      },
+      "SpielerBlockierenRequest": {
+        "type": "object",
+        "properties": {
+          "spielerId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Id des betroffenen Profils."
+          },
+          "blockieren": {
+            "type": "boolean",
+            "description": "`true` sperrt das Profil, `false` gibt es wieder frei.\n\n**Ein Endpunkt für beide Richtungen**, weil es dieselbe Spalte ist. Ohne die Gegenrichtung käme der Admin an ein versehentlich gesperrtes Profil bis S3 nicht mehr heran."
+          }
+        },
+        "required": [
+          "spielerId",
+          "blockieren"
         ]
       }
     }
