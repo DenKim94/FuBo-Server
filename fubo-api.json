@@ -4,7 +4,7 @@
     "title": "FuBo Server API",
     "version": "1.0.0",
     "summary": "Vertrag zwischen FuBo-Server und FuBo-Client.",
-    "description": "Maßgebliche Beschreibung der REST-Schnittstelle des FuBo-Servers.\n\n**Diese Datei ist die Quelle der Wahrheit für den Client-Track.** Server und Client liegen in getrennten Repositories; eine Vertragsänderung wird deshalb immer zuerst hier abgebildet und der Client anschließend nachgezogen.\n\n**Stand:** S2 (Auth und Session) vollständig. Profile, Termine, Teams und Ergebnisse folgen mit S3 bis S6 und stehen bewusst noch nicht hier – spekulative Endpunkte wären ein Vertrag über etwas, das es nicht gibt.\n\n### Versionierung\nJeder fachliche Endpunkt liegt unter `/api/{version}/<bereich>/<ressource>/<aktion>`. Die Version steht als Präfix an Segment-Index 1, die Aktion als eigenes Segment am Ende. Umgesetzt mit `ApiVersionConfigurer#usePathSegment` aus Spring Framework 7.\n\n- `/api/v1/...` und `/api/1/...` werden beide als Version 1 gelesen; nach außen wird durchgängig `v1` verwendet.\n- Eine unbekannte Version (`/api/v99/...`) liefert `400`.\n- Ein fehlendes Versionssegment liefert `404` – ohne das Segment passt der Pfad schlicht auf kein Mapping.\n\n### Authentifizierung\nOpakes Session-Cookie (`FUBO_SESSION`, `HttpOnly`, `Secure`, `SameSite=Lax`, kein Ablaufdatum). Das Frontend kann den Token weder lesen noch prüfen und muss das auch nicht: Die Validierung passiert ausschließlich serverseitig in der Filterchain. Alle Aufrufe erfolgen mit `credentials: 'include'`.\n\nDer Login ist zweistufig und wird serverseitig erzwungen:\n1. `PIN_VERIFIED` – zentrale PIN geprüft, Identität noch offen.\n2. `PROFILE_AUTHENTICATED` – erst hier existiert eine Rolle. Es führen drei Wege dorthin: Namensauswahl (`USER`), Gast-Login (`GAST`) und Admin-Login mit Passwort (`ADMIN`).\n\n**Das Adminprofil ist ein technisches Konto.** Es steht nicht in der Namensliste, nimmt an keinem Termin teil und wird nie in ein Team eingeteilt; seine Skillwerte stehen auf 0. Der Admin meldet sich deshalb über `POST /api/v1/auth/admin/anmelden` mit seinem Passwort an – die Namensauswahl lehnt das Adminprofil auch dann ab, wenn seine Id bekannt ist.\n\nBei jedem Stufenwechsel und bei jeder Erneuerung wird der Token rotiert (Schutz vor Session Fixation). Die `session.id` bleibt dabei erhalten.\n\n### Sitzungsdauer (Zwei-Timer-Modell)\n`gueltigBis` ist ein gleitendes Leerlauf-Fenster (Vorgabe 15 Minuten) und wandert bei jedem Aufruf nach hinten. `absolutGueltigBis` ist eine harte Obergrenze (Vorgabe 1 Stunde) und wird nie verschoben – auch nicht durch `/auth/session/erneuern`.\n\nHintergrundaufrufe (etwa das Pollen des Belegtstatus) sollen das Leerlauf-Fenster **nicht** verlängern und senden dazu `X-FuBo-Kein-Refresh: true`. Ohne diesen Header würde „15 Minuten Inaktivität\" den offenen Browser-Tab messen statt den Nutzer.\n\n### CORS\nFrontend und API liegen auf Subdomains derselben registrierbaren Domain (`app.<domain>` / `api.<domain>`). Der Server führt eine Allowlist mit `allowCredentials=true`; erlaubte Anfrageheader sind `Content-Type` und `X-FuBo-Kein-Refresh`, freigegebener Antwortheader ist `Retry-After`.\n\n### Datenschutz\nSkillbewertungen verlassen den Server nie in Richtung USER oder GAST (Anforderung A12). Kein Antwortobjekt dieser Beschreibung enthält Skillwerte; die Teamgenerierung läuft vollständig serverseitig.\n\n### Nicht enthalten\n`GET /actuator/health` bleibt bewusst unversioniert und ist kein Teil der fachlichen API. Der Endpunkt dient dem Container-Healthcheck und wird von nginx nach außen abgeschottet.",
+    "description": "Maßgebliche Beschreibung der REST-Schnittstelle des FuBo-Servers.\n\n**Diese Datei ist die Quelle der Wahrheit für den Client-Track.** Server und Client liegen in getrennten Repositories; eine Vertragsänderung wird deshalb immer zuerst hier abgebildet und der Client anschließend nachgezogen.\n\n**Stand:** S2 (Auth und Session) und S2b (Zugangsdatenpflege: Passwort-Reset per E-Mail, Passwortänderung im angemeldeten Zustand, Wechsel der zentralen PIN) vollständig. Profile, Termine, Teams und Ergebnisse folgen mit S3 bis S6 und stehen bewusst noch nicht hier – spekulative Endpunkte wären ein Vertrag über etwas, das es nicht gibt.\n\n### Versionierung\nJeder fachliche Endpunkt liegt unter `/api/{version}/<bereich>/<ressource>/<aktion>`. Die Version steht als Präfix an Segment-Index 1, die Aktion als eigenes Segment am Ende. Umgesetzt mit `ApiVersionConfigurer#usePathSegment` aus Spring Framework 7.\n\n- `/api/v1/...` und `/api/1/...` werden beide als Version 1 gelesen; nach außen wird durchgängig `v1` verwendet.\n- Eine unbekannte Version (`/api/v99/...`) liefert `400`.\n- Ein fehlendes Versionssegment liefert `404` – ohne das Segment passt der Pfad schlicht auf kein Mapping.\n\n### Authentifizierung\nOpakes Session-Cookie (`FUBO_SESSION`, `HttpOnly`, `Secure`, `SameSite=Lax`, kein Ablaufdatum). Das Frontend kann den Token weder lesen noch prüfen und muss das auch nicht: Die Validierung passiert ausschließlich serverseitig in der Filterchain. Alle Aufrufe erfolgen mit `credentials: 'include'`.\n\n**Die zentrale PIN besteht aus vier Ziffern.** Das Eingabefeld im Frontend darf darauf ausgelegt werden. `POST /auth/pin/pruefen` schreibt der Eingabe trotzdem **kein** Format vor – ein abweichender Bestandswert aus der Erstkonfiguration muss eingebbar bleiben, und eine Mindestlänge im Vertrag wäre eine Auskunft über das Format der echten PIN. Verbindlich ist das Format nur beim *Setzen* über `POST /admin/pin/aendern`.\n\nDer Login ist zweistufig und wird serverseitig erzwungen:\n1. `PIN_VERIFIED` – zentrale PIN geprüft, Identität noch offen.\n2. `PROFILE_AUTHENTICATED` – erst hier existiert eine Rolle. Es führen drei Wege dorthin: Namensauswahl (`USER`), Gast-Login (`GAST`) und Admin-Login mit Passwort (`ADMIN`).\n\n**Das Adminprofil ist ein technisches Konto.** Es steht nicht in der Namensliste, nimmt an keinem Termin teil und wird nie in ein Team eingeteilt; seine Skillwerte stehen auf 0. Der Admin meldet sich deshalb über `POST /api/v1/auth/admin/anmelden` mit seinem Passwort an – die Namensauswahl lehnt das Adminprofil auch dann ab, wenn seine Id bekannt ist.\n\nBei jedem Stufenwechsel und bei jeder Erneuerung wird der Token rotiert (Schutz vor Session Fixation). Die `session.id` bleibt dabei erhalten.\n\n### Sitzungsdauer (Zwei-Timer-Modell)\n`gueltigBis` ist ein gleitendes Leerlauf-Fenster (Vorgabe 15 Minuten) und wandert bei jedem Aufruf nach hinten. `absolutGueltigBis` ist eine harte Obergrenze (Vorgabe 1 Stunde) und wird nie verschoben – auch nicht durch `/auth/session/erneuern`.\n\nHintergrundaufrufe (etwa das Pollen des Belegtstatus) sollen das Leerlauf-Fenster **nicht** verlängern und senden dazu `X-FuBo-Kein-Refresh: true`. Ohne diesen Header würde „15 Minuten Inaktivität\" den offenen Browser-Tab messen statt den Nutzer.\n\n### CORS\nFrontend und API liegen auf Subdomains derselben registrierbaren Domain (`app.<domain>` / `api.<domain>`). Der Server führt eine Allowlist mit `allowCredentials=true`; erlaubte Anfrageheader sind `Content-Type` und `X-FuBo-Kein-Refresh`, freigegebener Antwortheader ist `Retry-After`.\n\n### Datenschutz\nSkillbewertungen verlassen den Server nie in Richtung USER oder GAST (Anforderung A12). Kein Antwortobjekt dieser Beschreibung enthält Skillwerte; die Teamgenerierung läuft vollständig serverseitig.\n\n### Nicht enthalten\n`GET /actuator/health` bleibt bewusst unversioniert und ist kein Teil der fachlichen API. Der Endpunkt dient dem Container-Healthcheck und wird von nginx nach außen abgeschottet.",
     "contact": {
       "name": "FuBo-Server",
       "url": "https://github.com/DenKim94/FuBo-Server"
@@ -38,6 +38,10 @@
     {
       "name": "Admin",
       "description": "Adminzugang über Passwort (A22) – die dritte Variante der zweiten Login-Stufe."
+    },
+    {
+      "name": "Zugangsdaten",
+      "description": "Pflege der Anmeldedaten: Passwort-Reset per E-Mail, Passwortänderung im angemeldeten Zustand und Wechsel der zentralen PIN (A3, A22)."
     },
     {
       "name": "Sitzung",
@@ -446,6 +450,165 @@
         }
       }
     },
+    "/api/v1/auth/passwort/zuruecksetzen": {
+      "post": {
+        "tags": [
+          "Zugangsdaten"
+        ],
+        "operationId": "passwortResetAnfordern",
+        "summary": "Zurücksetzen des Admin-Passworts anfordern",
+        "description": "Erzeugt eine fünfstellige Bestätigungs-PIN, speichert sie als BCrypt-Hash und schickt sie an die Adresse aus `admin_konto.email` (A22). Die Antwort enthält weder die PIN noch die Adresse.\n\n**Kein Anfragekörper.** Es gibt genau einen Admin und genau eine hinterlegte Adresse – ein Feld dafür wäre eine Auswahl ohne Alternative und zugleich eine Einladung, fremde Adressen zu erproben.\n\n**Der Endpunkt liegt hinter der zentralen PIN** (Stufe `PIN_VERIFIED`), wie Namensauswahl, Gast-Login und Admin-Login. Er ist damit die einzige Stelle der Anwendung, die den äusseren Zaun aus A1 nicht umgeht, und er verschickt E-Mails: ohne den Zaun könnte jeder Unbekannte beliebig oft Nachrichten an den Admin auslösen. Der Preis ist bewusst in Kauf genommen – wer Passwort **und** zentrale PIN vergisst, kommt nur noch über die Datenbank hinein (siehe Betriebsdokumentation).\n\n**Eine ältere, noch offene Anforderung wird entwertet.** Sonst wären mehrere PINs gleichzeitig gültig, und jede zusätzliche vervielfachte die Trefferchance beim Raten.\n\n**Die Nachricht enthält keinen Link, sondern eine PIN zum Abtippen.** Ein Link trüge ein Geheimnis in der URL; URLs landen in Browserverläufen, Proxy-Protokollen und Vorschaudiensten, die sie automatisch öffnen – Letzteres verbrauchte den Vorgang, bevor der Admin ihn sieht.",
+        "responses": {
+          "204": {
+            "description": "Anforderung angenommen und Nachricht versendet. Die Bestätigungs-PIN ist 15 Minuten gültig und gilt für genau einen Vorgang."
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
+          },
+          "429": {
+            "description": "Zu viele Anforderungen von derselben Adresse – höchstens drei je Stunde.\n\n**Ein eigener Zähler, nicht der Brute-Force-Zähler des PIN-Endpunkts.** Jener zählt *Fehlversuche* und sperrt nach Häufung; hier wird eine *erfolgreiche* Handlung begrenzt – jede Anforderung ist für sich legitim, nur nicht beliebig oft.",
+            "headers": {
+              "Retry-After": {
+                "description": "Sekunden bis zur nächsten zulässigen Anforderung (RFC 9110).",
+                "schema": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 1
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Too Many Requests",
+                  "status": 429,
+                  "detail": "Zu viele Anforderungen. Bitte in 1837 Sekunden erneut versuchen.",
+                  "code": "RESET_GEDROSSELT",
+                  "wartesekunden": 1837
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Der E-Mail-Versand ist fehlgeschlagen.\n\n**Es bleibt kein Vorgang zurück.** Der Versand läuft innerhalb der Transaktion; scheitert er, rollt die gespeicherte PIN mit zurück – sonst stünde eine gültige PIN in der Datenbank, die niemand bekommen hat. Der Aufruf lässt sich unverändert wiederholen.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Service Unavailable",
+                  "status": 503,
+                  "detail": "Die Nachricht konnte nicht versendet werden. Bitte später erneut versuchen.",
+                  "code": "VERSAND_FEHLGESCHLAGEN"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/passwort/bestaetigen": {
+      "post": {
+        "tags": [
+          "Zugangsdaten"
+        ],
+        "operationId": "passwortResetBestaetigen",
+        "summary": "Bestätigungs-PIN einlösen und neues Passwort setzen",
+        "description": "Prüft die Bestätigungs-PIN und setzt in einem Schritt das neue Admin-Passwort. Danach sind alle Sitzungen des Admins widerrufen – er muss sich mit dem neuen Passwort neu anmelden.\n\n**Warum ein Schritt und nicht zwei** (erst PIN prüfen, dann Passwort setzen)? Ein eigener Prüfschritt bräuchte einen Zwischenzustand: ein kurzlebiges Token, das „PIN war richtig\" bezeichnet. Das wäre ein zweiter Anmeldemechanismus neben der Sitzung – mit eigener Gültigkeit, eigenem Widerruf und eigenen Fehlerfällen. Das Frontend sammelt beides ohnehin in einem Formular.\n\n**Die Eingabeform wird vor der PIN geprüft.** Ein an der Passwortregel gescheiterter Aufruf (`400`) erreicht den Versuchszähler nie – sonst kostete ein zu kurzes Passwort trotz richtiger PIN einen der fünf Versuche.\n\n**Der Versuchszähler steigt, bevor die PIN geprüft wird**, und er überlebt eine abgelehnte Anfrage. Andernfalls könnte ein Angreifer den Aufruf nach dem Lesen abbrechen und beliebig oft raten.\n\n**Die aufrufende Sitzung bleibt bestehen.** Sie steht in `PIN_VERIFIED` und gehört nicht dem Admin; das Frontend kann direkt zum Admin-Login weitergehen.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswortResetBestaetigenRequest"
+              },
+              "examples": {
+                "standard": {
+                  "value": {
+                    "bestaetigungsPin": "04713",
+                    "neuesPasswort": "ein-langes-neues-passwort"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Passwort gesetzt. Alle Sitzungen des Admins sind widerrufen; die Anmeldung erfolgt über `/api/v1/auth/admin/anmelden` mit dem neuen Passwort."
+          },
+          "400": {
+            "$ref": "#/components/responses/EingabeUngueltig"
+          },
+          "401": {
+            "description": "Die Bestätigungs-PIN ist falsch (`RESET_PIN_FALSCH`) oder es liegt keine gültige Sitzung vor (`SESSION_UNGUELTIG`).\n\nBei `RESET_PIN_FALSCH` ist ein Versuch verbraucht; nach fünf Fehlversuchen antwortet der Endpunkt mit `409`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Die Bestätigungs-PIN ist nicht korrekt.",
+                  "code": "RESET_PIN_FALSCH"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
+          },
+          "409": {
+            "description": "Es gibt keinen brauchbaren Vorgang: nie angefordert, abgelaufen, bereits verbraucht oder die fünf Versuche sind erschöpft.\n\n**Warum `409` und nicht `401`:** Für das Frontend ist das der Unterschied zwischen „nochmal versuchen\" und „neu anfordern\". Beides mit `401` zu beantworten zwänge es zum Raten oder zum Auswerten des Meldungstexts – und der ist Anzeigetext.\n\nDie vier Fälle werden bewusst nicht unterschieden: Für den Aufrufer ist die Folge dieselbe, und eine feinere Auskunft verriete den Zustand des Vorgangs.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Conflict",
+                  "status": 409,
+                  "detail": "Es liegt kein gültiger Vorgang zum Zurücksetzen vor. Bitte neu anfordern.",
+                  "code": "RESET_UNGUELTIG"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Gesperrt – ein Fehlversuch zählt zusätzlich auf den Brute-Force-Zähler des PIN-Endpunkts, deshalb der Code `PIN_GESPERRT`. Wer Bestätigungs-PINs rät, soll anschliessend auch keine zentralen PINs mehr durchprobieren können.",
+            "headers": {
+              "Retry-After": {
+                "description": "Sekunden bis zum nächsten zulässigen Versuch (RFC 9110).",
+                "schema": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 1
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth/session/lesen": {
       "get": {
         "tags": [
@@ -544,6 +707,139 @@
           },
           "401": {
             "$ref": "#/components/responses/SitzungUngueltig"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/passwort/aendern": {
+      "post": {
+        "tags": [
+          "Zugangsdaten"
+        ],
+        "operationId": "adminPasswortAendern",
+        "summary": "Admin-Passwort im angemeldeten Zustand ändern",
+        "description": "Setzt ein neues Admin-Passwort. Verlangt die Rolle `ADMIN` **und** das bisherige Passwort.\n\n**Warum beides?** Ein unbeaufsichtigter Rechner mit offener Sitzung soll nicht genügen, um das Passwort zu übernehmen und den rechtmäßigen Admin auszusperren. Die Sitzung beweist, *wer* handelt; das alte Passwort beweist, dass es der Berechtigte selbst ist.\n\n**Nach der Änderung sind alle Sitzungen des Admins widerrufen**, auch die aufrufende – die Antwort löscht deshalb das Session-Cookie. Spielersitzungen bleiben unberührt: Das Adminpasswort betrifft sie nicht.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswortAendernRequest"
+              },
+              "examples": {
+                "standard": {
+                  "value": {
+                    "altesPasswort": "bisheriges-passwort",
+                    "neuesPasswort": "ein-langes-neues-passwort"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Passwort geändert. Alle Adminsitzungen sind widerrufen; die Antwort löscht das Session-Cookie.",
+            "headers": {
+              "Set-Cookie": {
+                "description": "Löscht das Session-Cookie (`Max-Age=0`). Das Frontend zeigt anschliessend die PIN-Eingabe.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/EingabeUngueltig"
+          },
+          "401": {
+            "description": "Das alte Passwort ist falsch (`ADMIN_PASSWORT_FALSCH`) oder es liegt keine gültige Sitzung vor (`SESSION_UNGUELTIG`).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Das Admin-Passwort ist nicht korrekt.",
+                  "code": "ADMIN_PASSWORT_FALSCH"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
+          },
+          "429": {
+            "description": "Gesperrt – ein falsches altes Passwort zählt auf denselben Brute-Force-Zähler wie der PIN- und der Admin-Login, deshalb der Code `PIN_GESPERRT`.",
+            "headers": {
+              "Retry-After": {
+                "description": "Sekunden bis zum nächsten zulässigen Versuch (RFC 9110).",
+                "schema": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 1
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/pin/aendern": {
+      "post": {
+        "tags": [
+          "Zugangsdaten"
+        ],
+        "operationId": "zentralePinAendern",
+        "summary": "Zentrale PIN ändern",
+        "description": "Setzt die zentrale PIN neu (A3). Verlangt die Rolle `ADMIN`. Die neue PIN besteht aus **genau vier Ziffern**.\n\n**Kein Feld für die alte PIN.** Sie ist ein geteiltes Geheimnis, kein persönliches: Der Admin verwaltet sie, er beweist sie nicht – und er hat sie ohnehin gerade eingegeben, um in die Stufe `PIN_VERIFIED` und von dort in den Adminbereich zu gelangen.\n\n**Nach der Änderung sind ausnahmslos alle Sitzungen widerrufen**, auch die von Spielern und Gästen. Ohne diesen Schritt blieben Nutzer angemeldet, die nur die alte PIN kannten – und der Wechsel wäre wirkungslos. Belegte Gastplätze werden dabei freigegeben.\n\n**Folge für den Betrieb:** Alle Angemeldeten sind sofort abgemeldet und brauchen die neue PIN über den externen Weg. Das gehört als Hinweis in die Bestätigung im Frontend, nicht als Überraschung.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PinAendernRequest"
+              },
+              "examples": {
+                "standard": {
+                  "value": {
+                    "neuePin": "4829"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "PIN geändert. Alle Sitzungen sind widerrufen; die Antwort löscht das Session-Cookie.",
+            "headers": {
+              "Set-Cookie": {
+                "description": "Löscht das Session-Cookie (`Max-Age=0`). Das Frontend zeigt anschliessend die PIN-Eingabe.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/EingabeUngueltig"
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
           }
         }
       }
@@ -702,6 +998,10 @@
           "KEIN_GAST_SLOT_FREI",
           "EINGABE_UNGUELTIG",
           "INHALT_NICHT_GEFUNDEN",
+          "RESET_PIN_FALSCH",
+          "RESET_UNGUELTIG",
+          "RESET_GEDROSSELT",
+          "VERSAND_FEHLGESCHLAGEN",
           "INTERNER_FEHLER"
         ]
       },
@@ -738,7 +1038,7 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 72,
-            "description": "Klartext der zentralen PIN.\n\nEine **Mindest**länge steht bewusst nicht im Vertrag – sie wäre eine Auskunft über das Format der echten PIN. Die Obergrenze ist keine fachliche Vorgabe, sondern schützt vor unnötig teuren Hash-Berechnungen."
+            "description": "Klartext der zentralen PIN.\n\nEine **Mindest**länge steht bewusst nicht im Vertrag – sie wäre eine Auskunft über das Format der echten PIN. Die Obergrenze ist keine fachliche Vorgabe, sondern schützt vor unnötig teuren Hash-Berechnungen.\n\nZur Länge: Die zentrale PIN ist vierstellig (siehe `PinAendernRequest`). Der Vertrag erzwingt das hier bewusst nicht – siehe Abschnitt „Authentifizierung“."
           }
         },
         "required": [
@@ -861,6 +1161,60 @@
           "stage",
           "gueltigBis",
           "absolutGueltigBis"
+        ]
+      },
+      "PasswortResetBestaetigenRequest": {
+        "type": "object",
+        "properties": {
+          "bestaetigungsPin": {
+            "type": "string",
+            "pattern": "^\\d{5}$",
+            "description": "Die fünfstellige Bestätigungs-PIN aus der E-Mail, mit führenden Nullen.\n\nAnders als bei der zentralen PIN steht das Format hier ausdrücklich im Vertrag: Der Server hat die PIN selbst erzeugt und verrät mit der Angabe nichts, was ein Angreifer nicht ohnehin aus der eigenen E-Mail wüsste. Das Frontend kann das Feld damit auf fünf Ziffern begrenzen."
+          },
+          "neuesPasswort": {
+            "type": "string",
+            "minLength": 10,
+            "maxLength": 72,
+            "description": "Klartext des neuen Admin-Passworts.\n\n**Untergrenze 10 Zeichen, keine Vorgaben zu Zeichenklassen.** Länge trägt mehr als erzwungene Sonderzeichen, die Menschen zu `Passwort1!` verleiten.\n\n**Obergrenze 72 Zeichen**, weil BCrypt darüber hinaus stillschweigend abschneidet – ein Passwort mit 100 Zeichen wäre nur in seinen ersten 72 wirksam, ohne dass es jemandem auffiele."
+          }
+        },
+        "required": [
+          "bestaetigungsPin",
+          "neuesPasswort"
+        ]
+      },
+      "PasswortAendernRequest": {
+        "type": "object",
+        "properties": {
+          "altesPasswort": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 72,
+            "description": "Klartext des bisherigen Passworts.\n\n**Es wird verlangt, obwohl die Sitzung bereits als Admin ausgewiesen ist.** Ein unbeaufsichtigter Rechner mit offener Sitzung soll nicht genügen, um das Passwort zu übernehmen und den rechtmäßigen Admin auszusperren."
+          },
+          "neuesPasswort": {
+            "type": "string",
+            "minLength": 10,
+            "maxLength": 72,
+            "description": "Klartext des neuen Passworts. Dieselben Grenzen wie beim Reset: mindestens 10, höchstens 72 Zeichen."
+          }
+        },
+        "required": [
+          "altesPasswort",
+          "neuesPasswort"
+        ]
+      },
+      "PinAendernRequest": {
+        "type": "object",
+        "properties": {
+          "neuePin": {
+            "type": "string",
+            "pattern": "^\\d{4}$",
+            "description": "Die neue zentrale PIN: **genau vier Ziffern**.\n\n**Kein Feld für die alte PIN.** Die zentrale PIN ist ein geteiltes Geheimnis, kein persönliches: Der Admin verwaltet sie, er beweist sie nicht – und er hat sie ohnehin gerade eingegeben, um überhaupt bis hierher zu kommen.\n\n**Rein numerisch und kurz**, weil die PIN mündlich oder über einen Aushang weitergegeben und häufig auf einer Zifferntastatur eingegeben wird. Die feste Länge erlaubt dem Frontend ein Eingabefeld mit vier Kästchen statt einer Textzeile mit unklarer Erwartung.\n\n**Für das Frontend wichtig:** Der Anmeldeendpunkt `/auth/pin/pruefen` schreibt der PIN weiterhin *kein* Format vor – ein abweichender Bestandswert aus `FUBO_INITIAL_PIN` muss eingebbar bleiben. Die Vierstelligkeit gilt für das *Setzen* einer neuen PIN, nicht für das Prüfen einer bestehenden."
+          }
+        },
+        "required": [
+          "neuePin"
         ]
       }
     }
