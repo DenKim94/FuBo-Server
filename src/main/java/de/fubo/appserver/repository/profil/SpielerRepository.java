@@ -81,4 +81,87 @@ public interface SpielerRepository extends JpaRepository<Spieler, Long>, Spieler
             ON CONFLICT ON CONSTRAINT uq_spieler_skill DO NOTHING
             """, nativeQuery = true)
     int nullwerteAnlegen(@Param("spielerId") Long spielerId);
+
+    /**
+     * Legt fuer ein Profil die Skillwerte einer Gastvorlage an (S2b, Abschnitt 8).
+     *
+     * <p><b>Warum die Vorgaben aus {@code profil.gast_vorlage} kommen und nicht aus Nullen:</b>
+     * Ein Profil mit lauter Nullen bekaeme in der Teamgenerierung ein Team ohne jede Staerke
+     * zugeteilt, ohne dass jemand den Grund saehe. Die Stufe {@code MITTEL} ist genau der
+     * Wert, mit dem auch ein Gast ohne Selbsteinschaetzung eingeht - eine ehrliche Annahme
+     * statt einer stillen Verzerrung. Das Adminprofil bleibt der Sonderfall: Es ist ein
+     * technisches Konto, wird nie eingeteilt und behaelt deshalb
+     * {@link #nullwerteAnlegen(Long)}.
+     *
+     * <p>{@code ON CONFLICT DO NOTHING} macht den Aufruf wiederholbar und laesst bereits
+     * gesetzte Werte unangetastet - der Aufrufer kann also erst die Vorgaben legen und
+     * danach einzelne Kategorien ueberschreiben, oder umgekehrt.
+     *
+     * @param spielerId Profil, dessen Skillzeilen entstehen sollen
+     * @param stufe     Stufe der Vorlage: {@code STARK}, {@code MITTEL} oder {@code SCHWACH}
+     * @return Anzahl angelegter Zeilen
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = """
+            INSERT INTO profil.spieler_skill (spieler_id, kategorie, wert)
+            SELECT :spielerId, v.kategorie, v.wert
+              FROM profil.gast_vorlage v
+              JOIN profil.skill_kategorie k ON k.schluessel = v.kategorie
+             WHERE v.stufe = :stufe
+               AND k.aktiv
+            ON CONFLICT ON CONSTRAINT uq_spieler_skill DO NOTHING
+            """, nativeQuery = true)
+    int vorgabewerteAnlegen(@Param("spielerId") Long spielerId, @Param("stufe") String stufe);
+
+    /**
+     * Setzt einen einzelnen Skillwert (S2b, Abschnitt 8).
+     *
+     * <p>{@code ON CONFLICT ... DO UPDATE} statt eines vorherigen Lesezugriffs: Ob die Zeile
+     * schon existiert, ist fuer den Aufrufer ohne Belang, und zwei Anweisungen waeren ein
+     * Fenster fuer einen Wettlauf.
+     *
+     * <p><b>Der Wertebereich wird hier nicht geprueft.</b> Das erledigt der Trigger
+     * {@code pruefe_skill_wertebereich} als letzte Instanz - und vor ihm der Service, der
+     * gegen {@code profil.skill_kategorie} prueft und einen sauberen {@code 400} liefern
+     * kann. Der Trigger allein braechte einen {@code 500}.
+     *
+     * @return Anzahl geschriebener Zeilen; immer 1
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = """
+            INSERT INTO profil.spieler_skill (spieler_id, kategorie, wert)
+                 VALUES (:spielerId, :kategorie, :wert)
+            ON CONFLICT ON CONSTRAINT uq_spieler_skill
+              DO UPDATE SET wert = EXCLUDED.wert
+            """, nativeQuery = true)
+    int skillwertSetzen(@Param("spielerId") Long spielerId,
+                        @Param("kategorie") String kategorie,
+                        @Param("wert") int wert);
+
+    /**
+     * Meldet, ob auf das Profil noch fachliche Daten verweisen (S2b, Abschnitt 8).
+     *
+     * <p>Alle aufgezaehlten Fremdschluessel sind ohne {@code ON DELETE} angelegt; ein
+     * {@code DELETE} scheiterte an ihnen mit einer Meldung, die den Index nennt und nicht
+     * die Ursache. Die Abfrage nimmt dem Aufrufer diese Meldung ab und erlaubt eine
+     * verstaendliche Ablehnung.
+     *
+     * <p><b>Sitzungen stehen bewusst nicht in der Liste.</b> Sie sind fluechtig und gehoeren
+     * der Anwendung; der Service raeumt sie vorher selbst ab. Alles Uebrige sind Belege -
+     * Teilnahmen, Terminserien, Generierungslaeufe, Kontingente, Ergebnisse und das
+     * Audit-Log -, und ein Beleg darf nicht verschwinden, weil jemand ein Profil aufraeumt.
+     *
+     * <p>{@code profil.spieler_skill} fehlt ebenfalls: Die Zeilen haengen mit
+     * {@code ON DELETE CASCADE} am Profil und verschwinden mit ihm.
+     */
+    @Query(value = """
+            SELECT EXISTS (SELECT 1 FROM profil.admin_konto        WHERE spieler_id             = :spielerId)
+                OR EXISTS (SELECT 1 FROM profil.audit_log          WHERE akteur_spieler_id      = :spielerId)
+                OR EXISTS (SELECT 1 FROM spieltag.teilnahme        WHERE spieler_id             = :spielerId)
+                OR EXISTS (SELECT 1 FROM spieltag.termin_serie     WHERE angelegt_von           = :spielerId)
+                OR EXISTS (SELECT 1 FROM spieltag.team_generierung WHERE erzeugt_von_spieler_id = :spielerId)
+                OR EXISTS (SELECT 1 FROM spieltag.kontingent       WHERE akteur_spieler_id      = :spielerId)
+                OR EXISTS (SELECT 1 FROM spieltag.ergebnis         WHERE erfasst_von_spieler_id = :spielerId)
+            """, nativeQuery = true)
+    boolean istReferenziert(@Param("spielerId") Long spielerId);
 }

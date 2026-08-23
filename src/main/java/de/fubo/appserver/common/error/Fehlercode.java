@@ -51,6 +51,28 @@ public enum Fehlercode {
     SESSION_UNGUELTIG(HttpStatus.UNAUTHORIZED, "Die Sitzung ist abgelaufen."),
     KEINE_BERECHTIGUNG(HttpStatus.FORBIDDEN, "Für diese Aktion fehlt die Berechtigung."),
     NAME_BELEGT(HttpStatus.CONFLICT, "Dieser Name ist bereits angemeldet."),
+
+    /**
+     * Das Adminprofil laesst sich weder entfernen noch sperren (S2b, Abschnitt 8).
+     *
+     * <p>{@code admin_konto.spieler_id} verweist darauf, und ohne Adminprofil kaeme niemand
+     * mehr in den Adminbereich - der Admin wuerde sich mit einem einzigen Aufruf selbst
+     * aussperren.
+     */
+    PROFIL_GESCHUETZT(HttpStatus.CONFLICT,
+            "Das Adminprofil ist geschützt und kann weder entfernt noch gesperrt werden."),
+
+    /**
+     * Das Profil ist noch in fachlichen Daten in Gebrauch und kann deshalb nicht geloescht
+     * werden (S2b, Abschnitt 8).
+     *
+     * <p>Teilnahmen, Terminserien, Generierungslaeufe, Ergebnisse und Audit-Eintraege
+     * verweisen ohne {@code ON DELETE} auf {@code profil.spieler}. Ein Loeschen vernichtete
+     * Belege, auf die sich andere Datensaetze berufen; {@code blockieren} ist dann der
+     * richtige Weg.
+     */
+    PROFIL_IN_VERWENDUNG(HttpStatus.CONFLICT,
+            "Das Profil wird bereits verwendet und kann nicht entfernt werden. Es lässt sich stattdessen blockieren."),
     KEIN_GAST_SLOT_FREI(HttpStatus.CONFLICT, "Es sind bereits alle Gastplätze belegt."),
     EINGABE_UNGUELTIG(HttpStatus.BAD_REQUEST, "Ungültige Eingabedaten."),
     INTERNER_FEHLER(HttpStatus.INTERNAL_SERVER_ERROR, "Ein unerwarteter Fehler ist aufgetreten."),

@@ -65,5 +65,24 @@ public enum AuditAktion {
      * <p>Der Vorgang meldet ausnahmslos alle Sitzungen ab und ist damit im Betrieb sofort
      * spuerbar - er gehoert deshalb nachvollziehbar ins Protokoll.
      */
-    PIN_GEAENDERT
+    PIN_GEAENDERT,
+
+    /**
+     * Der Admin hat ein Spielerprofil angelegt (A13, S2b Abschnitt 8).
+     *
+     * <p>Die drei Aktionen der Spielerverwaltung tragen als {@code entitaet} den Wert
+     * {@code spieler} und als {@code entitaet_id} die betroffene Profil-Id. Handelnder ist
+     * immer der Admin, nicht das betroffene Profil - sonst waere das Protokoll die einzige
+     * Stelle, an der ein geloeschtes Profil noch auftaucht.
+     */
+    PROFIL_ANGELEGT,
+
+    /** Der Admin hat ein Spielerprofil endgueltig entfernt (S2b Abschnitt 8). */
+    PROFIL_ENTFERNT,
+
+    /** Der Admin hat ein Spielerprofil gesperrt (S2b Abschnitt 8). */
+    PROFIL_BLOCKIERT,
+
+    /** Der Admin hat ein gesperrtes Spielerprofil wieder freigegeben (S2b Abschnitt 8). */
+    PROFIL_FREIGEGEBEN
 }

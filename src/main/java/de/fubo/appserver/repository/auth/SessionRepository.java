@@ -149,6 +149,27 @@ public interface SessionRepository extends JpaRepository<Session, Long>, Session
     boolean existiertAktiveSitzungFuer(@Param("spielerId") Long spielerId);
 
     /**
+     * Loescht alle Sitzungen eines Profils (S2b, Abschnitt 8).
+     *
+     * <p>Gebraucht, bevor ein Profil entfernt wird: {@code fk_session_spieler} hat kein
+     * {@code ON DELETE}, das {@code DELETE} auf {@code profil.spieler} scheiterte sonst an
+     * einer Fremdschluesselverletzung.
+     *
+     * <p><b>Loeschen statt Widerrufen</b> - anders als ueberall sonst. Eine widerrufene
+     * Sitzung bliebe als Zeile stehen und verwiese weiter auf das Profil; hier soll gerade
+     * nichts zurueckbleiben. Gastplaetze sind nicht betroffen: Eine Gastsitzung traegt keine
+     * {@code spieler_id}.
+     *
+     * @return Anzahl geloeschter Zeilen
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = """
+            DELETE FROM profil.session
+             WHERE spieler_id = :spielerId
+            """, nativeQuery = true)
+    int loescheFuerSpieler(@Param("spielerId") Long spielerId);
+
+    /**
      * Entfernt abgelaufene Sitzungen (Aufraeumjob, Abschnitt 3.5). Zeilen werden nicht
      * beim Logout geloescht, sondern laufen ab - ohne diesen Job waechst die Tabelle
      * unbegrenzt.
