@@ -11,11 +11,19 @@ Das zugehörige Frontend liegt in einem eigenen Repository: `FuBo-Client`.
 ```
 cd ~/Projects/PRJ_FuBo/server
 // .env anpassen/ergänzen: DB_USER=..., DB_PASSWORD=...
-// Docker starten
+
+// Docker Container löschen
 docker compose -f compose.dev.yml down -v
+ODER
+docker compose -f compose.dev.yml down
+
+// Docker starten
 docker compose -f compose.dev.yml --env-file .env up -d
 
+// Server starten
 ./mvnw spring-boot:run   // Flyway legt V001-V008 neu an
+
+// Testdaten laden
 ./scripts/seed-lokal.sh scripts/data/spielerprofile_anonym.sql
 ```
 
