@@ -68,6 +68,35 @@ fubo:
     # Teil der Admin-Konfiguration. Betrifft alle Aktionen gleichermassen; eine nach
     # Aktionsart gestaffelte Frist waere eine Erweiterung des Aufraeumjobs.
     aufbewahrung-tage: 90
+  mail:
+    # SMTP-Zugang fuer den Versand der Bestaetigungs-PIN beim Passwort-Reset (A22).
+    #
+    # Bewusst KEIN Vorgabewert fuer Host, Benutzer, Passwort und Absender: Ein Standardwert
+    # wie localhost erzeugte eine Anwendung, die im Betrieb Nachrichten ins Leere schickt
+    # und das erst im Ernstfall zeigt.
+    #
+    # Achtung, Fallstrick aus S1: Ein unaufloesbares ${...} wird von Spring Boots Binder
+    # WOERTLICH durchgereicht - der Start braeche also nicht ab, die Anwendung liefe mit
+    # dem Rechnernamen "${SMTP_HOST}". Deshalb prueft MailConfig die Werte beim Start und
+    # bricht mit einer benennenden Meldung ab.
+    host: ${SMTP_HOST}
+    port: ${SMTP_PORT:587}
+    benutzer: ${SMTP_USER_NAME}
+    passwort: ${SMTP_PASSWORD}
+    # Muss zur beim Anbieter freigegebenen Domain gehoeren, sonst lehnt dieser den Versand
+    # ab. Erlaubt ist die reine Adresse oder die Form "Anzeigename <adresse@domain>".
+    absender: ${SMTP_ABSENDER}
+    # Zeitgrenze je Phase (Verbindung, Lesen, Schreiben). Ohne sie haengt ein nicht
+    # erreichbarer SMTP-Server den Aufruf unbegrenzt - und mit ihm die Datenbankverbindung,
+    # denn der Versand laeuft innerhalb der Transaktion des Reset-Vorgangs.
+    zeitgrenze-millis: 5000
+  reset:
+    # Grenzen des Passwort-Resets. Fuenf Stellen sind fuer sich genommen wenig; tragfaehig
+    # wird die Bestaetigungs-PIN erst durch die Summe dieser Grenzen. Keine davon darf
+    # entfallen - jede einzelne traegt.
+    gueltigkeit-minuten: 15         # Lebensdauer eines Vorgangs
+    max-versuche: 5                 # deckt sich mit ck_passwort_reset_versuche (0 bis 5)
+    max-anforderungen-pro-stunde: 3 # je Client-Adresse; begrenzt Versand und Rateversuche
   cors:
     # Kein Default. Fehlt die Variable, bricht der Start ab.
     allowed-origins: ${FUBO_CORS_ALLOWED_ORIGINS}

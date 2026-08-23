@@ -37,6 +37,24 @@ fubo:
     # der Pruefdaten direkt, statt die Frist zu verkuerzen - das haelt den Test unabhaengig
     # vom konfigurierten Wert.
     aufbewahrung-tage: 90
+  mail:
+    # Feste Testwerte statt ${SMTP_...}: Der Testlauf darf nicht davon abhaengen, ob lokal
+    # eine .env existiert. Es wird nichts versendet - der Fachlogiktest tauscht den
+    # JavaMailSender gegen einen Ersatz aus; die Bean existiert nur, damit der Kontext
+    # startet. "example.invalid" ist nach RFC 2606 garantiert nicht zustellbar.
+    host: smtp.example.invalid
+    port: 587
+    benutzer: test
+    passwort: test
+    absender: FuBo-Test <noreply@example.invalid>
+    zeitgrenze-millis: 5000
+  reset:
+    # Dieselben Werte wie in der Produktionskonfiguration - der Test soll das echte
+    # Verhalten pruefen, nicht ein entschaerftes. Ablaufzeitpunkte setzen die Tests direkt
+    # per JdbcTemplate, statt die Gueltigkeit zu verkuerzen.
+    gueltigkeit-minuten: 15
+    max-versuche: 5
+    max-anforderungen-pro-stunde: 3
   cors:
     allowed-origins: http://localhost:5173
 

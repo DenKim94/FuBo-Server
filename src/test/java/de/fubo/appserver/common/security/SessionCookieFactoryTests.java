@@ -22,7 +22,12 @@ class SessionCookieFactoryTests {
                 new FuboProperties.Cors(List.of("http://localhost:5173")),
                 // Fuer die Cookie-Fabrik ohne Bedeutung.
                 new FuboProperties.BruteForce(5, 30, 15, List.of(1, 5, 15)),
-                new FuboProperties.Audit(90)));
+                new FuboProperties.Audit(90),
+                // S2b: Mail-Zugang und Reset-Grenzen. Fuer die Cookie-Fabrik ohne
+                // Bedeutung, seit S2b aber Pflichtbestandteile von FuboProperties.
+                new FuboProperties.Mail("smtp.example.invalid", 587, "test", "test",
+                        "FuBo-Test <noreply@example.invalid>", 5000),
+                new FuboProperties.Reset(15, 5, 3)));
     }
 
     // ------------------------------------------------------------------ Setzen

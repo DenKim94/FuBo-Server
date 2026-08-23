@@ -189,8 +189,12 @@ class BruteForceServiceTests {
                 new FuboProperties.Session("FUBO_SESSION", false, "Lax"),
                 new FuboProperties.Cors(List.of("http://localhost:5173")),
                 new FuboProperties.BruteForce(MAX_JE_IP, MAX_GLOBAL, FENSTER_MINUTEN, SPERRDAUERN),
-                // Fuer die Drosselung ohne Bedeutung.
-                new FuboProperties.Audit(90));
+                // Fuer die Drosselung ohne Bedeutung; seit S2b sind Mail-Zugang und
+                // Reset-Grenzen ebenfalls Pflichtbestandteile von FuboProperties.
+                new FuboProperties.Audit(90),
+                new FuboProperties.Mail("smtp.example.invalid", 587, "test", "test",
+                        "FuBo-Test <noreply@example.invalid>", 5000),
+                new FuboProperties.Reset(15, 5, 3));
     }
 
     /** Verstellbare Uhr; ersetzt im Test die {@code Clock}-Bean aus {@code ZeitConfig}. */
