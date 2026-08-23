@@ -9,6 +9,9 @@ import de.fubo.appserver.domain.auth.OffenerReset;
 import de.fubo.appserver.repository.auth.PasswortResetRepository;
 import de.fubo.appserver.service.audit.AuditService;
 import de.fubo.appserver.service.mail.MailService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,6 +49,8 @@ import java.util.Optional;
  */
 @Service
 public class PasswortResetService {
+
+    private static final Logger LOG = LoggerFactory.getLogger(PasswortResetService.class);
 
     /**
      * Kryptografisch sichere Quelle. Ein {@code java.util.Random} waere hier ein Fehler:
@@ -183,6 +188,37 @@ public class PasswortResetService {
 
         auditService.protokolliere(adminSpielerId, clientIp, AuditAktion.PASSWORT_GEAENDERT,
                 "admin_konto", ADMIN_KONTO_ID, Map.of("weg", "reset"));
+    }
+
+    /**
+     * Entfernt Vorgaenge jenseits der Aufbewahrungsfrist (Abschnitt 9, Vorgabe 30 Tage ueber
+     * {@code fubo.reset.aufbewahrung-tage}).
+     *
+     * <p><b>Warum ueberhaupt geloescht wird:</b> {@code angefordert_von_ip} ist
+     * personenbezogen, und nach der DSGVO gilt Speicherbegrenzung. Nebenbei bleibt die
+     * Tabelle klein - Vorgaenge werden ausschliesslich angehaengt.
+     *
+     * <p><b>Kuerzer als die 90 Tage des Audit-Logs</b> und aus gutem Grund: Der fachliche
+     * Beleg steht dort ({@code PASSWORT_RESET_ANGEFORDERT}, {@code PASSWORT_GEAENDERT}), hier
+     * bleiben nur die technischen Vorgangsdaten. Wer nachvollziehen will, wer wann ein
+     * Passwort gesetzt hat, schaut ins Protokoll, nicht in diese Tabelle.
+     *
+     * <p>Der Lauf schreibt sich <b>nicht</b> ins Audit-Log - das waere zirkulaer, dieselbe
+     * Regel wie beim Aufraeumen des Protokolls selbst. Er meldet sich ueber die
+     * Anwendungsprotokollierung.
+     *
+     * <p>Die Uhrzeit liegt bewusst nach den beiden bestehenden Auftraegen (Sitzungen 3:30,
+     * Audit-Log 3:45): Drei gleichzeitige Loeschlaeufe auf einem Raspberry Pi haetten
+     * einander nur im Weg gestanden.
+     */
+    @Scheduled(cron = "0 0 4 * * *")
+    @Transactional
+    public void alteVorgaengeEntfernen() {
+        int aufbewahrungTage = konfiguration.aufbewahrungTage();
+        int anzahl = resetRepository.loescheAelterAls(
+                OffsetDateTime.now().minusDays(aufbewahrungTage));
+
+        LOG.info("Reset-Vorgaenge aelter als {} Tage entfernt: {}", aufbewahrungTage, anzahl);
     }
 
     /**

@@ -97,6 +97,10 @@ fubo:
     gueltigkeit-minuten: 15         # Lebensdauer eines Vorgangs
     max-versuche: 5                 # deckt sich mit ck_passwort_reset_versuche (0 bis 5)
     max-anforderungen-pro-stunde: 3 # je Client-Adresse; begrenzt Versand und Rateversuche
+    # Loeschfrist der Vorgaenge. Betriebs- und Rechtsgroesse wie beim Audit-Log, aber
+    # kuerzer: Der fachliche Beleg steht im Protokoll, hier bleiben nur technische
+    # Vorgangsdaten - und angefordert_von_ip ist personenbezogen.
+    aufbewahrung-tage: 30
   cors:
     # Kein Default. Fehlt die Variable, bricht der Start ab.
     allowed-origins: ${FUBO_CORS_ALLOWED_ORIGINS}

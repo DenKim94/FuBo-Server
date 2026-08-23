@@ -110,6 +110,23 @@ public class PasswortResetRepository {
                AND erstellt_am > now() - interval '1 hour'
             """;
 
+    /**
+     * Entfernt abgeschlossene Vorgaenge jenseits der Aufbewahrungsfrist (Abschnitt 9).
+     *
+     * <p>Der Stichtag wird als Parameter uebergeben und nicht in SQL gerechnet
+     * ({@code now() - interval ...}), damit die Frist an genau einer Stelle steht: in der
+     * Konfiguration. Ein zweiter Ort fuer dieselbe Zahl liefe frueher oder spaeter
+     * auseinander - dieselbe Ueberlegung wie beim Audit-Log.
+     *
+     * <p><b>Nur {@code erstellt_am} entscheidet, nicht {@code verbraucht_am}.</b> Ein
+     * Vorgang, den niemand eingeloest hat, laeuft nach 15 Minuten ab und ist danach genauso
+     * wertlos wie ein verbrauchter - er duerfte sonst ewig liegen bleiben.
+     */
+    private static final String SQL_LOESCHEN = """
+            DELETE FROM profil.passwort_reset
+             WHERE erstellt_am < :stichtag
+            """;
+
     private final JdbcClient jdbc;
 
     public PasswortResetRepository(JdbcClient jdbc) {
@@ -180,6 +197,18 @@ public class PasswortResetRepository {
     public int verbrauchen(Long id) {
         return jdbc.sql(SQL_VERBRAUCHEN)
                 .param("id", id)
+                .update();
+    }
+
+    /**
+     * Entfernt Vorgaenge, die aelter sind als der Stichtag.
+     *
+     * @param stichtag Zeitpunkt, vor dem geloescht wird
+     * @return Anzahl geloeschter Zeilen
+     */
+    public int loescheAelterAls(OffsetDateTime stichtag) {
+        return jdbc.sql(SQL_LOESCHEN)
+                .param("stichtag", stichtag)
                 .update();
     }
 

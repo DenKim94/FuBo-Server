@@ -55,6 +55,10 @@ fubo:
     gueltigkeit-minuten: 15
     max-versuche: 5
     max-anforderungen-pro-stunde: 3
+    # Wie in der Produktionskonfiguration. Der Test zur Loeschfrist setzt die Zeitstempel
+    # der Pruefdaten direkt, statt die Frist zu verkuerzen - das haelt ihn unabhaengig vom
+    # konfigurierten Wert.
+    aufbewahrung-tage: 30
   cors:
     allowed-origins: http://localhost:5173
 

@@ -126,8 +126,17 @@ public record FuboProperties(@NotNull Session session,
      * @param maxAnforderungenProStunde Anforderungen je Client-Adresse und Stunde. Begrenzt
      *                                 zugleich die Zahl der versendeten Nachrichten und die
      *                                 Zahl der Rateversuche pro Stunde.
+     * @param aufbewahrungTage         Tage, nach denen ein abgeschlossener Vorgang geloescht
+     *                                 wird (Vorgabe 30). Wie beim Audit-Log eine Betriebs-
+     *                                 und Rechtsgroesse und deshalb Property, nicht
+     *                                 {@code configs.app_config}: {@code angefordert_von_ip}
+     *                                 ist personenbezogen, und die Tabelle waechst sonst
+     *                                 unbegrenzt. <b>Kuerzer als die 90 Tage des
+     *                                 Audit-Logs</b>, weil der fachliche Beleg dort steht -
+     *                                 hier bleiben nur die technischen Vorgangsdaten.
      */
     public record Reset(@DefaultValue("15") @Min(1) int gueltigkeitMinuten,
                         @DefaultValue("5") @Min(1) @Max(5) int maxVersuche,
-                        @DefaultValue("3") @Min(1) int maxAnforderungenProStunde) {}
+                        @DefaultValue("3") @Min(1) int maxAnforderungenProStunde,
+                        @DefaultValue("30") @Min(1) int aufbewahrungTage) {}
 }

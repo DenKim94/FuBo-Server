@@ -27,7 +27,7 @@ class SessionCookieFactoryTests {
                 // Bedeutung, seit S2b aber Pflichtbestandteile von FuboProperties.
                 new FuboProperties.Mail("smtp.example.invalid", 587, "test", "test",
                         "FuBo-Test <noreply@example.invalid>", 5000),
-                new FuboProperties.Reset(15, 5, 3)));
+                new FuboProperties.Reset(15, 5, 3, 30)));
     }
 
     // ------------------------------------------------------------------ Setzen

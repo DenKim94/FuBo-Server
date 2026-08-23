@@ -194,7 +194,7 @@ class BruteForceServiceTests {
                 new FuboProperties.Audit(90),
                 new FuboProperties.Mail("smtp.example.invalid", 587, "test", "test",
                         "FuBo-Test <noreply@example.invalid>", 5000),
-                new FuboProperties.Reset(15, 5, 3));
+                new FuboProperties.Reset(15, 5, 3, 30));
     }
 
     /** Verstellbare Uhr; ersetzt im Test die {@code Clock}-Bean aus {@code ZeitConfig}. */
