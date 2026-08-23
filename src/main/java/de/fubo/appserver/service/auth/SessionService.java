@@ -234,10 +234,25 @@ public class SessionService {
      * Widerruft alle offenen Sitzungen, etwa nach einem Wechsel der zentralen PIN.
      * Genau diese sofortige Widerrufbarkeit ist der Grund fuer den serverseitigen
      * Token statt eines JWT.
+     *
+     * <p><b>Die Gastplaetze werden anschliessend freigegeben</b> (ergaenzt in S2b). Ohne
+     * diesen Schritt blieben nach einem PIN-Wechsel bis zu vier Plaetze bis zum
+     * naechtlichen Aufraeumlauf besetzt - von Sitzungen, die niemand mehr nutzen kann.
+     * Bei vier Plaetzen faellt das sofort auf. Dieselbe Ueberlegung wie bei
+     * {@link #abmelden(Long)}, nur fuer alle Sitzungen auf einmal.
+     *
+     * <p>Die Reihenfolge ist festgelegt und nicht umkehrbar: Die Freigabe erkennt ihre
+     * Kandidaten daran, dass {@code widerrufen_am} gesetzt ist - sie muss also
+     * <b>nach</b> dem Widerruf laufen.
      */
     @Transactional
     public void alleWiderrufen() {
         int anzahl = sessionRepository.alleWiderrufen();
+
+        int freigegeben = gastSlotRepository.freigebenFuerAbgelaufeneSitzungen();
+        if (freigegeben > 0) {
+            LOG.info("Gastplaetze widerrufener Sitzungen freigegeben: {}", freigegeben);
+        }
         LOG.info("Alle offenen Sitzungen widerrufen: {}", anzahl);
     }
 

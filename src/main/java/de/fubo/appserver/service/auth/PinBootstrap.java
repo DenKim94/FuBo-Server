@@ -35,8 +35,21 @@ public class PinBootstrap implements ApplicationRunner {
 
     private static final Logger LOG = LoggerFactory.getLogger(PinBootstrap.class);
 
-    /** Stellenzahl der erzeugten Ersatz-PIN. */
-    private static final int ZUFALLS_PIN_STELLEN = 6;
+    /**
+     * Stellenzahl der erzeugten Ersatz-PIN.
+     *
+     * <p><b>Vier, seit dem 23.08.2026</b> - vorher sechs. Grund ist der Endpunkt
+     * {@code POST /admin/pin/aendern} aus S2b: Er laesst genau vier Ziffern zu. Eine
+     * laengere Ersatz-PIN waere zwar staerker, liesse sich aber ueber ein Frontend, das auf
+     * vier Stellen ausgelegt ist, gar nicht mehr eingeben - der Erststart endete in einer
+     * Sackgasse.
+     *
+     * <p>10 000 Moeglichkeiten sind wenig. Tragfaehig wird das nur durch den
+     * {@code BruteForceService}: fuenf Fehlversuche je Adresse, 30 insgesamt, steigende
+     * Sperrdauern. Die Ersatz-PIN ist ausserdem als Uebergang gedacht und wird beim ersten
+     * Anmelden gewechselt; die Startmeldung sagt das ausdruecklich.
+     */
+    private static final int ZUFALLS_PIN_STELLEN = 4;
 
     private static final SecureRandom ZUFALL = new SecureRandom();
 
