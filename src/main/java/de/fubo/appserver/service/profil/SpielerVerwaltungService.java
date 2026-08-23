@@ -204,7 +204,12 @@ public class SpielerVerwaltungService {
 
         profil.setAktiv(!blockieren);
         profil.setGeaendertAm(OffsetDateTime.now());
-        spielerRepository.save(profil);
+
+        // saveAndFlush statt save: Die Namensliste und die Pruefungen der uebrigen Endpunkte
+        // lesen ueber nativen JDBC-Zugriff und sehen nur, was in der Datenbank steht. Beim
+        // Sperren erzwingt zwar der anschliessende Sitzungswiderruf ein Flush - beim Freigeben
+        // gibt es keinen, und die Aenderung bliebe bis zum Ende der Transaktion unsichtbar.
+        spielerRepository.saveAndFlush(profil);
 
         if (blockieren) {
             sessionService.widerrufenFuerSpieler(spielerId);

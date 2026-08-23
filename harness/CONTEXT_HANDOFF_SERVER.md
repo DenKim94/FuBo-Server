@@ -393,7 +393,26 @@ die gewünschte Staffelung, keine Panne.
 Klassen**, keine Fehler, keine Abbrüche, keine übersprungenen Tests. Die Anwendung startet auf
 einer frischen Datenbank durch.
 
-**Für die S2b-Schritte 8 bis 11 steht der Lauf noch aus. Erwartet: 184 Tests in 19 Klassen.**
+**Für die S2b-Schritte 8 bis 11 steht der grüne Lauf noch aus. Erwartet: 184 Tests in 19
+Klassen.** Der erste Lauf am 23.08.2026 brachte fünf Fehler – **alle drei Ursachen lagen im neuen
+Code und sind behoben:**
+
+1. **Zwei Tabellennamen in `SpielerRepository#istReferenziert` waren falsch** und führten zu
+   `500 relation "spieltag.termin_serie" does not exist`. Sie waren aus den *Constraint-Namen*
+   abgeleitet, und die stimmen hier nicht mit den Tabellennamen überein:
+   `fk_terminserie_spieler` gehört zu `spieltag.terminserie`, `fk_kontingent_spieler` zu
+   `spieltag.generierung_kontingent`. **Tabellennamen immer aus den `CREATE TABLE`-Zeilen der
+   Migration lesen, nie aus einem Constraint-Namen.** Die Methode trägt den Hinweis jetzt im
+   JavaDoc.
+2. **`blockieren` benutzte `save` statt `saveAndFlush`.** Beim Sperren erzwang der anschliessende
+   Sitzungswiderruf (`@Modifying(flushAutomatically = true)`) ein Flush, beim Freigeben gab es
+   keinen – die Änderung blieb bis zum Ende der Transaktion im Persistence-Context stehen, und
+   die Namensliste liest über nativen JDBC-Zugriff. **Merkregel für dieses Projekt: Wo JPA
+   schreibt und natives SQL liest, muss geflusht werden.**
+3. **`SMALLINT` kommt über `queryForMap` als `Integer` zurück, nicht als `Short`** – der Rohwert
+   des Treibers. `queryForObject(..., Short.class)` wandelt dagegen um. Beide Wege sind richtig,
+   nur nicht miteinander vergleichbar; der Test vergleicht jetzt über `Number#intValue`.
+
 
 | Testklasse | Fälle | |
 |---|---:|---|

@@ -132,7 +132,10 @@ class PasswortResetControllerTests {
 
         Map<String, Object> vorgang = jdbc.queryForMap(
                 "SELECT versuche, verbraucht_am, angefordert_von_ip, gueltig_bis FROM profil.passwort_reset");
-        assertThat(vorgang.get("versuche")).isEqualTo((short) 0);
+        // queryForMap liefert den Rohwert des Treibers: PostgreSQL gibt SMALLINT als Integer
+        // zurueck, nicht als Short. queryForObject(..., Short.class) wandelt dagegen um - beide
+        // Wege sind richtig, nur nicht miteinander vergleichbar.
+        assertThat(((Number) vorgang.get("versuche")).intValue()).isZero();
         assertThat(vorgang.get("verbraucht_am")).isNull();
         assertThat(vorgang.get("angefordert_von_ip")).isEqualTo("198.51.100.10");
 

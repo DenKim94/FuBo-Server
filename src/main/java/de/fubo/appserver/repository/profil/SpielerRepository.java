@@ -153,14 +153,21 @@ public interface SpielerRepository extends JpaRepository<Spieler, Long>, Spieler
      *
      * <p>{@code profil.spieler_skill} fehlt ebenfalls: Die Zeilen haengen mit
      * {@code ON DELETE CASCADE} am Profil und verschwinden mit ihm.
+     *
+     * <p><b>Achtung bei Erweiterungen:</b> Die Tabellennamen stimmen hier nicht mit den Namen
+     * ihrer Fremdschluessel ueberein - {@code fk_terminserie_spieler} gehoert zu
+     * {@code spieltag.terminserie}, {@code fk_kontingent_spieler} zu
+     * {@code spieltag.generierung_kontingent}. Wer die Liste ergaenzt, liest die Namen aus den
+     * {@code CREATE TABLE}-Zeilen der Migration, nicht aus den Constraint-Namen. Ein Tippfehler
+     * faellt erst zur Laufzeit auf, und zwar als {@code 500}.
      */
     @Query(value = """
             SELECT EXISTS (SELECT 1 FROM profil.admin_konto        WHERE spieler_id             = :spielerId)
                 OR EXISTS (SELECT 1 FROM profil.audit_log          WHERE akteur_spieler_id      = :spielerId)
                 OR EXISTS (SELECT 1 FROM spieltag.teilnahme        WHERE spieler_id             = :spielerId)
-                OR EXISTS (SELECT 1 FROM spieltag.termin_serie     WHERE angelegt_von           = :spielerId)
-                OR EXISTS (SELECT 1 FROM spieltag.team_generierung WHERE erzeugt_von_spieler_id = :spielerId)
-                OR EXISTS (SELECT 1 FROM spieltag.kontingent       WHERE akteur_spieler_id      = :spielerId)
+                OR EXISTS (SELECT 1 FROM spieltag.terminserie            WHERE angelegt_von           = :spielerId)
+                OR EXISTS (SELECT 1 FROM spieltag.team_generierung       WHERE erzeugt_von_spieler_id = :spielerId)
+                OR EXISTS (SELECT 1 FROM spieltag.generierung_kontingent WHERE akteur_spieler_id      = :spielerId)
                 OR EXISTS (SELECT 1 FROM spieltag.ergebnis         WHERE erfasst_von_spieler_id = :spielerId)
             """, nativeQuery = true)
     boolean istReferenziert(@Param("spielerId") Long spielerId);
