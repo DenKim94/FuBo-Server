@@ -8,8 +8,7 @@
 > **Kein Monorepo.** Das Frontend liegt in einem getrennten Repository (`FuBo-Client`, Ordner `client/`).
 > Der übergeordnete Ordner `PRJ_FuBo/` sowie `PRJ_FuBo/harness/` sind bewusst **nicht** versioniert.
 > Repository ist angelegt: `https://github.com/DenKim94/FuBo-Server.git` (privat).
-> Stand: 23.08.2026, **S0, S1 und S2 abgeschlossen und verifiziert; S2b in den Schritten 0 bis 7
-> umgesetzt, aber noch nicht verifiziert** (siehe Abschnitte 6.12 und 6.13)
+> Stand: 22.08.2026, **S0, S1 und S2 abgeschlossen und verifiziert**
 > (22.08.2026: Gast-Login mit festen Gastplätzen, Admin-Konto im Bootstrap, die drei
 > Sitzungsendpunkte, Ausnahme des Pollings von der Sitzungsverlängerung und maschinenlesbare
 > Restwartezeit beim `429` umgesetzt, siehe Abschnitt 6.10; der Endpunktkontrakt liegt jetzt als
@@ -26,11 +25,11 @@
 > startet auf einer frischen Datenbank durch.** Aufstellung je Klasse in Abschnitt 6.11. Der Lauf
 > braucht Docker (Testcontainers, `postgres:17`) und läuft ausschliesslich lokal.
 >
-> Als Nächstes: **`./mvnw clean verify` für S2b** (Abschnitt 6.13) – dafür fehlt noch
-> `SMTP_ABSENDER` in der `.env`. Danach das zweite S2b-Paket: Spielerverwaltung durch den Admin
-> (Abschnitt 8 der Anleitung), Aufräumjob (Abschnitt 9) und die Tests (Abschnitt 11).
+> Als Nächstes: **S2b** (Zugangsdatenpflege). Die Anleitung liegt vor unter
+> `harness/tmp/S2b_UMSETZUNG.md` und beginnt mit einer Entscheidung, die den Start blockiert:
+> dem SMTP-Zugang.
 >
-> (Vorfassung archiviert unter `harness/archive/CONTEXT_HANDOFF_SERVER_2026-08-22_v5_S2-vollstaendig.md`)
+> (Vorfassung archiviert unter `harness/archive/CONTEXT_HANDOFF_SERVER_2026-08-16_v4_S2-Abschnitte1-7.md`)
 
 ---
 
@@ -77,9 +76,8 @@ abgebildet, der Client-Track zieht danach nach.
 Datei lässt sich ohne Zusatzwerkzeug maschinell prüfen, und die üblichen
 TypeScript-Generatoren des Client-Tracks lesen sie unverändert.
 
-**Umfang:** ausschliesslich das, was tatsächlich umgesetzt ist – die acht Auth- und
-Sitzungsendpunkte aus S2 sowie seit dem 23.08.2026 die vier Endpunkte der Zugangsdatenpflege aus
-S2b (Abschnitt 6.12). Spekulative Endpunkte wären ein Vertrag über etwas, das es nicht gibt;
+**Umfang:** ausschliesslich das, was tatsächlich umgesetzt ist – derzeit die sieben Auth- und
+Sitzungsendpunkte aus S2. Spekulative Endpunkte wären ein Vertrag über etwas, das es nicht gibt;
 S3 bis S6 tragen ihre Endpunkte jeweils bei Fertigstellung nach.
 
 Inhaltliche Kernpunkte (unverändert, Herleitung in `AGENT_SERVER.md`, Abschnitt „Schnittstelle zum
@@ -100,7 +98,7 @@ Mid-Level-Entwickler, KI-gestützt, ca. 6,5 h/Woche.
 | S0 | Backend-Setup: Spring Boot, Maven, Modulstruktur, `.gitignore`, Docker/Compose-Eintrag – **abgeschlossen**                                                                                                                                                                                                                      | 8 |
 | S1 | Datenmodell: 3 Schemas, alle Tabellen/Constraints, Flyway-Migrationen, Seed (Kategorien, `gast_vorlage`, anonymisierte Beispielprofile), lokale Datenversorgung, Testcontainers-Grundgerüst – **abgeschlossen**                                                                                                                 | 15 |
 | S2 | Auth & Session: Security-Filterchain, PIN-Login + Brute-Force-Schutz, `stage`-Erzwingung, opaker Token/HttpOnly, Zwei-Timer-Modell, Namensliste/-belegung, Gast-Login, Admin-Login, Bootstrap, Sitzungsendpunkte, Online-Status, API-Vertrag – **abgeschlossen und verifiziert (148 Tests)**, Anleitung `harness/tmp/S2_UMSETZUNG.md` | 23 |
-| S2b | Zugangsdatenpflege: Passwort-Reset per E-Mail (5-stellige PIN, Rate-Limit, Sitzungswiderruf), Passwortänderung im angemeldeten Zustand, Änderung der zentralen PIN – **Schritte 0 bis 7 umgesetzt, Verifikation offen**; offen bleiben Spielerverwaltung (Abschnitt 8), Aufräumjob (9) und Tests (11). Anleitung `harness/tmp/S2b_UMSETZUNG.md` | 10 |
+| S2b | Zugangsdatenpflege: Passwort-Reset per E-Mail (5-stellige PIN, Rate-Limit, Sitzungswiderruf), Passwortänderung im angemeldeten Zustand, Änderung der zentralen PIN – Anleitung `harness/tmp/S2b_UMSETZUNG.md`, **Schätzung auf 10 h angehoben** | 10 |
 | S3 | Profile & Skills API: Admin-CRUD, Rollen/Autorisierung, `configs` (Import der Referenzdaten entfällt – siehe Abschnitt 7.3)                                                                                                                                                                                                     | 11 |
 | S4 | Termine & Teilnahme API: Einzel/Serie, Teilnahme, `teilnehmer_version`, Min/Max + Warteschlange, Gast-Flow/`gast_slot`                                                                                                                                                                                                          | 16 |
 | S5 | Teamgenerator: `EXHAUSTIV` + `HEURISTIK`, Zielfunktion inkl. Torwart-Gewicht, Kontingent/Seed/Snapshot, Auswechselspieler, Tests                                                                                                                                                                                                | 18 |
@@ -875,210 +873,22 @@ Anwendungsfehler aussieht und keiner ist:
 
 Die manuelle Prüfliste steht vollständig in `S2_UMSETZUNG.md`, Abschnitt 12.
 
-### 6.12 S2b, Schritte 0 bis 7 umgesetzt (23.08.2026)
-
-Passwort-Reset per E-Mail, Passwortaenderung im angemeldeten Zustand und Wechsel der
-zentralen PIN. **Nicht enthalten:** die Spielerverwaltung aus Abschnitt 8, der Aufraeumjob aus
-Abschnitt 9 und die Tests aus Abschnitt 11 – sie sind ausdrücklich einem zweiten Paket
-vorbehalten. **Verifikation steht aus** (Abschnitt 6.13).
-
-```
-pom.xml                                  + spring-boot-starter-mail
-fubo-api.json                            + 4 Endpunkte, 4 Fehlercodes, 3 Schemas, Tag "Zugangsdaten"
-.env / .env.example                      + SMTP_HOST, SMTP_PORT, SMTP_ABSENDER
-src/main/java/de/fubo/appserver/
-  common/config/      FuboProperties     + Mail, Reset
-                      MailConfig (neu)   JavaMailSender-Bean samt Startpruefung
-                      SecurityConfig     + 2 Regeln fuer /auth/passwort/*
-  common/error/       Fehlercode         + RESET_PIN_FALSCH, RESET_UNGUELTIG,
-                                           RESET_GEDROSSELT, VERSAND_FEHLGESCHLAGEN
-  domain/audit/       AuditAktion        + PASSWORT_RESET_ANGEFORDERT, PASSWORT_RESET_FEHLVERSUCH,
-                                           PASSWORT_GEAENDERT, PIN_GEAENDERT
-  domain/auth/        OffenerReset (neu), AnforderungsFenster (neu)
-  repository/auth/    PasswortResetRepository (neu, JdbcClient)
-  service/auth/       PasswortResetService (neu), ZugangsdatenService (neu)
-                      AdminService       + passwortSetzen, email
-                      SessionService     alleWiderrufen gibt jetzt Gastplaetze frei
-  service/mail/       MailService (neu)  Versand der Bestaetigungs-PIN
-  dto/auth/           PasswortResetBestaetigenRequest (neu)
-  dto/admin/          PasswortAendernRequest (neu), PinAendernRequest (neu)
-  controller/auth/    PasswortResetController (neu)
-  controller/admin/   ZugangsdatenController (neu)
-src/main/resources/   application.yml    + fubo.mail.*, fubo.reset.*
-src/test/resources/   application.yml    + fubo.mail.*, fubo.reset.* (feste Testwerte)
-src/test/java/…       SessionAuthFilterTests, SessionCookieFactoryTests, BruteForceServiceTests
-                                         je zwei Argumente mehr beim Bau von FuboProperties
-```
-
-**Keine Schemaaenderung.** `V008` bleibt die letzte Migration; `profil.passwort_reset` stammt
-unveraendert aus `V003`.
-
-**Endpunkte (neu):**
-
-| Methode | Pfad | Erlaubte Stufe/Rolle | Antwort |
-|---|---|---|---|
-| `POST` | `/api/v1/auth/passwort/zuruecksetzen` | nur `PIN_VERIFIED` | `204`, PIN per E-Mail versendet |
-| `POST` | `/api/v1/auth/passwort/bestaetigen` | nur `PIN_VERIFIED` | `204`, Adminsitzungen widerrufen |
-| `POST` | `/api/v1/admin/passwort/aendern` | Rolle `ADMIN` | `204`, Cookie geloescht |
-| `POST` | `/api/v1/admin/pin/aendern` | Rolle `ADMIN` | `204`, **alle** Sitzungen widerrufen, Cookie geloescht |
-
-**Sechs Entscheidungen, die von der Anleitung abweichen oder sie ergaenzen:**
-
-1. **Die Reset-Endpunkte liegen unter `/auth/`, nicht unter `/admin/`** (Abschnitt 10 der
-   Anleitung nannte `/admin/passwort/zuruecksetzen`). Beides gleichzeitig geht nicht:
-   `/api/*/admin/**` verlangt in `SecurityConfig` die Rolle `ADMIN` – und wer sein Passwort
-   vergessen hat, traegt sie gerade nicht. Abschnitt 2.2 der Anleitung verlangt zugleich die
-   Stufe `PIN_VERIFIED`. Der Reset gehoert damit zur **Anmeldung** und steht neben
-   Namensauswahl, Gast-Login und Admin-Login. Entscheidung des Haupt-Entwicklers vom
-   23.08.2026; Abschnitt 10 der Anleitung ist nachgezogen.
-2. **Der SMTP-Zugang haengt an `fubo.mail.*`, nicht an `spring.mail.*`** – und die
-   `JavaMailSender`-Bean entsteht in `MailConfig` von Hand. Grund: Abschnitt 1.1 der Anleitung
-   verlangt „fehlt die Variable, bricht der Start ab". Die Autokonfiguration kann das nicht
-   einloesen, weil Spring Boots `Binder` einen unaufloesbaren Platzhalter **woertlich**
-   durchreicht – die Anwendung liefe mit dem Rechnernamen `"${SMTP_HOST}"` durch und der Fehler
-   zeigte sich erst beim ersten Reset. Es ist derselbe Fallstrick wie bei `${DB_USER}` in S1
-   (Abschnitt 6.3). `MailConfig` prueft die vier Pflichtwerte und bricht mit einer benennenden
-   Meldung ab.
-3. **Der Reset widerruft nur die Sitzungen des Admins**, nicht alle (offener Punkt 5,
-   entschieden – Abschnitt 4.2 der Anleitung schlug noch `alleWiderrufen()` vor). Das
-   Adminpasswort betrifft ausschliesslich den Adminzugang; Spieler und Gaeste ohne Grund
-   abzumelden waere ein Schaden ohne Nutzen. Alle Sitzungen widerruft ausschliesslich der
-   Wechsel der **zentralen** PIN – dort aendert sich das gemeinsame Geheimnis.
-4. **`SessionService#alleWiderrufen` gibt jetzt die Gastplaetze frei.** Ohne diesen Zusatz
-   blieben nach einem PIN-Wechsel bis zu vier Plaetze bis zum naechtlichen Aufraeumlauf von
-   Sitzungen belegt, die niemand mehr nutzen kann. Die Reihenfolge ist festgelegt und nicht
-   umkehrbar: Die Freigabe erkennt ihre Kandidaten an gesetztem `widerrufen_am`.
-5. **Der Versuchszaehler laeuft mit `REQUIRES_NEW`** (offener Punkt 3, bestaetigt) – als
-   `@Transactional` an `PasswortResetRepository#versuchZaehlen`. Zusaetzlich sitzt die
-   Reihenfolge „zaehlen, protokollieren, ablehnen" wie beim PIN- und beim Admin-Login **im
-   Controller**: Nur dort laeuft der Audit-Eintrag ausserhalb jeder Transaktion und ueberlebt
-   die Ablehnung. Beides zusammen, weil Zaehler und Protokolleintrag verschiedene Wege gehen –
-   der Zaehler ueber die eigene Transaktion, der Eintrag ueber die fehlende. Die Regel aus
-   `AGENT_SERVER.md` bleibt unberuehrt: Sie gilt dem Audit-Log, nicht Zaehlern.
-6. **Die neue zentrale PIN besteht aus genau vier Ziffern** (Festlegung des Haupt-Entwicklers
-   vom 23.08.2026; die Anleitung liess den Wertebereich offen). Rein numerisch und kurz, weil die
-   PIN muendlich oder ueber einen Aushang weitergegeben und haeufig auf einer Zifferntastatur
-   eingegeben wird; die **feste** Laenge statt einer Spanne erlaubt dem Frontend ein Eingabefeld mit
-   vier Kaestchen. **Daran haengt eine Bedingung:** 10 000 Moeglichkeiten sind wenig – tragfaehig
-   wird die PIN ausschliesslich durch den `BruteForceService` (fuenf Fehlversuche je Adresse, 30
-   insgesamt, Sperrdauern 1/5/15 Minuten). Diese Grenzen duerfen nicht gelockert werden, solange die
-   PIN vierstellig ist.
-
-   **Folgeaenderung:** `PinBootstrap` erzeugt seine Ersatz-PIN jetzt vierstellig statt sechsstellig.
-   Eine laengere Ersatz-PIN waere staerker, liesse sich ueber ein Frontend mit vier Kaestchen aber
-   gar nicht eingeben – der Erststart endete in einer Sackgasse. `FUBO_INITIAL_PIN` bleibt
-   unberuehrt (Betriebsangabe), und `/auth/pin/pruefen` schreibt der PIN weiterhin **kein** Format
-   vor, damit ein abweichender Bestandswert eingebbar bleibt.
-
-**Zum Zusammenspiel der Grenzen.** Fuenf Stellen sind 100 000 Moeglichkeiten – fuer sich zu
-wenig. Tragfaehig wird die Bestaetigungs-PIN erst durch die Summe: fuenf Versuche je Vorgang,
-15 Minuten Gueltigkeit, drei Anforderungen je Stunde und Adresse, BCrypt statt Klartext, der
-Endpunkt hinter der zentralen PIN und der zusaetzliche Brute-Force-Zaehler. Wer eine Stunde lang
-alle erlaubten Versuche ausschoepft, kommt auf 15 von 100 000 – etwa 0,015 Prozent. **Keine
-dieser Grenzen darf entfallen.**
-
-**Vertrag nachgezogen (`fubo-api.json`).** Vier Endpunkte, vier Fehlercodes
-(`RESET_PIN_FALSCH`, `RESET_UNGUELTIG`, `RESET_GEDROSSELT`, `VERSAND_FEHLGESCHLAGEN`), drei
-Schemas und der Tag „Zugangsdaten". Der `429` des Reset-Endpunkts traegt `Retry-After` und
-`wartesekunden` wie der PIN-Endpunkt; die Restwartezeit ergibt sich aus der aeltesten
-Anforderung im Stundenfenster.
-
-### 6.13 Verifikation: steht aus
-
-**Erster Lauf am 23.08.2026: uebersetzt, aber kein Kontext hochgekommen - Ursache lag ausserhalb
-der Anwendung.** `./mvnw clean verify` hat die Uebersetzung sauber durchlaufen (alle 148 Tests
-wurden gestartet, also sind saemtliche S2b-Klassen fehlerfrei kompiliert), doch jeder
-`@SpringBootTest` scheiterte beim Laden des Kontexts. Am Ende der Ursachenkette stand eine
-einzige Zeile:
-
-```
-java.lang.IllegalStateException: Could not find a valid Docker environment.
-```
-
-Testcontainers konnte `postgres:17` nicht starten, weil **Docker nicht lief**. Vor dem Lauf also
-Docker Desktop (bzw. Colima oder OrbStack) starten und `./mvnw clean verify` wiederholen.
-
-**Merkregel, weil die Ausgabe bedrohlicher aussieht als die Lage** - dieselbe Sorte Fallstrick wie
-die drei in Abschnitt 6.11:
-
-- **115 Fehler bedeuten nicht 115 Ursachen.** Nur der *erste* Bericht je Kontextkonfiguration nennt
-  sie; alle uebrigen tragen `ApplicationContext failure threshold (1) exceeded: skipping repeated
-  attempt`. Das ist Spring Test, das denselben Kontext nicht 115-mal neu baut - kein zusaetzlicher
-  Defekt.
-- **Die Ursache steht nicht in der Maven-Zusammenfassung**, sondern in
-  `server/target/surefire-reports/*.txt`. Kuerzester Weg:
-  `grep -h 'Caused by' server/target/surefire-reports/*.txt | tail -1`
-- **Gegenprobe ueber die Klassen ohne Spring-Kontext:** `SessionAuthFilterTests` (14),
-  `SessionCookieFactoryTests` (9) und `BruteForceServiceTests` (10) waren gruen - 33 Faelle. Waere
-  der Fehler in der Anwendung, traefe er auch sie. Nebenbei ist damit bestaetigt, dass die
-  S2b-Erweiterung von `FuboProperties` (zwei zusaetzliche Konstruktorargumente) in allen drei
-  Klassen richtig nachgezogen ist.
-
-**Die eigentliche Verifikation steht damit weiterhin aus.** Der Stand ist geprueft, aber nur
-statisch: Der Cloud-Container hat Java 21 und keinen Zugriff auf Maven Central. Geprueft wurden
-Klammer- und Literalstruktur aller 88 Java-Dateien, die Zuordnung Paket zu Pfad, die Gueltigkeit
-von `fubo-api.json` und die Signaturen der aufgerufenen Methoden.
-
-Vor dem Lauf sind **zwei Werte in der `.env` zu ergaenzen** – ohne sie bricht der Start
-absichtlich ab:
-
-| Variable | Stand |
-|---|---|
-| `SMTP_HOST` | vorbelegt mit `smtp.maileroo.com` |
-| `SMTP_PORT` | vorbelegt mit `587` |
-| `SMTP_ABSENDER` | **leer – auszufuellen**, muss zur bei Maileroo freigegebenen Domain gehoeren |
-
-```bash
-docker info > /dev/null      # muss durchlaufen - sonst startet Testcontainers nicht
-docker compose -f compose.dev.yml --env-file .env up -d
-./mvnw clean verify          # clean ist Pflicht: application.yml hat sich geaendert
-./mvnw spring-boot:run
-```
-
-Erwartet: weiterhin **148 Tests in 16 Klassen** – S2b bringt noch keine eigenen Testfaelle mit,
-und die drei angepassten Testklassen haben nur zusaetzliche Konstruktorargumente bekommen.
-Faellt der Kontext beim Start aus, ist die erste Logzeile massgeblich; die wahrscheinlichsten
-Ursachen sind eine fehlende SMTP-Variable (Meldung aus `MailConfig`, benennt die Variable) und
-geaenderte Maven-Koordinaten von `spring-boot-starter-mail` unter Boot 4.
-
-Zusaetzlich von Hand zu pruefen (vollstaendig in `S2b_UMSETZUNG.md`, Abschnitt 12):
-
-| Pruefpunkt | Erwartung |
-|---|---|
-| Start ohne `SMTP_ABSENDER` | Abbruch mit einer Meldung, die `fubo.mail.absender` und `SMTP_ABSENDER` nennt |
-| `POST /api/v1/auth/passwort/zuruecksetzen` in `PIN_VERIFIED` | `204`, Nachricht im Postfach, `pin_hash` als BCrypt in der Datenbank |
-| derselbe Aufruf ohne Cookie | `401`, mit Spielersitzung `403` |
-| `SELECT * FROM profil.passwort_reset` | genau ein offener Vorgang; die fuenfstellige PIN steht nirgends |
-| viertes Anfordern binnen einer Stunde | `429 RESET_GEDROSSELT` mit `Retry-After` |
-| SMTP-Dienst stoppen, dann anfordern | `503 VERSAND_FEHLGESCHLAGEN`, **keine** neue Zeile in `passwort_reset` |
-| Bestaetigen mit zu kurzem Passwort | `400`, `versuche` bleibt unveraendert |
-| fuenfmal falsche PIN, dann noch einmal | erst `401 RESET_PIN_FALSCH`, dann `409 RESET_UNGUELTIG` – **kein** `500` aus `ck_passwort_reset_versuche` |
-| Bestaetigen mit richtiger PIN | `204`; die alte Adminsitzung liefert `401`, Spielersitzungen bleiben gueltig |
-| `POST /api/v1/admin/passwort/aendern` mit falschem alten Passwort | `401 ADMIN_PASSWORT_FALSCH`, Zaehler steigt |
-| `POST /api/v1/admin/pin/aendern` | `204`, danach liefert **jede** Sitzung `401`, `gast_slot` ist leer |
-| `POST /api/v1/admin/pin/aendern` mit dreistelliger oder fuenfstelliger PIN | `400 EINGABE_UNGUELTIG`, Feld `neuePin` |
-| Erststart ohne `FUBO_INITIAL_PIN` | Startmeldung nennt eine **vierstellige** Zufalls-PIN |
-| `SELECT geaendert_von FROM profil.zugangsdaten` | `1` (vorher leer) |
-| `SELECT aktion FROM profil.audit_log` | `PASSWORT_RESET_ANGEFORDERT`, `PASSWORT_GEAENDERT`, `PIN_GEAENDERT` |
-
-
 ## 7. Nächste Schritte
 
-1. **`SMTP_ABSENDER` in der `.env` ergänzen und `./mvnw clean verify` laufen lassen.** Ohne den
-   Wert bricht der Start absichtlich ab (`MailConfig`). `SMTP_HOST` und `SMTP_PORT` sind bereits
-   vorbelegt. Prüfliste in Abschnitt 6.13, erwartete Testzahl unverändert 148. Danach die
-   **tatsächlichen** Zahlen aus `server/target/surefire-reports/*.txt` dort eintragen.
-2. **Zweites S2b-Paket:** Spielerverwaltung durch den Admin (Abschnitt 8 der Anleitung –
-   `/admin/user/anlegen`, `/entfernen`, `/blockieren`), Aufräumjob für alte Reset-Vorgänge
-   (Abschnitt 9, Löschfrist 30 Tage als Property) und die zwölf Testfälle aus Abschnitt 11. Erst
-   danach ist S2b abgeschlossen und der Handoff auf die dann noch relevanten Punkte zu reduzieren.
-3. Die Bruno-Collection unter
-   `~/Documents/bruno/fubo_server/` um die neun neuen Endpunkte ergänzen (`auth/gast/anmelden`,
-   `auth/admin/anmelden`, ein neuer Ordner `session/` mit `lesen`, `erneuern`, `beenden`, dazu
-   `auth/passwort/zuruecksetzen`, `auth/passwort/bestaetigen`, `admin/passwort/aendern` und
-   `admin/pin/aendern`), Vorlage steht in deren `README.md`. Bei Abweichungen ist `fubo-api.json`
-   maßgeblich.
-4. **Domainentscheidung – erledigt (09.08.2026).** Frontend und API liegen auf Subdomains **derselben
+1. **S2b beginnen – Zugangsdatenpflege.** Schrittweise Anleitung: `harness/tmp/S2b_UMSETZUNG.md`.
+   Inhalt: Passwort-Reset per E-Mail mit 5-stelliger Bestätigungs-PIN (A22), Passwortänderung im
+   angemeldeten Zustand und Änderung der zentralen PIN durch den Admin (A3), jeweils mit
+   Sitzungswiderruf.
+   **Erst zu entscheiden: der SMTP-Zugang** (Anbieter, Absenderadresse, Zugangsdaten). Ohne ihn ist
+   der Meilenstein weder umsetzbar noch testbar – Vorschlag und Alternativen in Abschnitt 0.3 der
+   Anleitung, für die Entwicklung genügt ein Mailpit-Dienst in `compose.dev.yml`.
+   Das Datenmodell steht bereits: `profil.passwort_reset` stammt aus `V003`, **es braucht keine
+   Migration**.
+2. Die Bruno-Collection unter
+   `~/Documents/bruno/fubo_server/` um die fünf neuen Endpunkte ergänzen (`auth/gast/anmelden`,
+   `auth/admin/anmelden` und ein neuer Ordner `session/` mit `lesen`, `erneuern`, `beenden`),
+   Vorlage steht in deren `README.md`. Bei Abweichungen ist `fubo-api.json` maßgeblich.
+2. **Domainentscheidung – erledigt (09.08.2026).** Frontend und API liegen auf Subdomains **derselben
    registrierbaren Domain** (`app.<domain>` / `api.<domain>`). Damit gilt `SameSite=Lax` und
    `csrf.disable()` bleibt vertretbar; Abschnitt 5.4/5.5 der S2-Anleitung ist entsprechend festgelegt.
    Hintergrund: Das Frontend liegt auf Cloudflare Pages und war zunächst nur unter
@@ -1089,17 +899,17 @@ Zusaetzlich von Hand zu pruefen (vollstaendig in `S2b_UMSETZUNG.md`, Abschnitt 1
    Cloudflare Pages (reine Hosting-Konfiguration, kein Code). Offene Folgeaufgaben: Einrichtung der
    Custom Domain sowie der Umgang mit Pages-Preview-Deployments, in denen der Login bauartbedingt nicht
    funktioniert (`S2_UMSETZUNG.md`, Abschnitt 0.1 und offene Punkte 8/9).
-5. **Danach S3** (Profile & Skills API). Zwei Punkte aus S2 landen dort: das Anlegen weiterer
+3. **Danach S3** (Profile & Skills API). Zwei Punkte aus S2 landen dort: das Anlegen weiterer
    Gastplätze, wenn `anz_guests` über vier hinaus erhöht werden soll (offener Punkt 18), und die
    Frage, wie der Teamgenerator Profile ohne gepflegte Skillwerte behandelt (offener Punkt 20).
-6. **Endpunktkontrakt – erledigt (22.08.2026), S2b nachgezogen (23.08.2026).** Er liegt als `server/fubo-api.json` auf der
-   Repo-Wurzel und beschreibt die acht Endpunkte aus S2 sowie die vier aus S2b vollständig (Abschnitt 4). Ab jetzt gilt:
+4. **Endpunktkontrakt – erledigt (22.08.2026).** Er liegt als `server/fubo-api.json` auf der
+   Repo-Wurzel und beschreibt die acht Endpunkte aus S2 vollständig (Abschnitt 4). Ab jetzt gilt:
    **Jede Vertragsänderung zuerst dort abbilden**, dann den Client-Track nachziehen. S3 bis S6
    tragen ihre Endpunkte jeweils bei Fertigstellung nach.
-7. **Profildaten** (Vorgehen steht, nichts mehr zu entscheiden): Reale Daten liegen ausserhalb von
+5. **Profildaten** (Vorgehen steht, nichts mehr zu entscheiden): Reale Daten liegen ausserhalb von
    `PRJ_FuBo/`, Pfad in `FUBO_LOCAL_SEED`, Einspielen über `scripts/seed-lokal.sh`. Der anonymisierte
    30er-Satz liegt in `scripts/data/`, der 12er-Demosatz läuft automatisch in Dev und Test.
-8. **Deployment (S8):** Entwurf mit Dockerfile, Compose-Ergänzung, nginx-Block, Backup und Rollout liegt
+6. **Deployment (S8):** Entwurf mit Dockerfile, Compose-Ergänzung, nginx-Block, Backup und Rollout liegt
    in `harness/tmp/S8_DEPLOYMENT.md`.
 
 ## 8. Weitere Anweisungen

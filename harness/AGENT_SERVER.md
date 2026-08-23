@@ -135,6 +135,12 @@ Identifikation über den hinterlegten Namen. Rollen: ADMIN, USER, GAST.
   1. **Ausbreitung immer `REQUIRED`, nie `REQUIRES_NEW`.** Ein Protokolleintrag belegt eine
      *vollzogene* Änderung. Scheitert die Änderung, wird der Eintrag mit ihr zurückgerollt –
      ein Protokoll, das eine nie erfolgte Änderung behauptet, ist schlechter als eine Lücke.
+     **Präzisierung (23.08.2026):** Die Regel gilt dem *Audit-Log*, nicht Zählern. Ein Zähler
+     belegt nichts, er misst einen Versuch – und der hat stattgefunden, auch wenn die Anfrage
+     abgelehnt wird. `PasswortResetRepository#versuchZaehlen` ist die **einzige** Stelle mit
+     `REQUIRES_NEW`; jede weitere braucht eine ebenso ausdrückliche Begründung. Soll ein
+     Protokolleintrag eine abgelehnte Anfrage überleben, gehört er stattdessen dorthin, wo
+     keine Transaktion läuft: in den Controller, wie beim PIN- und beim Admin-Login.
   2. **Ausnahmen aus dem Schreibvorgang werden nicht verschluckt.** Innerhalb einer gemeinsamen
      Transaktion wäre das wirkungslos: Ein fehlgeschlagenes `INSERT` markiert die Transaktion
      bereits als „rollback-only"; das Abfangen verschöbe den Fehler nur bis zum Commit und
@@ -169,6 +175,39 @@ Identifikation über den hinterlegten Namen. Rollen: ADMIN, USER, GAST.
   4. **Folge für Tests:** Ohne `ADMIN_NAME`, `ADMIN_EMAIL` und `ADMIN_PASSWORD` startet kein
      Anwendungskontext. Die Werte gehören in `src/test/resources/application.yml`, und das gewählte
      Adminprofil darf mit keiner Testerwartung kollidieren.
+- **Zugangsdatenpflege (verbindlich ab S2b, 23.08.2026).** Drei Regeln:
+  1. **Der Passwort-Reset liegt unter `/api/{version}/auth/passwort/…`, nicht unter `/admin/…`.**
+     `/api/*/admin/**` setzt `ROLE_ADMIN` voraus – wer sein Passwort vergessen hat, trägt sie
+     gerade nicht. Der Reset ist eine *Anmeldeangelegenheit* und ausschliesslich in der Stufe
+     `PIN_VERIFIED` erreichbar, wie Namensauswahl, Gast-Login und Admin-Login. Er liegt bewusst
+     **hinter** der zentralen PIN: Er verschickt E-Mails, und die PIN ist der äussere Zaun aus A1.
+     Preis: Wer Passwort *und* PIN vergisst, braucht die Datenbank – das gehört in die
+     Betriebsdokumentation, nicht in die Anwendung.
+  2. **Der Umfang des Sitzungswiderrufs richtet sich nach der Reichweite des Geheimnisses.**
+     Passwort-Reset und Passwortänderung widerrufen nur die Sitzungen des Adminprofils; der
+     Wechsel der *zentralen* PIN widerruft ausnahmslos alle und gibt dabei die Gastplätze frei –
+     sonst blieben Nutzer angemeldet, die nur die alte PIN kannten.
+  3. **Die Bestätigungs-PIN trägt nur, solange alle Grenzen zusammen gelten:** fünf Versuche je
+     Vorgang, 15 Minuten Gültigkeit, drei Anforderungen je Stunde und Adresse, BCrypt statt
+     Klartext, der Endpunkt hinter der zentralen PIN und der zusätzliche Brute-Force-Zähler.
+     Fünf Stellen sind 100 000 Möglichkeiten – für sich zu wenig. **Keine dieser Grenzen darf
+     entfallen.** `fubo.reset.max-versuche` ist zusätzlich an `ck_passwort_reset_versuche`
+     gebunden und darf 5 nicht überschreiten.
+  4. **Die zentrale PIN besteht aus genau vier Ziffern** (Festlegung vom 23.08.2026). Sie wird
+     mündlich oder über einen Aushang weitergegeben und auf Zifferntastaturen eingegeben; die feste
+     Länge erlaubt dem Frontend ein Eingabefeld mit vier Kästchen. `PinBootstrap` erzeugt seine
+     Ersatz-PIN im selben Format. **Daran hängt eine Bedingung:** 10 000 Möglichkeiten tragen
+     ausschliesslich zusammen mit dem `BruteForceService` – fünf Fehlversuche je Adresse, 30
+     insgesamt, steigende Sperrdauern. **Diese Grenzen dürfen nicht gelockert werden, solange die
+     PIN vierstellig ist.** Das Format gilt dem *Setzen* über `/admin/pin/aendern`;
+     `/auth/pin/pruefen` schreibt der Eingabe weiterhin kein Format vor, damit ein abweichender
+     Bestandswert aus `FUBO_INITIAL_PIN` eingebbar bleibt.
+- **Externe Zugänge werden über `fubo.*` gebunden und beim Start geprüft (ab S2b).** Der SMTP-Zugang
+  steht unter `fubo.mail.*`, und die `JavaMailSender`-Bean entsteht in `common/config/MailConfig`.
+  Grund: Spring Boots `Binder` reicht einen unauflösbaren Platzhalter **wörtlich** durch – über
+  `spring.mail.host` liefe die Anwendung mit dem Rechnernamen `"${SMTP_HOST}"` durch und der Fehler
+  zeigte sich erst im Ernstfall. Wo ein fehlender Wert den Betrieb still beschädigt, prüft eine
+  eigene Bean die Werte und bricht mit einer Meldung ab, die die Umgebungsvariable benennt.
 - **Ergänzend:** zentrale Fehlerbehandlung (`@RestControllerAdvice`) mit einheitlichem Fehler-JSON,
   Bean Validation, CORS-Allowlist mit `allowCredentials`, Actuator-Health-Endpunkt, Flyway-Migrationen,
   Audit-Log für Adminaktionen und Generierungsläufe.
@@ -344,6 +383,21 @@ DTOs, fällt beim Lesen sofort auf, wenn ein Controller den falschen Typ zurück
   erneuern, abmelden, aufräumen. Ein Fachbereich, der eine Sitzung verändert (etwa der Gast-Login),
   ruft ihn auf, statt selbst zu schreiben. Andernfalls verteilte sich das Zwei-Timer-Modell über
   mehrere Klassen.
+
+**Ergänzungen aus S2b (23.08.2026):**
+
+- **Drei neue Fachbereiche:** `service/mail` (Versand), `dto/admin` und `controller/admin`
+  (Endpunkte, die `ROLE_ADMIN` voraussetzen). Der Schnitt folgt der bestehenden Regel „zuerst nach
+  Schicht, darunter nach Fachbereich"; `admin` ist dabei kein Datenbereich, sondern ein
+  Zugriffsbereich – die Fachlogik der Zugangsdatenpflege bleibt in `service/auth`.
+- **Anwendungsfall-Dienste dürfen andere Dienste bündeln.** `ZugangsdatenService` schreibt selbst
+  nichts, sondern reiht `AdminService`/`PinService`, den Sitzungswiderruf und den Audit-Eintrag in
+  *einer* Transaktion. Die Alternative – jeden Controller die drei Schritte selbst aufrufen zu
+  lassen – verteilte die Transaktionsgrenze über die HTTP-Schicht.
+- **Ein Service meldet „richtig/falsch" als Rückgabewert, nicht als Ausnahme**, wenn der Aufrufer
+  den Fehlversuch zählen und protokollieren muss (`PinService#stimmt`,
+  `AdminService#passwortStimmt`, `PasswortResetService#versuchPruefen`). Endzustände, aus denen nur
+  ein neuer Anlauf herausführt, bleiben Ausnahmen.
 
 ### Flyway-Konventionen (verbindlich ab S1)
 - Ablage: `src/main/resources/db/migration`. Namensschema `V<nnn>__<kurze_beschreibung>.sql` mit
