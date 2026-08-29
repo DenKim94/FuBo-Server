@@ -356,17 +356,17 @@ sie ab.
 
 ## 7. Nächste Schritte
 
-1. **Manuelle Prüfliste abarbeiten** (`S2b_UMSETZUNG.md`, Abschnitt 12.1). Der Reset lässt sich
+1. ~~**Manuelle Prüfliste abarbeiten** (`S2b_UMSETZUNG.md`, Abschnitt 12.1). Der Reset lässt sich
    nur mit echtem SMTP-Zugang durchspielen; die Bruno-Collection führt durch die Reihenfolge.
    Vorher `adminName` und `neuerAdminName` in den Umgebungen füllen – beim Anmeldenamen
    **zeichengenau wie `ADMIN_NAME`**, sonst scheitert jeder Admin-Request mit `401`.
    Zusätzlich zu prüfen: „Admin anmelden" mit richtigem Namen, mit falschem Namen und mit
    abweichender Schreibweise – die drei Ablehnungen müssen in Code, Statuscode und Anzeigetext
-   identisch sein.
+   identisch sein.~~ - **Erledigt: Erfolgreich geprüft**
 2. **Client-Track über die Vertragsänderung informieren** (Abschnitt 4a). Das Anmeldeformular
    des Admins braucht ein zweites Pflichtfeld, sonst liefert der Endpunkt `400`.
-3. **S3 fortsetzen mit den Paketen 5 bis 7** (`harness/tmp/S3_UMSETZUNG.md`, Abschnitte 5
-   bis 7): Admin-Konfiguration lesen und ändern samt neuem Fehlercode `DATEN_VERALTET`,
+3. **S3 fortsetzen mit den Paketen 5 bis 9** (`harness/tmp/S3_UMSETZUNG.md`, Abschnitte 5
+   bis 9): Admin-Konfiguration lesen und ändern samt neuem Fehlercode `DATEN_VERALTET`,
    Gastplätze mitpflegen, Bestandsaufnahme der Autorisierung. **Zwei Punkte, die dabei nicht
    untergehen dürfen:** Der Vertrag wächst um zwei Endpunkte auf 21, und
    `KonfigurationControllerTests` braucht `@Transactional` – die Klasse ändert eine
