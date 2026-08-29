@@ -84,6 +84,20 @@ public enum Fehlercode {
     PROFIL_IN_VERWENDUNG(HttpStatus.CONFLICT,
             "Das Profil wird bereits verwendet und kann nicht entfernt werden. Es lässt sich stattdessen blockieren."),
     KEIN_GAST_SLOT_FREI(HttpStatus.CONFLICT, "Es sind bereits alle Gastplätze belegt."),
+
+    /**
+     * Der Datensatz wurde zwischenzeitlich von jemand anderem geaendert (S3, Abschnitt 5.2).
+     *
+     * <p><b>{@code 409} und nicht {@code 412}:</b> {@code 412 Precondition Failed} gehoert nach
+     * RFC 9110 zu den bedingten Anfragen mit {@code If-Match} und einem ETag. Hier steht die
+     * Version im Koerper, nicht in einem Header - ein {@code 412} behauptete eine Semantik, die
+     * der Endpunkt nicht umsetzt.
+     *
+     * <p><b>Bewusst allgemein benannt</b> und nicht {@code KONFIG_VERALTET}: Termine (S4) und
+     * Ergebnisse (S6) tragen dieselbe {@code version}-Spalte und werden ihn wiederverwenden.
+     */
+    DATEN_VERALTET(HttpStatus.CONFLICT,
+            "Die Daten wurden zwischenzeitlich geändert. Bitte neu laden und erneut speichern."),
     EINGABE_UNGUELTIG(HttpStatus.BAD_REQUEST, "Ungültige Eingabedaten."),
     INTERNER_FEHLER(HttpStatus.INTERNAL_SERVER_ERROR, "Ein unerwarteter Fehler ist aufgetreten."),
     INHALT_NICHT_GEFUNDEN(HttpStatus.NOT_FOUND, "Der gesuchte Inhalt wurde nicht gefunden.");

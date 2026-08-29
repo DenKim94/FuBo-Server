@@ -6,6 +6,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -60,6 +61,28 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(AccessDeniedException.class)
     ProblemDetail behandle(AccessDeniedException e) {
         return problem(Fehlercode.KEINE_BERECHTIGUNG, null);
+    }
+
+    /**
+     * Sperrkonflikt aus dem Optimistic Locking (A5, ab S3).
+     *
+     * <p><b>Warum es diesen Handler zusaetzlich zum Versionsvergleich im Dienst gibt:</b> Der
+     * Vergleich in {@code ConfigService#aktualisieren} liest, der Commit schreibt - dazwischen
+     * liegt ein Fenster, in dem eine zweite Transaktion dieselbe Zeile aendern kann. Hibernate
+     * bemerkt das beim Schreiben und wirft. Ohne diesen Zweig fiele die Ausnahme in den
+     * Auffangzweig und kaeme als {@code 500 INTERNER_FEHLER} heraus - ein Bedienfehler, der wie
+     * ein Serverfehler aussieht.
+     *
+     * <p>Er traegt ab S4 auch die Termine und ab S6 die Ergebnisse; deren {@code version}-Spalten
+     * fuehren in dieselbe Ausnahme.
+     *
+     * <p>Die Ursache geht ins Log, nicht in die Antwort: Die Meldung von Hibernate nennt
+     * Entity-Klasse und Schluessel.
+     */
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    ProblemDetail behandleSperrkonflikt(ObjectOptimisticLockingFailureException e) {
+        LOG.debug("Sperrkonflikt beim Schreiben", e);
+        return problem(Fehlercode.DATEN_VERALTET, null);
     }
 
     /** Auffangzweig: alles Unerwartete. */

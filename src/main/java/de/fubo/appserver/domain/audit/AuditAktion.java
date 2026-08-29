@@ -107,5 +107,24 @@ public enum AuditAktion {
      * Aenderungen an den Zugangsdaten durchsieht, soll ihn dort finden und nicht zwischen
      * Stammdatenpflege.
      */
-    ADMIN_NAME_GEAENDERT
+    ADMIN_NAME_GEAENDERT,
+
+    /**
+     * Der Admin hat die anwendungsweite Konfiguration geaendert (S3, Abschnitt 5.5).
+     *
+     * <p>Als {@code entitaet} steht {@code app_config}, als {@code entitaet_id} die 1 - die
+     * Tabelle traegt genau eine Zeile.
+     *
+     * <p><b>Hier stehen alte <i>und</i> neue Werte in den Details</b>, anders als bei
+     * {@link #PROFIL_GEAENDERT}. Es sind hoechstens zehn Werte, sie gelten anwendungsweit, und
+     * die Betriebsfrage "seit wann steht das Leerlauf-Fenster auf 60 Minuten" ist ohne den alten
+     * Wert nicht zu beantworten. Ausgenommen ist {@code halleAbsageVorlage}: Ein mehrzeiliger
+     * Text in jedem Eintrag blaehte die Tabelle auf, ohne etwas zu belegen - dort genuegt der
+     * Vermerk, dass die Vorlage geaendert wurde.
+     *
+     * <p>Aendert ein Speichervorgang keinen einzigen Wert, bleiben die Details leer. Der Eintrag
+     * steht trotzdem: Er belegt, wer wann gespeichert hat, und {@code geaendert_am} ist ebenfalls
+     * gewandert.
+     */
+    KONFIG_GEAENDERT
 }
