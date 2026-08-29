@@ -393,6 +393,42 @@ class PasswortResetControllerTests {
                 .andExpect(status().isForbidden());
     }
 
+    /**
+     * <b>Auch der angemeldete Admin bekommt hier {@code 403}</b> - und das ist der Fall, der
+     * ueberrascht, denn es geht um sein eigenes Passwort.
+     *
+     * <p>Der {@code SessionAuthFilter} bildet eine Sitzung auf genau <i>eine</i> Authority ab:
+     * {@code ROLE_ADMIN} ist nicht {@code ROLE_PIN_VERIFIED}. Das ist Absicht, aus zwei
+     * Gruenden:
+     * <ol>
+     *   <li><b>Fachlich</b> ist der Reset der Weg fuer ein <i>vergessenes</i> Passwort. Wer
+     *       angemeldet ist und das alte kennt, nimmt {@code /admin/passwort/aendern} - das
+     *       verlangt es und ist damit der staerkere Weg.</li>
+     *   <li><b>Technisch</b> waere die Freigabe selbstzerstoererisch: {@code bestaetigen}
+     *       widerruft alle Sitzungen des Adminprofils. Aus einer Adminsitzung heraus
+     *       aufgerufen, naehme der Vorgang die eigene Sitzung mit.</li>
+     * </ol>
+     *
+     * <p>Dieser Test ist die Absicherung gegen eine spaetere, gut gemeinte Lockerung der
+     * Regel in {@code SecurityConfig} - ohne ihn faellt eine solche Aenderung nicht auf.
+     */
+    @Test
+    void angemeldeterAdminDarfNichtZuruecksetzen() throws Exception {
+        String token = sessionService.anlegen(Stage.PROFILE_AUTHENTICATED, adminSpielerId(), Rolle.ADMIN);
+
+        mockMvc.perform(post("/api/v1/auth/passwort/zuruecksetzen")
+                        .cookie(new Cookie(COOKIE, token))
+                        .header("CF-Connecting-IP", "198.51.100.24"))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/v1/auth/passwort/bestaetigen")
+                        .cookie(new Cookie(COOKIE, token))
+                        .header("CF-Connecting-IP", "198.51.100.25")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"bestaetigungsPin\":\"12345\",\"neuesPasswort\":\"ein-langes-neues-passwort\"}"))
+                .andExpect(status().isForbidden());
+    }
+
     /** Die aufrufende Sitzung bleibt gueltig - das Frontend geht direkt zum Admin-Login. */
     @Test
     void dieAufrufendeSitzungBleibtBestehen() throws Exception {

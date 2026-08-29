@@ -92,6 +92,38 @@ class AuditServiceTests {
         assertThat(endpunkt).isEqualTo("/auth/pin/pruefen");
     }
 
+    /**
+     * Eine <b>verschachtelte</b> Karte wird zu einem JSON-Objekt, nicht zu einer
+     * Zeichenkette (Korrektur vom 29.08.2026).
+     *
+     * <p>Vorher landete sie im Textzweig des handgeschriebenen Serialisierers, und
+     * {@code Map#toString} lieferte {@code "{TORWART=1}"} - etwas, das aussieht wie JSON und
+     * keines ist. In der Datenbank stand dann ein <i>Text</i>: {@code details->'skills'} traf
+     * zwar, aber {@code ->>'TORWART'} darauf lieferte {@code null}. Der Eintrag war
+     * unbrauchbar, ohne dass irgendwo ein Fehler auftrat.
+     *
+     * <p>Geprueft wird deshalb zweierlei: dass der Wert herauszulesen ist <b>und</b> dass
+     * {@code jsonb_typeof} tatsaechlich {@code object} meldet. Die erste Zusicherung allein
+     * genuegte nicht - sie liefe auch gegen ein Objekt, das nur zufaellig richtig aussieht.
+     */
+    @Test
+    void verschachtelteKarteLandetAlsObjektUndNichtAlsText() {
+        auditService.protokolliere(AKTEUR, AuditAktion.PROFIL_GEAENDERT,
+                Map.of("skills", Map.of("TORWART", 1)));
+
+        Map<String, Object> zeile = jdbc.queryForMap("""
+                SELECT details->'skills'->>'TORWART' AS torwart,
+                       jsonb_typeof(details->'skills') AS typ
+                  FROM profil.audit_log
+                 WHERE akteur_bezeichnung = ?
+                """, AKTEUR);
+
+        assertThat(zeile.get("torwart")).isEqualTo("1");
+        assertThat(zeile.get("typ"))
+                .as("Ein Text hiesse hier 'string' - dann war die Karte nur stringifiziert")
+                .isEqualTo("object");
+    }
+
     // ------------------------------------------------------------ Transaktionskopplung
 
     /**

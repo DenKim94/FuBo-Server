@@ -4,6 +4,7 @@ import de.fubo.appserver.database.TestcontainersConfiguration;
 import de.fubo.appserver.domain.auth.Rolle;
 import de.fubo.appserver.domain.auth.Stage;
 import de.fubo.appserver.service.auth.SessionService;
+import de.fubo.appserver.service.profil.ProfilStammdatenCache;
 import de.fubo.appserver.utils.TokenGenerator;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,7 +20,10 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.WebApplicationContext;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -28,15 +32,25 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Prueft die Spielerverwaltung aus {@code S2b_UMSETZUNG.md}, Abschnitt 8: anlegen, entfernen,
- * sperren und wieder freigeben.
+ * Prueft die Spielerverwaltung: anlegen, entfernen, sperren und freigeben aus
+ * {@code S2b_UMSETZUNG.md} Abschnitt 8 sowie lesen und bearbeiten aus {@code S3_UMSETZUNG.md}
+ * Abschnitte 2 und 3.
  *
  * <p>Der Pruefgegenstand ist weniger der Datenbankzugriff als die Abgrenzung: was das
- * Entfernen darf und wo es abzulehnen hat, und dass eine Sperre <i>sofort</i> wirkt und nicht
- * erst mit dem Ablauf der Sitzung.
+ * Entfernen darf und wo es abzulehnen hat, dass eine Sperre <i>sofort</i> wirkt und nicht erst
+ * mit dem Ablauf der Sitzung, und dass beim Bearbeiten das Weglassen eines Feldes etwas
+ * anderes bedeutet als ein leerer Wert.
  *
  * <p>Die angelegten Profile tragen einen eigenen Namensraum ("Pruefspieler"), damit sie nicht
  * mit den Demodaten kollidieren - deren Profile heissen "Beispielspieler n".
+ *
+ * <h2>Der Zwischenspeicher wird vor jedem Fall verworfen - das ist zwingend</h2>
+ * {@link ProfilStammdatenCache} ist ein Singleton und haelt seine Daten im Arbeitsspeicher;
+ * eine Test-Transaktion rollt die <b>nicht</b> zurueck. Ohne das Verwerfen entstuende ein
+ * besonders unangenehmer Fehler: Ein Fall legt "Pruefspieler A" an und liest die Uebersicht,
+ * der Speicher fuellt sich mit diesem Profil, die Transaktion rollt zurueck - und der
+ * naechste Fall saehe ein Profil, das es in der Datenbank nicht gibt. Dieselbe Ueberlegung
+ * wie bei {@code bruteForceService.alleZuruecksetzen()} in {@code AdminControllerTests}.
  */
 @SpringBootTest
 @Import(TestcontainersConfiguration.class)
@@ -54,6 +68,12 @@ class SpielerControllerTests {
     @Autowired
     private JdbcTemplate jdbc;
 
+    @Autowired
+    private ProfilStammdatenCache profilStammdatenCache;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
     private MockMvc mockMvc;
 
     @BeforeEach
@@ -61,6 +81,329 @@ class SpielerControllerTests {
         mockMvc = MockMvcBuilders.webAppContextSetup(kontext)
                 .apply(SecurityMockMvcConfigurers.springSecurity())
                 .build();
+
+        // Siehe Klassen-JavaDoc: Der Speicher ueberlebt die Test-Transaktion.
+        profilStammdatenCache.verwerfen();
+    }
+
+    // -------------------------------------------------------------------------- Lesen
+
+    /**
+     * Die Uebersicht enthaelt aktive <b>und</b> gesperrte Profile - der Unterschied zur
+     * Namensliste und einer der drei Gruende fuer diesen Endpunkt.
+     *
+     * <p>Ohne die gesperrten koennte der Admin ein versehentlich gesperrtes Profil nicht
+     * wiederfinden, um es freizugeben; genau dafuer kennt {@code blockieren} beide
+     * Richtungen.
+     */
+    @Test
+    void uebersichtEnthaeltAktiveUndGesperrteProfile() throws Exception {
+        Long gesperrt = ersterSpieler();
+        blockieren(gesperrt, true).andExpect(status().isNoContent());
+
+        String antwort = uebersicht();
+
+        assertThat(antwort)
+                .as("Das gesperrte Profil muss enthalten sein")
+                .contains("\"spielerId\":%d".formatted(gesperrt))
+                .contains("\"aktiv\":false")
+                .contains("\"aktiv\":true");
+    }
+
+    /**
+     * Je Profil kommen die Skillwerte der aktiven Kategorien mit - der erste Endpunkt dieser
+     * API, der Skillwerte ausliefert (A12). Erlaubt ist das nur unterhalb von
+     * {@code /admin/}.
+     */
+    @Test
+    void uebersichtLiefertDieSkillwerte() throws Exception {
+        anlegen("{\"name\":\"Pruefspieler L\",\"skills\":{\"TORWART\":2}}")
+                .andExpect(status().isCreated());
+
+        String antwort = uebersicht();
+
+        Map<String, Object> skills = skillsVon(antwort, "Pruefspieler L");
+
+        assertThat(skills).as("fuenf aktive Kategorien").hasSize(5);
+        assertThat(skills).containsEntry("TORWART", 2);
+    }
+
+    /**
+     * Das Adminprofil steht in dieser Liste, erkennbar an {@code rolle}, und zwar am Ende.
+     *
+     * <p>Kein Widerspruch zur Regel "das Adminprofil ist ein technisches Konto": Die Regel
+     * gilt Abfragen, die <b>Mitspieler</b> aufzaehlen. Eine Profilverwaltung zaehlt den
+     * Datenbestand auf - ohne die Zeile saehe der Admin 30 Profile, waehrend die Datenbank 31
+     * enthaelt, und die Differenz waere nirgends erklaert.
+     *
+     * <p>{@code ORDER BY s.rolle DESC} stellt es ans Ende: {@code 'USER'} steht alphabetisch
+     * nach {@code 'ADMIN'}.
+     */
+    @Test
+    void uebersichtEnthaeltDasAdminprofilAmEnde() throws Exception {
+        String antwort = uebersicht();
+
+        List<Map<String, Object>> liste = alsListe(antwort);
+
+        assertThat(liste).anyMatch(zeile -> "ADMIN".equals(zeile.get("rolle")));
+        assertThat(liste.getLast().get("rolle"))
+                .as("Das technische Konto steht hinter allen Spielerprofilen")
+                .isEqualTo("ADMIN");
+    }
+
+    /**
+     * Ein Profil ohne Zeile in einer Kategorie liefert eine kuerzere Karte - offener Punkt 20
+     * aus S2 wird hier sichtbar.
+     *
+     * <p>Der Client erkennt die Luecke, indem er die Karte gegen {@code /admin/skills/lesen}
+     * haelt; ein eigenes Feld im Vertrag braucht es dafuer nicht.
+     */
+    @Test
+    void ungepflegtesProfilLiefertEineKuerzereSkillkarte() throws Exception {
+        anlegen("{\"name\":\"Pruefspieler M\"}").andExpect(status().isCreated());
+        Long id = spielerId("Pruefspieler M");
+
+        jdbc.update("DELETE FROM profil.spieler_skill WHERE spieler_id = ? AND kategorie = 'TORWART'", id);
+        profilStammdatenCache.verwerfen();
+
+        String antwort = uebersicht();
+
+        Map<String, Object> skills = skillsVon(antwort, "Pruefspieler M");
+
+        assertThat(skills).as("vier statt fuenf Kategorien").hasSize(4);
+        assertThat(skills).doesNotContainKey("TORWART");
+    }
+
+    /**
+     * <b>Der Belegtstatus wird nicht zwischengespeichert.</b> Das ist die Abweichung von
+     * Abschnitt 2.3 der Anleitung und der Grund dafuer.
+     *
+     * <p>Der Fall liest die Uebersicht zweimal, ohne dazwischen ein Profil zu aendern - der
+     * Zwischenspeicher wird also <i>nicht</i> verworfen. Trotzdem muss die zweite Antwort die
+     * inzwischen angelegte Sitzung zeigen. Waere der Belegtstatus mitgespeichert, bliebe er
+     * bis zur naechsten Profilaenderung falsch, und genau die Eigenschaft ginge verloren,
+     * wegen der er ueberhaupt abgeleitet und nicht gespeichert wird (A6): dass er nicht
+     * veralten kann.
+     */
+    @Test
+    void belegtstatusWirdNichtZwischengespeichert() throws Exception {
+        Long spieler = ersterSpieler();
+
+        assertThat(belegtVon(uebersicht(), spieler))
+                .as("noch keine Sitzung auf diesem Profil")
+                .isFalse();
+
+        sessionService.anlegen(Stage.PROFILE_AUTHENTICATED, spieler, Rolle.USER);
+
+        assertThat(belegtVon(uebersicht(), spieler))
+                .as("ohne Verwerfen des Zwischenspeichers muss der Status trotzdem stimmen")
+                .isTrue();
+    }
+
+    /**
+     * Gegenprobe zum Fall darueber: Die Stammdaten <i>werden</i> zwischengespeichert, und
+     * jede Aenderung verwirft ihn. Ohne das Verwerfen saehe der Admin nach dem Speichern
+     * seine eigenen alten Werte.
+     */
+    @Test
+    void aenderungVerwirftDenZwischenspeicher() throws Exception {
+        String vorher = uebersicht();
+        assertThat(vorher).doesNotContain("Pruefspieler N");
+
+        anlegen("{\"name\":\"Pruefspieler N\"}").andExpect(status().isCreated());
+
+        assertThat(uebersicht())
+                .as("Das Anlegen muss den Speicher verworfen haben")
+                .contains("Pruefspieler N");
+    }
+
+    // --------------------------------------------------------------------- Bearbeiten
+
+    /** Umbenennen wirkt in der Uebersicht und in der Namensauswahl. */
+    @Test
+    void bearbeitenAendertDenNamen() throws Exception {
+        anlegen("{\"name\":\"Pruefspieler B1\"}").andExpect(status().isCreated());
+        Long id = spielerId("Pruefspieler B1");
+
+        bearbeiten("{\"spielerId\":%d,\"name\":\"Pruefspieler B2\"}".formatted(id))
+                .andExpect(status().isNoContent());
+
+        assertThat(uebersicht()).contains("Pruefspieler B2").doesNotContain("Pruefspieler B1");
+        assertThat(namensliste()).contains("Pruefspieler B2");
+    }
+
+    /**
+     * Eine Teilmenge setzt genau diese Kategorien - die uebrigen bleiben unberuehrt. Ohne
+     * diese Eigenschaft muesste das Formular immer alle fuenf Werte senden.
+     */
+    @Test
+    void bearbeitenSetztNurDieGenanntenKategorien() throws Exception {
+        anlegen("{\"name\":\"Pruefspieler B3\"}").andExpect(status().isCreated());
+        Long id = spielerId("Pruefspieler B3");
+        int angriffVorher = skillwert(id, "ANGRIFF");
+
+        bearbeiten("{\"spielerId\":%d,\"skills\":{\"TORWART\":3}}".formatted(id))
+                .andExpect(status().isNoContent());
+
+        assertThat(skillwert(id, "TORWART")).isEqualTo(3);
+        assertThat(skillwert(id, "ANGRIFF"))
+                .as("nicht genannte Kategorien bleiben")
+                .isEqualTo(angriffVorher);
+    }
+
+    /**
+     * <b>Eine leere Skillkarte loescht nichts.</b> Ein Loeschen von Skillzeilen ist in dieser
+     * API nicht vorgesehen - der Teamgenerator braucht vollstaendige Werte.
+     */
+    @Test
+    void leereSkillkarteLoeschtNichts() throws Exception {
+        anlegen("{\"name\":\"Pruefspieler B4\"}").andExpect(status().isCreated());
+        Long id = spielerId("Pruefspieler B4");
+
+        bearbeiten("{\"spielerId\":%d,\"name\":\"Pruefspieler B5\",\"skills\":{}}".formatted(id))
+                .andExpect(status().isNoContent());
+
+        assertThat(jdbc.queryForObject(
+                "SELECT count(*) FROM profil.spieler_skill WHERE spieler_id = ?", Integer.class, id))
+                .as("alle fuenf Zeilen stehen noch")
+                .isEqualTo(5);
+    }
+
+    /**
+     * Ein Aufruf ohne jede Angabe wird abgelehnt - auch mit leerer Skillkarte. Er taete
+     * nichts, hinterliesse aber einen Protokolleintrag.
+     */
+    @Test
+    void aufrufOhneAenderungLiefert400() throws Exception {
+        Long id = ersterSpieler();
+
+        String antwort = bearbeiten("{\"spielerId\":%d}".formatted(id))
+                .andExpect(status().isBadRequest())
+                .andReturn().getResponse().getContentAsString();
+        assertThat(antwort).contains("\"code\":\"EINGABE_UNGUELTIG\"");
+
+        bearbeiten("{\"spielerId\":%d,\"skills\":{}}".formatted(id))
+                .andExpect(status().isBadRequest());
+    }
+
+    /**
+     * Ein angegebener, aber leerer Name ist eine Eingabe und kein Weglassen - sonst
+     * ueberschriebe er den Namen mit einer leeren Zeichenkette.
+     */
+    @Test
+    void leererNameLiefert400() throws Exception {
+        bearbeiten("{\"spielerId\":%d,\"name\":\"   \"}".formatted(ersterSpieler()))
+                .andExpect(status().isBadRequest());
+    }
+
+    /** Die Meldung nennt die zulaessigen Schluessel - der Trigger allein braechte einen 500. */
+    @Test
+    void unbekannteKategorieLiefert400MitDenZulaessigenSchluesseln() throws Exception {
+        String antwort = bearbeiten(
+                "{\"spielerId\":%d,\"skills\":{\"FLUGKOPFBALL\":3}}".formatted(ersterSpieler()))
+                .andExpect(status().isBadRequest())
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(antwort).contains("FLUGKOPFBALL").contains("TORWART").contains("ANGRIFF");
+    }
+
+    /**
+     * Der Torwart-Bereich (0 bis 3) ist kein Sonderfall im Code - er kommt aus
+     * {@code profil.skill_kategorie}. Die Meldung nennt Kategorie und Bereich.
+     */
+    @Test
+    void torwartUeberDreiLiefert400MitDemBereich() throws Exception {
+        String antwort = bearbeiten(
+                "{\"spielerId\":%d,\"skills\":{\"TORWART\":4}}".formatted(ersterSpieler()))
+                .andExpect(status().isBadRequest())
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(antwort).contains("TORWART").contains("0").contains("3");
+    }
+
+    /** Der Name eines anderen Profils ist belegt. */
+    @Test
+    void fremderNameLiefert409() throws Exception {
+        anlegen("{\"name\":\"Pruefspieler B6\"}").andExpect(status().isCreated());
+        anlegen("{\"name\":\"Pruefspieler B7\"}").andExpect(status().isCreated());
+
+        String antwort = bearbeiten("{\"spielerId\":%d,\"name\":\"Pruefspieler B7\"}"
+                .formatted(spielerId("Pruefspieler B6")))
+                .andExpect(status().isConflict())
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(antwort).contains("\"code\":\"NAME_BELEGT\"");
+    }
+
+    /**
+     * <b>Der eigene Datensatz zaehlt nicht als Kollision.</b> Ohne diese Ausnahme scheiterte
+     * jede Korrektur der Schreibweise am eigenen Namen - {@code existsByNameIgnoreCase}
+     * traefe die Zeile, die gerade geaendert wird.
+     */
+    @Test
+    void eigenerNameInAndererSchreibweiseIstErlaubt() throws Exception {
+        anlegen("{\"name\":\"Pruefspieler B8\"}").andExpect(status().isCreated());
+        Long id = spielerId("Pruefspieler B8");
+
+        bearbeiten("{\"spielerId\":%d,\"name\":\"pruefspieler b8\"}".formatted(id))
+                .andExpect(status().isNoContent());
+
+        assertThat(jdbc.queryForObject(
+                "SELECT name FROM profil.spieler WHERE id = ?", String.class, id))
+                .isEqualTo("pruefspieler b8");
+    }
+
+    /**
+     * Das Adminprofil wird hier <b>vollstaendig</b> abgelehnt - Name wie Skillwerte
+     * (Entscheidung vom 29.08.2026). Sein Name ist zugleich der Anmeldename und wird ueber
+     * {@code /admin/name/aendern} geaendert.
+     */
+    @Test
+    void adminprofilBearbeitenLiefert409() throws Exception {
+        Long admin = adminSpielerId();
+
+        assertThat(bearbeiten("{\"spielerId\":%d,\"name\":\"Neuer Adminname\"}".formatted(admin))
+                .andExpect(status().isConflict())
+                .andReturn().getResponse().getContentAsString())
+                .contains("\"code\":\"PROFIL_GESCHUETZT\"");
+
+        bearbeiten("{\"spielerId\":%d,\"skills\":{\"ANGRIFF\":4}}".formatted(admin))
+                .andExpect(status().isConflict());
+    }
+
+    /** Eine Id, die es nicht gibt. */
+    @Test
+    void bearbeitenMitUnbekannterIdLiefert404() throws Exception {
+        bearbeiten("{\"spielerId\":999999,\"name\":\"Pruefspieler B9\"}")
+                .andExpect(status().isNotFound());
+    }
+
+    /**
+     * Der Protokolleintrag nennt alten und neuen Namen sowie die gesetzten Skillwerte -
+     * <b>nicht</b> die vorherigen. Der Eintrag beantwortet "wer hat wann was geaendert",
+     * nicht "wie war es vorher".
+     */
+    @Test
+    void bearbeitenWirdProtokolliert() throws Exception {
+        anlegen("{\"name\":\"Pruefspieler C1\"}").andExpect(status().isCreated());
+        Long id = spielerId("Pruefspieler C1");
+
+        bearbeiten("{\"spielerId\":%d,\"name\":\"Pruefspieler C2\",\"skills\":{\"TORWART\":1}}"
+                .formatted(id)).andExpect(status().isNoContent());
+
+        Map<String, Object> eintrag = jdbc.queryForMap("""
+                SELECT details->>'nameAlt' AS name_alt,
+                       details->>'nameNeu' AS name_neu,
+                       details->'skills'->>'TORWART' AS torwart
+                  FROM profil.audit_log
+                 WHERE aktion = 'PROFIL_GEAENDERT' AND entitaet_id = ?
+                """, id);
+
+        assertThat(eintrag.get("name_alt")).isEqualTo("Pruefspieler C1");
+        assertThat(eintrag.get("name_neu")).isEqualTo("Pruefspieler C2");
+        assertThat(eintrag.get("torwart"))
+                .as("Die Spalte details muss jsonb sein, nicht Text")
+                .isEqualTo("1");
     }
 
     // ----------------------------------------------------------------------- Anlegen
@@ -322,6 +665,57 @@ class SpielerControllerTests {
     }
 
     // --------------------------------------------------------------------- Hilfsmittel
+
+    private ResultActions bearbeiten(String koerper) throws Exception {
+        return mockMvc.perform(post("/api/v1/admin/user/bearbeiten")
+                .cookie(new Cookie(COOKIE, adminSitzung()))
+                .header("CF-Connecting-IP", "198.51.100.50")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(koerper));
+    }
+
+    /** Ruft die Adminuebersicht ab und liefert den rohen Antwortkoerper. */
+    private String uebersicht() throws Exception {
+        return mockMvc.perform(get("/api/v1/admin/user/lesen")
+                        .cookie(new Cookie(COOKIE, adminSitzung())))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+    }
+
+    /**
+     * Liest die Antwort als Liste von Karten.
+     *
+     * <p>Ueber Jackson und nicht ueber Zeichenkettenvergleiche: Ein {@code contains} auf dem
+     * rohen JSON traefe auch Treffer in einer anderen Zeile und meldete eine falsche
+     * Zuordnung als Erfolg.
+     */
+    private List<Map<String, Object>> alsListe(String antwort) throws Exception {
+        return objectMapper.readValue(antwort, new TypeReference<>() {
+        });
+    }
+
+    /** Die Karte eines Profils, gesucht ueber seinen Namen. */
+    private Map<String, Object> profilVon(String antwort, String name) throws Exception {
+        return alsListe(antwort).stream()
+                .filter(zeile -> name.equals(zeile.get("name")))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Kein Profil '%s' in der Antwort.".formatted(name)));
+    }
+
+    /** Die Skillkarte eines Profils. */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> skillsVon(String antwort, String name) throws Exception {
+        return (Map<String, Object>) profilVon(antwort, name).get("skills");
+    }
+
+    /** Der Belegtstatus eines Profils, gesucht ueber seine Id. */
+    private boolean belegtVon(String antwort, Long spielerId) throws Exception {
+        return alsListe(antwort).stream()
+                .filter(zeile -> spielerId.intValue() == ((Number) zeile.get("spielerId")).intValue())
+                .findFirst()
+                .map(zeile -> (Boolean) zeile.get("belegt"))
+                .orElseThrow(() -> new AssertionError("Kein Profil mit der Id %d.".formatted(spielerId)));
+    }
 
     private ResultActions anlegen(String koerper) throws Exception {
         return mockMvc.perform(post("/api/v1/admin/user/anlegen")

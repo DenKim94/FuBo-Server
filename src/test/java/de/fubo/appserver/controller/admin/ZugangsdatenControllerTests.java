@@ -19,6 +19,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.WebApplicationContext;
@@ -205,10 +207,140 @@ class ZugangsdatenControllerTests {
                 .andExpect(status().isForbidden());
     }
 
+    // ------------------------------------------------------------ Anmeldename (S3)
+
+    /**
+     * Der Anmeldename wird geaendert - und <b>die Sitzung bleibt bestehen</b>.
+     *
+     * <p>Das ist der Unterschied zu den beiden Endpunkten darueber und eine ausdrueckliche
+     * Vorgabe vom 29.08.2026: Der Name ist kein Geheimnis, dessen Bekanntwerden allein Zugang
+     * verschafft; ein Widerruf wuerfe den Admin unmittelbar nach seiner eigenen Umbenennung
+     * aus der Sitzung. Geprueft wird beides - dass kein Cookie geloescht wird und dass die
+     * Sitzung danach noch traegt.
+     */
+    @Test
+    void namensaenderungLaesstDieSitzungBestehen() throws Exception {
+        String token = adminSitzung();
+
+        MvcResult ergebnis = mockMvc.perform(post("/api/v1/admin/name/aendern")
+                        .cookie(new Cookie(COOKIE, token))
+                        .header("CF-Connecting-IP", "198.51.100.60")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"neuerName\":\"Pruefadmin Neu\"}"))
+                .andExpect(status().isNoContent())
+                .andReturn();
+
+        assertThat(ergebnis.getResponse().getHeader(HttpHeaders.SET_COOKIE))
+                .as("Kein Cookie-Wechsel - anders als bei der Passwortaenderung")
+                .isNull();
+        assertThat(widerrufen(token)).isFalse();
+
+        assertThat(jdbc.queryForObject("SELECT name FROM profil.spieler WHERE id = ?",
+                String.class, adminSpielerId()))
+                .isEqualTo("Pruefadmin Neu");
+    }
+
+    /**
+     * Nach der Umbenennung traegt der neue Name die Anmeldung - und der alte nicht mehr.
+     * Damit ist die Kette geschlossen: Der Profilname <i>ist</i> der Anmeldename.
+     */
+    @Test
+    void nachDerAenderungGiltDerNeueNameBeimAnmelden() throws Exception {
+        String alterName = jdbc.queryForObject("SELECT name FROM profil.spieler WHERE id = ?",
+                String.class, adminSpielerId());
+
+        mockMvc.perform(post("/api/v1/admin/name/aendern")
+                        .cookie(new Cookie(COOKIE, adminSitzung()))
+                        .header("CF-Connecting-IP", "198.51.100.61")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"neuerName\":\"Pruefadmin Zwei\"}"))
+                .andExpect(status().isNoContent());
+
+        anmelden("Pruefadmin Zwei", "198.51.100.62").andExpect(status().isNoContent());
+        anmelden(alterName, "198.51.100.63").andExpect(status().isUnauthorized());
+    }
+
+    /**
+     * Randleerzeichen werden entfernt - <b>und das ist hier wesentlich</b>. Der
+     * Anmelde-Endpunkt trimmt seine Eingabe ebenfalls; ein mit Leerzeichen gespeicherter Name
+     * liesse sich nie eingeben, und der Admin haette keinen Rueckweg.
+     */
+    @Test
+    void randleerzeichenWerdenEntferntUndDerNameBleibtEingebbar() throws Exception {
+        mockMvc.perform(post("/api/v1/admin/name/aendern")
+                        .cookie(new Cookie(COOKIE, adminSitzung()))
+                        .header("CF-Connecting-IP", "198.51.100.64")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"neuerName\":\"  Pruefadmin Drei  \"}"))
+                .andExpect(status().isNoContent());
+
+        assertThat(jdbc.queryForObject("SELECT name FROM profil.spieler WHERE id = ?",
+                String.class, adminSpielerId()))
+                .as("gespeichert wird ohne Randleerzeichen")
+                .isEqualTo("Pruefadmin Drei");
+
+        anmelden("Pruefadmin Drei", "198.51.100.65").andExpect(status().isNoContent());
+    }
+
+    /** Der Name eines anderen Profils ist belegt - {@code uq_spieler_name} liesse ihn nicht zu. */
+    @Test
+    void belegterNameLiefert409() throws Exception {
+        String fremd = jdbc.queryForObject("SELECT name FROM profil.spieler WHERE id = ?",
+                String.class, ersterSpieler());
+
+        String antwort = mockMvc.perform(post("/api/v1/admin/name/aendern")
+                        .cookie(new Cookie(COOKIE, adminSitzung()))
+                        .header("CF-Connecting-IP", "198.51.100.66")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"neuerName\":\"%s\"}".formatted(fremd)))
+                .andExpect(status().isConflict())
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(antwort).contains("\"code\":\"NAME_BELEGT\"");
+    }
+
+    /** Ein leerer Name wird von der Bean Validation abgefangen, vor jedem Schreibzugriff. */
+    @Test
+    void leererNameLiefert400() throws Exception {
+        mockMvc.perform(post("/api/v1/admin/name/aendern")
+                        .cookie(new Cookie(COOKIE, adminSitzung()))
+                        .header("CF-Connecting-IP", "198.51.100.67")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"neuerName\":\"   \"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    /** Der Endpunkt liegt unter {@code /admin/} und verlangt damit die Rolle. */
+    @Test
+    void spielerDarfDenAnmeldenamenNichtAendern() throws Exception {
+        mockMvc.perform(post("/api/v1/admin/name/aendern")
+                        .cookie(new Cookie(COOKIE, sessionService.anlegen(
+                                Stage.PROFILE_AUTHENTICATED, ersterSpieler(), Rolle.USER)))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"neuerName\":\"Pruefadmin Vier\"}"))
+                .andExpect(status().isForbidden());
+    }
+
     // --------------------------------------------------------------- Hilfsmittel
 
     private String adminSitzung() {
         return sessionService.anlegen(Stage.PROFILE_AUTHENTICATED, adminSpielerId(), Rolle.ADMIN);
+    }
+
+    /**
+     * Meldet sich ueber {@code /auth/admin/anmelden} an - mit dem Passwort, das
+     * {@link #aufbauen()} gesetzt hat.
+     *
+     * <p>Jeder Aufruf braucht eine eigene Client-IP: Der Brute-Force-Zaehler ist mit dem
+     * PIN-Endpunkt geteilt, und ein fehlgeschlagener Versuch belastete sonst den naechsten.
+     */
+    private ResultActions anmelden(String anmeldename, String ip) throws Exception {
+        return mockMvc.perform(post("/api/v1/auth/admin/anmelden")
+                .cookie(new Cookie(COOKIE, sessionService.anlegen(Stage.PIN_VERIFIED, null, null)))
+                .header("CF-Connecting-IP", ip)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"anmeldename\":\"%s\",\"passwort\":\"%s\"}"
+                        .formatted(anmeldename, ALTES_PASSWORT)));
     }
 
     private boolean widerrufen(String token) {

@@ -275,6 +275,53 @@ class SecurityConfigTests {
                 .andExpect(status().isOk());
     }
 
+    /**
+     * Die vier Endpunkte aus S3 sind ohne Sitzung gesperrt - jeder einzeln geprueft.
+     *
+     * <p><b>Warum trotz {@code userDarfNichtInDenAdminbereich} noch einmal einzeln:</b> Jener
+     * Fall prueft die Regel {@code /api/*&#47;admin/**} an einem Platzhalterpfad. Er bliebe
+     * gruen, wenn jemand fuer einen der echten Endpunkte eine eigene, offenere Regel
+     * <i>davor</i> setzte - Spring Security wertet die Matcher in ihrer Reihenfolge aus, und
+     * die erste passende gewinnt. Diese vier Pfade sind neu; sie sollen mit ihrem echten
+     * Namen in der Pruefung stehen.
+     *
+     * <p>{@code GET} und {@code POST} gemischt, wie im Vertrag: Die Regel selbst ist
+     * methodenunabhaengig, aber eine spaetere methodenbezogene Ausnahme faellt so auf.
+     */
+    @Test
+    void dieNeuenAdminEndpunkteSindOhneSitzungGesperrt() throws Exception {
+        mockMvc.perform(get("/api/v1/admin/user/lesen"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON));
+
+        mockMvc.perform(get("/api/v1/admin/skills/lesen"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(post("/api/v1/admin/user/bearbeiten")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(post("/api/v1/admin/name/aendern")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    /**
+     * Gegenprobe mit einer Spielersitzung: {@code 403}, nicht {@code 401}. Bei {@code 401}
+     * liefe das Frontend in eine Login-Schleife, obwohl die Sitzung gueltig ist - es fehlt
+     * die Rolle, nicht die Anmeldung.
+     */
+    @Test
+    void dieNeuenAdminEndpunkteLiefernMitSpielersitzung403() throws Exception {
+        mockMvc.perform(get("/api/v1/admin/user/lesen")
+                        .cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/v1/admin/skills/lesen")
+                        .cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))
+                .andExpect(status().isForbidden());
+    }
+
     @Test
     void userUndGastDuerfenGeschuetzteEndpunkteAufrufen() throws Exception {
         mockMvc.perform(get("/api/v1/beliebig").cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))
