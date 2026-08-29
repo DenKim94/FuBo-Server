@@ -150,6 +150,41 @@ Identifikation über den hinterlegten Namen. Rollen: ADMIN, USER, GAST.
      weiterhin nur Endpunkt und Adresse; ein Protokoll, das jede geratene Eingabe mitschreibt,
      sammelt fremde Daten ohne Nutzen und stellt einen Vertipper des Admins neben seinen
      echten Namen.
+- **Skillwerte verlassen den Server ausschliesslich unterhalb von `/api/*/admin/**`
+  (präzisiert 29.08.2026, S3).** Bis S2b enthielt kein Antwortobjekt welche; seit
+  `GET /admin/user/lesen` ist der Prüfpunkt nicht mehr „kommen Skillwerte vor", sondern
+  „kommen sie ausserhalb von `/admin/` vor". Der Schutz hängt am Pfad – die Filterchain
+  verlangt dort `ROLE_ADMIN` –, nicht am DTO; dass `SpielerDetails` nur unter `/admin/`
+  auftaucht, bleibt trotzdem eine Regel, die beim Lesen auffallen soll.
+- **Der Belegtstatus gehört in keinen Zwischenspeicher (verbindlich ab S3, 29.08.2026).**
+  Er wird aus den aktiven Sitzungen abgeleitet und nicht gespeichert (A6) – genau damit
+  *kann er nicht veralten*. Läge er in einem Speicher, der nur bei Profiländerungen verworfen
+  wird, wäre er erst wieder richtig, wenn jemand ein Profil anfasst: Jede Anmeldung, jeder
+  Ablauf, jeder Logout ändert ihn. Wo eine Abfrage beides liefern soll, wird sie geteilt.
+- **Zwischenspeicher werden beim Schreiben verworfen, nie über eine Frist (ab S3).** Drei
+  Regeln:
+  1. **Jeder schreibende Vorgang verwirft**, ausnahmslos. Eine vergessene Stelle liefert
+     unbegrenzt lange veraltete Daten – es gibt keine Frist, die den Fehler von selbst heilte.
+  2. **Der `CacheManager` entsteht als eigene Bean mit fester Namensliste**, nie über die
+     Autokonfiguration. Diese legt jeden angefragten Namen stillschweigend an; ein Tippfehler
+     in einem `@CacheEvict` träfe dann einen leeren, neuen Speicher statt des gemeinten.
+     Dieselbe Überlegung wie bei `MailConfig`.
+  3. **`@Cacheable` gehört in eine eigene Bean**, nicht an eine Methode, die der aufrufende
+     Service selbst aufruft: Ein Aufruf innerhalb derselben Klasse läuft am Proxy vorbei, und
+     der Speicher bleibt wirkungslos – ohne Fehlermeldung.
+- **Das Adminprofil ist in jedem schreibenden Zugriff geschützt, im lesenden nicht
+  (präzisiert 29.08.2026, S3).** `entfernen`, `blockieren` und `bearbeiten` lehnen es mit
+  `409 PROFIL_GESCHUETZT` ab; umbenannt wird es ausschliesslich über
+  `POST /api/{version}/admin/name/aendern`, weil sein Name zugleich der Anmeldename ist.
+  **Die Verwaltungsübersicht enthält es dagegen**, erkennbar am Feld `rolle`: Die Regel
+  „jede Abfrage, die Mitspieler aufzählt, filtert `rolle <> 'ADMIN'`" gilt Mitspielern, und
+  eine Profilverwaltung zählt den Datenbestand auf. Ohne die Zeile sähe der Admin 30 Profile,
+  während die Datenbank 31 enthält, und die Differenz wäre nirgends erklärt.
+- **Eine Skilländerung ist eine Teilnehmeränderung (A15) – Pflichtpunkt für S4.** Ändert der
+  Admin einen Skillwert, ist jede erzeugte Teameinteilung für einen künftigen Termin mit
+  diesem Spieler veraltet; einziger zulässiger Auslöser ist das Hochzählen von
+  `spieltag.termin.teilnehmer_version`. In S3 ist das nicht umsetzbar (`spieltag` hat weder
+  Service noch Entity) und darf trotzdem nicht vergessen werden.
 - **Skill-Geheimhaltung:** DTOs für USER/GAST enthalten keine Skillwerte. Der Teamgenerator liegt
   serverseitig; die Skillwerte verlassen den Server nicht. Admin-DTOs dürfen Skills enthalten.
 - **Brute-Force-Schutz** am PIN-Endpunkt; echte Client-IP aus `X-Forwarded-For`, daher
@@ -435,6 +470,23 @@ DTOs, fällt beim Lesen sofort auf, wenn ein Controller den falschen Typ zurück
   erneuern, abmelden, aufräumen. Ein Fachbereich, der eine Sitzung verändert (etwa der Gast-Login),
   ruft ihn auf, statt selbst zu schreiben. Andernfalls verteilte sich das Zwei-Timer-Modell über
   mehrere Klassen.
+
+**Ergänzungen aus S3, Pakete 0 bis 4 (29.08.2026):**
+
+- **`common/config/CacheConfig`** aktiviert `@Cacheable`/`@CacheEvict` und stellt den
+  `CacheManager` bereit – wie `SchedulingConfig` eine Klasse, ohne die Annotationen
+  **wirkungslos bleiben, und zwar ohne Fehlermeldung**.
+- **Ein Zwischenspeicher ist eine eigene Bean in `service/<bereich>`**
+  (`service/profil/ProfilStammdatenCache`), keine annotierte Methode im Service, der ihn
+  benutzt. Grund ist der Proxy, siehe Regel oben.
+- **Ein Controller ohne Fachlogik darf ohne Service auskommen.**
+  `SkillKategorieController` ruft das Repository direkt: keine Transaktionsgrenze, keine
+  Prüfung, kein Protokolleintrag – nur eine Abfrage und die Abbildung auf das DTO. Eine
+  Serviceklasse, die einen Repository-Aufruf durchreicht, ist eine Schicht ohne Inhalt.
+  Sobald eine Entscheidung hinzukommt, bekommt der Bereich einen Service.
+- **Die Abbildung Wertobjekt → DTO steht im DTO** (`SpielerDetails#von`,
+  `SkillKategorieInfo#von`), nicht im Service: Der Service soll nicht wissen müssen, wie der
+  Vertrag aussieht.
 
 **Ergänzungen aus S2b (23.08.2026):**
 

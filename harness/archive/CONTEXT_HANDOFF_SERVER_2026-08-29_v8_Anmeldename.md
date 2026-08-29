@@ -9,7 +9,7 @@
 > Der übergeordnete Ordner `PRJ_FuBo/` sowie `PRJ_FuBo/harness/` sind bewusst **nicht** versioniert.
 > Repository ist angelegt: `https://github.com/DenKim94/FuBo-Server.git` (privat).
 > Stand: 29.08.2026, **S0, S1, S2 und S2b abgeschlossen; Nachtrag „Anmeldename beim
-> Admin-Login" (Abschnitt 6.13) und die S3-Pakete 0 bis 4 (Abschnitt 6.14) umgesetzt.** S2 und die S2b-Schritte 0 bis 7 sind
+> Admin-Login" umgesetzt (Abschnitt 6.13).** S2 und die S2b-Schritte 0 bis 7 sind
 > mit `./mvnw clean verify` verifiziert (148 Tests); fuer die Schritte 8 bis 11
 > (Spielerverwaltung, Aufraeumjob, Tests) steht der Lauf noch aus – erwartet werden **184 Tests
 > in 19 Klassen**, siehe Abschnitt 6.6
@@ -39,23 +39,12 @@
 > erwartet werden jetzt 190 Tests in 19 Klassen** (184 + 5 in `AdminControllerTests`,
 > + 1 in `AdminBootstrapTests`).
 >
-> **S3, Pakete 0 bis 4 (29.08.2026):** `GET /admin/user/lesen` (erste Antwort **mit
-> Skillwerten**), `POST /admin/user/bearbeiten`, `GET /admin/skills/lesen` und der zusätzlich
-> vorgegebene `POST /admin/name/aendern`. Dazu ein serverseitiger Zwischenspeicher für die
-> Profilstammdaten. **Keine Migration**, `V008` bleibt die letzte. Einzelheiten in
-> Abschnitt 6.14.
->
-> **Offen aus S3: die Pakete 5 bis 7** – Admin-Konfiguration, Gastplätze, Bestandsaufnahme der
-> Autorisierung. Der Fehlercode `DATEN_VERALTET` und der Tag „Konfiguration" gehören dorthin
-> und fehlen deshalb noch im Vertrag.
->
-> Als Nächstes: **`./mvnw clean verify`** – deckt die S2b-Schritte 8 bis 11, den Nachtrag
-> **und** die S3-Pakete 0 bis 4 ab. **Erwartet: 227 Tests in 22 Klassen.** Die manuelle
-> Prüfliste steht in `harness/tmp/S2b_UMSETZUNG.md`, Abschnitt 12.1; die Bruno-Collection
-> deckt sie ab und ist um vier Requests gewachsen.
+> Als Nächstes: **`./mvnw clean verify`** – deckt die S2b-Schritte 8 bis 11 **und** den
+> Nachtrag ab –, dann **S3** (Profile & Skills API). Die manuelle Prüfliste steht in
+> `harness/tmp/S2b_UMSETZUNG.md`, Abschnitt 12.1; die Bruno-Collection deckt sie ab.
 >
 > (Vorfassungen archiviert unter `harness/archive/`, zuletzt
-> `CONTEXT_HANDOFF_SERVER_2026-08-29_v8_Anmeldename.md`. **Die Abschnitte zu S2 sind seit v7
+> `CONTEXT_HANDOFF_SERVER_2026-08-23_v7_S2b-vollstaendig.md`. **Die Abschnitte zu S2 sind seit v7
 > auf ihre Regeln und Fallstricke eingedampft**; die Schritt-für-Schritt-Erzählung steht in v6.)
 
 ---
@@ -103,10 +92,9 @@ abgebildet, der Client-Track zieht danach nach.
 Datei lässt sich ohne Zusatzwerkzeug maschinell prüfen, und die üblichen
 TypeScript-Generatoren des Client-Tracks lesen sie unverändert.
 
-**Umfang:** ausschliesslich das, was tatsächlich umgesetzt ist – **19 Endpunkte**: die acht
-Auth- und Sitzungsendpunkte aus S2, die sieben aus S2b (Zugangsdatenpflege und
-Spielerverwaltung, Abschnitt 6.5) und seit dem 29.08.2026 die vier aus den S3-Paketen 2 bis 4
-(Abschnitt 6.14). Spekulative Endpunkte wären ein Vertrag über etwas, das es nicht gibt;
+**Umfang:** ausschliesslich das, was tatsächlich umgesetzt ist – **15 Endpunkte**: die acht
+Auth- und Sitzungsendpunkte aus S2 sowie seit dem 23.08.2026 die sieben aus S2b
+(Zugangsdatenpflege und Spielerverwaltung, Abschnitt 6.5). Spekulative Endpunkte wären ein Vertrag über etwas, das es nicht gibt;
 S3 bis S6 tragen ihre Endpunkte jeweils bei Fertigstellung nach.
 
 Inhaltliche Kernpunkte (unverändert, Herleitung in `AGENT_SERVER.md`, Abschnitt „Schnittstelle zum
@@ -423,23 +411,6 @@ unverändert aus `V003`.
    `pruefe_skill_wertebereich`. Der Trigger allein brächte einen `500` statt einer Meldung, die
    die betroffene Kategorie und ihren Bereich nennt.
 
-**Betriebsfund vom 29.08.2026: Anführungszeichen in der `.env` brechen den Mailversand.**
-Beim manuellen Durchspielen des Resets antwortete Maileroo mit
-`550 5.6.0 The from address could not be parsed`, die Anwendung mit
-`503 VERSAND_FEHLGESCHLAGEN`. Ursache war
-`SMTP_ABSENDER="FuBo-App<NoReply@…>"`: Die `.env` wird über
-`spring.config.import=optional:file:./.env[.properties]` als **Java-Properties-Datei**
-gelesen, und dort sind Anführungszeichen keine Begrenzer, sondern Teil des Werts. **Das gilt
-für jede Variable dieser Datei, nicht nur für diese.**
-
-Der Fehler zeigte sich erst beim ersten echten Versand – also beim Passwort-Reset, dem
-einzigen Weg zurück, wenn das Adminpasswort vergessen ist. Genau dafür gibt es `MailConfig`:
-`pruefeAbsenderformat` bricht den Start jetzt ab, wenn der Absender keine einzelne gültige
-Adresse ist, und benennt den Anführungszeichen-Fall eigens. **Die Prüfung greift bewusst nur,
-wenn der Wert vorn *und* hinten ein Anführungszeichen trägt** – `"Kim, Denis" <a@b.de>` ist
-eine gültige Form, ein Anzeigename mit Komma *muss* in Anführungszeichen stehen. Abgesichert
-durch `MailConfigTests` (neu, 5 Fälle), Warnhinweis in `.env.example`.
-
 **Zum Zusammenspiel der Grenzen beim Reset.** Fünf Stellen sind 100 000 Möglichkeiten – für sich
 zu wenig. Tragfähig wird die Bestätigungs-PIN erst durch die Summe: fünf Versuche je Vorgang,
 15 Minuten Gültigkeit, drei Anforderungen je Stunde und Adresse, BCrypt statt Klartext, der
@@ -457,9 +428,9 @@ die gewünschte Staffelung, keine Panne.
 Klassen**, keine Fehler, keine Abbrüche, keine übersprungenen Tests. Die Anwendung startet auf
 einer frischen Datenbank durch.
 
-**Für die S2b-Schritte 8 bis 11, den Nachtrag vom 29.08.2026 und die S3-Pakete 0 bis 4 steht
-der grüne Lauf noch aus. Erwartet: 227 Tests in 22 Klassen** – 184 aus S2b, sechs aus dem
-Nachtrag (Abschnitt 6.13) und 30 aus S3 (Abschnitt 6.14). Der erste Lauf am 23.08.2026 brachte fünf Fehler –
+**Für die S2b-Schritte 8 bis 11 und den Nachtrag vom 29.08.2026 steht der grüne Lauf noch aus.
+Erwartet: 190 Tests in 19 Klassen** – 184 aus S2b, fünf neue Fälle in
+`AdminControllerTests` und einer in `AdminBootstrapTests` (Abschnitt 6.13). Der erste Lauf am 23.08.2026 brachte fünf Fehler –
 **alle drei Ursachen lagen im neuen Code und sind behoben:**
 
 1. **Zwei Tabellennamen in `SpielerRepository#istReferenziert` waren falsch** und führten zu
@@ -486,23 +457,21 @@ Nachtrag (Abschnitt 6.13) und 30 aus S3 (Abschnitt 6.14). Der erste Lauf am 23.0
 | `ConfigServiceTests` | 2 | |
 | `SessionAuthFilterTests` | 14 | |
 | `SessionCookieFactoryTests` | 9 | |
-| `SecurityConfigTests` | 26 | 24 + 2 (S3-Pfade) |
+| `SecurityConfigTests` | 24 | |
 | `BruteForceServiceTests` | 10 | |
 | `AuthControllerTests` | 10 | |
 | `NamenControllerTests` | 10 | |
 | `ApiVersionConfigTests` | 5 | |
-| `AuditServiceTests` | 6 | 5 + 1 (JSON-Verschachtelung) |
+| `AuditServiceTests` | 5 | |
 | `GastControllerTests` | 8 | |
 | `GastServiceTransaktionTests` | 2 | |
 | `SessionControllerTests` | 10 | |
 | `AdminBootstrapTests` | 9 | 8 + 1 (Schreibweise, 29.08.2026) |
 | `AdminControllerTests` | 11 | 6 + 5 (Anmeldename, 29.08.2026) |
-| `PasswortResetControllerTests` | 15 | 14 + 1 (Adminsitzung → 403) |
-| `ZugangsdatenControllerTests` | 12 | 6 + 6 (Anmeldename, S3) |
-| `SpielerControllerTests` | 34 | 16 + 18 (S3) |
-| `SkillKategorieControllerTests` | 4 | neu (S3) |
-| `MailConfigTests` | 5 | neu (Absenderformat) |
-| **Summe** | **227** | |
+| `PasswortResetControllerTests` | 14 | neu |
+| `ZugangsdatenControllerTests` | 6 | neu |
+| `SpielerControllerTests` | 16 | neu |
+| **Summe** | **190** | |
 
 ```bash
 docker info > /dev/null                                    # muss durchlaufen
@@ -657,109 +626,10 @@ allen fünf Umgebungen (in `raspberry-pi` als Secret), Anfragekörper in „Admi
 „Admin Anmeldename falsch" (seq 19). **`adminName` ist in jeder Umgebung noch auf
 `BITTE_EINTRAGEN` gesetzt** und muss vor dem nächsten Lauf gefüllt werden.
 
-### 6.14 S3 – Pakete 0 bis 4 (29.08.2026)
-
-Profile lesen und bearbeiten, Skillkategorien ausliefern, Anmeldenamen ändern. Anleitung:
-`harness/tmp/S3_UMSETZUNG.md`, Abschnitte 0 bis 4. **Die Pakete 5 bis 7 sind offen.**
-
-```
-common/config/      CacheConfig (neu: @EnableCaching + ConcurrentMapCacheManager)
-domain/audit/       AuditAktion + PROFIL_GEAENDERT, ADMIN_NAME_GEAENDERT
-domain/profil/      Profileintrag (neu), SkillKategorie + bezeichnung/gewicht/reihenfolge
-repository/profil/  SpielerRepositoryCustom/Impl + findeProfilstammdaten, findeBelegteProfilIds
-                    SkillKategorieRepository: aktive() liest jetzt alle sechs Spalten
-service/profil/     ProfilStammdatenCache (neu)
-                    SpielerVerwaltungService + uebersicht, bearbeiten, adminProfilUmbenennen
-service/auth/       ZugangsdatenService + adminNameAendern
-dto/admin/          SpielerDetails, SpielerBearbeitenRequest, SkillKategorieInfo,
-                    AdminNameAendernRequest (alle neu)
-controller/admin/   SpielerController + 2 Endpunkte, ZugangsdatenController + 1,
-                    SkillKategorieController (neu)
-fubo-api.json       + 4 Endpunkte, 4 Schemas; Datenschutz-Absatz korrigiert
-```
-
-**Keine Schemaänderung.** `V008` bleibt die letzte Migration; alles Nötige stammt aus `V002`
-bis `V004`.
-
-**Endpunkte:**
-
-| Methode | Pfad | Rolle | Antwort |
-|---|---|---|---|
-| `GET` | `/api/v1/admin/user/lesen` | `ADMIN` | `200` alle Profile **mit Skillwerten** |
-| `POST` | `/api/v1/admin/user/bearbeiten` | `ADMIN` | `204` \| `400` \| `404` \| `409` |
-| `GET` | `/api/v1/admin/skills/lesen` | `ADMIN` | `200` aktive Kategorien |
-| `POST` | `/api/v1/admin/name/aendern` | `ADMIN` | `204`, **ohne** Cookie-Änderung |
-
-**Sechs Entscheidungen, die von der Anleitung abweichen oder sie ergänzen:**
-
-1. **`/admin/user/lesen` ist der Endpunkt aus der Entwickler-Ergänzung zu 2.2** – es entsteht
-   kein zweiter. Weggabelung B bleibt unverändert; hinzu kommt der Zwischenspeicher.
-2. **Der Zwischenspeicher ist anwendungsweit, nicht je Sitzung.** Es gibt genau einen Admin;
-   ein sitzungsbezogener Speicher wäre derselbe Speicher mit mehr Maschinerie. Tragend ist
-   ohnehin nicht die Reichweite, sondern das **Verwerfen beim Schreiben** – jeder der fünf
-   schreibenden Vorgänge ruft `ProfilStammdatenCache#verwerfen()`.
-3. **Die Übersichtsabfrage ist in zwei geteilt** (Abweichung von Abschnitt 2.3, der eine
-   vorsieht). **Der Belegtstatus darf nicht in den Zwischenspeicher.** Er wird aus den aktiven
-   Sitzungen abgeleitet und *nicht* gespeichert (A6) – genau damit kann er nicht veralten.
-   Läge er im Speicher, wäre er erst wieder richtig, wenn jemand ein Profil ändert: Jede
-   Anmeldung, jeder Ablauf, jeder Logout ändert ihn, und keines davon verwirft den Speicher.
-   Die Stammdaten liefert `findeProfilstammdaten` (gecacht), den Rest `findeBelegteProfilIds`
-   (jeder Aufruf frisch, gestützt auf `ix_session_aktiv`). Ein Test hält das fest.
-4. **Der Cache-Manager entsteht von Hand**, ohne `spring-boot-starter-cache`. Die
-   Autokonfiguration legte jeden angefragten Namen stillschweigend an; ein Tippfehler in einem
-   `@CacheEvict` träfe dann einen leeren, neuen Speicher statt des gemeinten, und der Admin
-   sähe nach dem Speichern seine alten Werte. `@EnableCaching` und
-   `ConcurrentMapCacheManager` stehen beide in `spring-context` – eine zusätzliche
-   Abhängigkeit braucht es nicht.
-5. **Weggabelung C ist überholt:** `/admin/user/bearbeiten` lehnt das Adminprofil
-   **vollständig** ab (`409 PROFIL_GESCHUETZT`), nicht nur den Skill-Teil. Grund ist der
-   eigene Endpunkt `/admin/name/aendern` aus der Entwickler-Ergänzung zu 3.3 – ein Endpunkt,
-   eine Regel, und die Logmeldung des Bootstraps („im Adminbereich umbenennen") stimmt
-   weiterhin.
-6. **`/admin/name/aendern` liegt unter dem Tag „Zugangsdaten"**, widerruft **keine** Sitzung
-   und verlangt **kein** aktuelles Passwort. Das erste, weil der Name ein Anmeldemerkmal ist;
-   das zweite ist Vorgabe des Haupt-Entwicklers (die Änderung greift beim nächsten Login);
-   das dritte folgt dem Bestand – `/admin/pin/aendern` verlangt ebenfalls keines. Eigener
-   Audit-Wert `ADMIN_NAME_GEAENDERT` neben `PASSWORT_GEAENDERT` und `PIN_GEAENDERT`.
-
-**Drei Fallstricke, die Zeit kosten würden:**
-
-- **`AuditService` serialisierte verschachtelte Karten still falsch** (gefunden und behoben am
-  29.08.2026 durch einen roten Test). Das JSON für die Spalte `details` entsteht von Hand;
-  eine `Map` fiel bis dahin in den Textzweig, und `Map#toString` lieferte `"{TORWART=1}"` –
-  etwas, das aussieht wie JSON und keines ist. In der Datenbank stand ein *Text*:
-  `details->'skills'` traf, `->>'TORWART'` darauf lieferte `null`. **Kein Fehler, keine
-  Warnung, ein unbrauchbarer Eintrag.** `wert(...)` hat jetzt einen Zweig für `Map` und ruft
-  rekursiv zurück; `AuditServiceTests` sichert es über `jsonb_typeof(...) = 'object'` ab.
-  Für `Collection` gilt der Fallstrick weiter – sie hat heute keinen Aufrufer, wer einen
-  anlegt, ergänzt dort einen Zweig. Bewusst **keine** Ausnahme für unbekannte Typen: Sie
-  risse die umgebende Transaktion mit sich und machte aus einem unschönen Protokolleintrag
-  eine zurückgerollte Fachänderung.
-
-- **`@Cacheable` an einer Methode, die der eigene Service aufruft, wirkt nicht** – der Aufruf
-  läuft am Proxy vorbei, ohne Fehlermeldung. Deshalb ist `ProfilStammdatenCache` eine eigene
-  Bean und keine Methode im `SpielerVerwaltungService`.
-- **Der Zwischenspeicher überlebt die Test-Transaktion.** Jede Testklasse, die die Übersicht
-  liest, verwirft ihn in `@BeforeEach`. Ohne das sieht ein Fall Profile, die ein vorheriger
-  Fall angelegt hat und deren Transaktion zurückgerollt ist – ein Fehler, der wie ein
-  Datenbankfehler aussieht und keiner ist. Vorbild: `bruteForceService.alleZuruecksetzen()`.
-
-**Zur Vormerkung für S4 (A15):** Eine Skilländerung gilt als Teilnehmeränderung und muss die
-`teilnehmer_version` betroffener künftiger Termine hochzählen. `spieltag` hat in S3 weder
-Service noch Entity; der Aufruf ist in S4 als **Pflichtpunkt** aufzunehmen. Der Hinweis steht
-im JavaDoc von `SpielerVerwaltungService#bearbeiten`, in der Endpunktbeschreibung des Vertrags
-und hier – dreifach, weil ein Punkt, der in keiner Liste steht, durch das Raster fällt.
-
-**Tests: 190 → 221 in 21 Klassen** (`SkillKategorieControllerTests` ist neu):
-`SpielerControllerTests` 16 → 34, `ZugangsdatenControllerTests` 6 → 12,
-`SecurityConfigTests` 24 → 26, `AuditServiceTests` 5 → 6,
-`PasswortResetControllerTests` 14 → 15, `SkillKategorieControllerTests` 4.
-
 ## 7. Nächste Schritte
 
-1. **`./mvnw clean verify` laufen lassen** – für die S2b-Schritte 8 bis 11, den Nachtrag vom
-   29.08.2026 **und** die S3-Pakete 0 bis 4. Erwartet: 227 Tests in 22 Klassen (Aufstellung in
-   Abschnitt 6.6). - **Bestätigt**
+1. **`./mvnw clean verify` laufen lassen** – für die S2b-Schritte 8 bis 11 **und** den Nachtrag
+   vom 29.08.2026. Erwartet: 190 Tests in 19 Klassen (Aufstellung in Abschnitt 6.6). - **Bestätigt**
 2. **`adminName` in den Bruno-Umgebungen füllen** (steht überall auf `BITTE_EINTRAGEN`) –
    **zeichengenau wie `ADMIN_NAME` in der `.env`**, sonst scheitert jeder Admin-Request
    mit `401`.
@@ -770,14 +640,14 @@ und hier – dreifach, weil ein Punkt, der in keiner Liste steht, durch das Rast
    Anzeigetext identisch sein.
 4. **Client-Track über die Vertragsänderung informieren** (Abschnitt 4a): Das Anmeldeformular
    des Admins braucht ein zweites Pflichtfeld, sonst liefert der Endpunkt `400`.
-5. **S3 fortsetzen mit den Paketen 5 bis 7** (`harness/tmp/S3_UMSETZUNG.md`, Abschnitte 5
-   bis 7): Admin-Konfiguration lesen und ändern samt Fehlercode `DATEN_VERALTET`, Gastplätze
-   mitpflegen (offener Punkt 18 aus S2) und die Bestandsaufnahme der Autorisierung. Die
-   Pakete 0 bis 4 stehen (Abschnitt 6.14).
-   **Zwei Punkte, die dabei nicht untergehen dürfen:** Der Vertrag wächst um zwei Endpunkte
-   auf 21, und `KonfigurationControllerTests` braucht `@Transactional` – die Klasse ändert
-   eine anwendungsweit gültige, einzeilige Tabelle und liefe sonst anderen Klassen in die
-   Quere, etwa `GastControllerTests`, das sich auf `anz_guests = 4` verlässt.
+5. **Danach S3** (Profile & Skills API). Aus S2b kommt dorthin die Bearbeitung bestehender
+   Profile (`/admin/user/bearbeiten`: Name und Skillwerte ändern). Das Anlegen, Entfernen
+   und Sperren steht bereits. **Der Anmeldename des Admins wird dort änderbar** – das ist
+   dieselbe Operation wie das Umbenennen des Adminprofils (Weggabelung C der S3-Anleitung,
+   bestätigt). Die drei Auflagen dazu stehen in `harness/tmp/S3_UMSETZUNG.md`, Abschnitt 3.3:
+   den neuen Namen **getrimmt** speichern (sonst liesse er sich nie eingeben und der Admin
+   sperrte sich aus), die Änderung der Schreibweise als echte Änderung behandeln, und die
+   offene Frage klären, ob das Umbenennen die Adminsitzungen widerruft.
 6. **Domainentscheidung – erledigt (09.08.2026).** Frontend und API liegen auf Subdomains **derselben
    registrierbaren Domain** (`app.<domain>` / `api.<domain>`). Damit gilt `SameSite=Lax` und
    `csrf.disable()` bleibt vertretbar; Abschnitt 5.4/5.5 der S2-Anleitung ist entsprechend festgelegt.
