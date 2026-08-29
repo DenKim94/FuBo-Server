@@ -67,6 +67,8 @@ public class MailService {
         nachricht.setTo(empfaenger);
         nachricht.setSubject(BETREFF_RESET);
         nachricht.setText("""
+                Hallo,
+                
                 Bestätigungs-PIN: %s
 
                 Diese PIN ist %d Minuten gültig und gilt für genau einen Vorgang.
