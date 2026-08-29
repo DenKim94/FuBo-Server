@@ -121,37 +121,80 @@ public class AuditService {
     }
 
     /**
-     * Baut ein flaches JSON-Objekt.
+     * Baut das JSON-Objekt fuer die Spalte {@code details}.
      *
      * <p>Bewusst von Hand statt ueber einen Objekt-Mapper: Es geht um wenige, selbst
-     * gesetzte Schluessel mit einfachen Werten. Eine Abhaengigkeit zur
-     * Serialisierungsbibliothek in der Service-Schicht waere fuer diesen Zweck
-     * unverhaeltnismaessig.
+     * gesetzte Schluessel. Eine Abhaengigkeit zur Serialisierungsbibliothek in der
+     * Service-Schicht waere fuer diesen Zweck unverhaeltnismaessig.
+     *
+     * <p><b>Ein leeres Detail-Objekt wird zu {@code null}</b>, nicht zu {@code {}}: Die
+     * Spalte ist nullbar, und ein leeres Objekt behauptete Angaben, die es nicht gibt.
+     * Innerhalb einer verschachtelten Karte gilt das nicht - dort steht {@code {}}.
      */
     private static String alsJson(Map<String, Object> details) {
         if (details == null || details.isEmpty()) {
             return null;
         }
+        return alsObjekt(details);
+    }
+
+    /**
+     * Setzt eine Karte in ein JSON-Objekt um - auch geschachtelt.
+     *
+     * <p>Getrennt von {@link #alsJson(Map)}, weil {@link #wert(Object)} von hier aus
+     * zurueckruft: Beide Richtungen brauchen dieselbe Umsetzung, aber nur die aeussere
+     * Karte darf zu {@code null} werden.
+     *
+     * <p>Die Schluessel werden ueber {@code String.valueOf} genommen. In der Praxis sind es
+     * immer Zeichenketten; ein Zahlenschluessel aus einer inneren Karte soll aber kein
+     * ungueltiges JSON erzeugen.
+     */
+    private static String alsObjekt(Map<?, ?> karte) {
         StringBuilder json = new StringBuilder("{");
         boolean erstes = true;
-        for (Map.Entry<String, Object> eintrag : details.entrySet()) {
+        for (Map.Entry<?, ?> eintrag : karte.entrySet()) {
             if (!erstes) {
                 json.append(',');
             }
             erstes = false;
-            json.append('"').append(maskieren(eintrag.getKey())).append("\":");
+            json.append('"').append(maskieren(String.valueOf(eintrag.getKey()))).append("\":");
             json.append(wert(eintrag.getValue()));
         }
         return json.append('}').toString();
     }
 
-    /** Zahlen und Wahrheitswerte stehen ohne Anfuehrungszeichen, alles Uebrige als Text. */
+    /**
+     * Zahlen und Wahrheitswerte stehen ohne Anfuehrungszeichen, Karten werden zu
+     * geschachtelten Objekten, alles Uebrige zu Text.
+     *
+     * <h2>Warum Karten seit S3 einen eigenen Zweig haben</h2>
+     * Vorher landeten sie im Textzweig, und {@code Map#toString} lieferte
+     * {@code "{TORWART=1}"} - eine Zeichenkette, die aussieht wie JSON und keines ist.
+     * In der Datenbank stand dann ein <i>Text</i>, kein Objekt: {@code details->'skills'}
+     * traf zwar, aber {@code ->>'TORWART'} darauf lieferte {@code null}. Der Eintrag war
+     * damit unbrauchbar, ohne dass irgendwo ein Fehler auftrat. Aufgefallen ist es am
+     * 29.08.2026 beim Protokoll der Profilbearbeitung, die als erster Aufrufer eine
+     * Skillkarte uebergibt.
+     *
+     * <p><b>Fuer andere zusammengesetzte Typen gilt der Fallstrick weiter:</b> Eine
+     * {@code Collection} wird nach wie vor zu ihrer {@code toString}-Form. Sie hat heute
+     * keinen Aufrufer; wer einen anlegt, ergaenzt hier einen Zweig. Absichtlich <b>keine
+     * Ausnahme</b> fuer unbekannte Typen: Eine Ausnahme an dieser Stelle riss die
+     * umgebende Transaktion mit sich und machte aus einem unschoenen Protokolleintrag eine
+     * zurueckgerollte Fachaenderung.
+     *
+     * <p>Die Rekursion ist unbegrenzt. Das traegt, weil die Karten im Code entstehen und
+     * nicht aus einer Eingabe - eine sich selbst enthaltende Karte kann es hier nicht geben.
+     */
     private static String wert(Object rohwert) {
         if (rohwert == null) {
             return "null";
         }
         if (rohwert instanceof Number || rohwert instanceof Boolean) {
             return rohwert.toString();
+        }
+        if (rohwert instanceof Map<?, ?> karte) {
+            return alsObjekt(karte);
         }
         return '"' + maskieren(rohwert.toString()) + '"';
     }
