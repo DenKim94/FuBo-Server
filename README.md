@@ -52,9 +52,25 @@ unerwarteter Name.
 **Das Adminprofil ist ein technisches Konto.** Es steht nicht in der Namensliste, nimmt an
 keinem Termin teil und wird nie in ein Team eingeteilt; seine Skillwerte werden je Kategorie
 auf 0 gesetzt. Der Admin meldet sich deshalb nicht ueber die Namenswahl an, sondern ueber
-`POST /api/v1/auth/admin/anmelden` mit dem Passwort aus `ADMIN_PASSWORD` - und auch dafuer
+`POST /api/v1/auth/admin/anmelden` mit `ADMIN_NAME` und `ADMIN_PASSWORD` - und auch dafuer
 zuerst ueber die zentrale PIN. Wer selbst mitspielt, braucht dafuer ein eigenes, normales
 Spielerprofil.
+
+**`ADMIN_NAME` ist zugleich der Anmeldename (seit 29.08.2026).** Der Endpunkt verlangt Name
+und Passwort; der Name ist der Profilname des Adminprofils. Er ist ueber keinen Endpunkt
+abrufbar, weil das Adminprofil aus der Namensliste ausgeschlossen ist - genau das macht ihn als
+zweite Angabe brauchbar, und genau deshalb gehoert er behandelt wie ein Geheimnis. Falscher
+Name und falsches Passwort liefern dieselbe Antwort (`401 ADMIN_PASSWORT_FALSCH`); der Server
+rechnet den BCrypt-Vergleich auch bei falschem Namen zu Ende, damit die Laufzeit nichts
+verraet.
+
+**Die Schreibweise zaehlt.** Der Name wird zeichengenau geprueft, Gross- und Kleinschreibung
+eingeschlossen; nur Randleerzeichen entfernt der Server. Damit sich dabei niemand aussperrt,
+legt der Bootstrap den Profilnamen genau so ab, wie `ADMIN_NAME` ihn nennt: Er sucht
+zeichengenau (`findByName`) und **bricht den Start ab**, wenn ein vorhandenes Profil allein in
+der Schreibweise abweicht. Die Meldung nennt beide Formen. Der Abbruch ist das mildere Mittel -
+er kostet einen Neustart mit korrigierter `.env`, waehrend ein ausgesperrter Admin keinen
+Selbstbedienungsweg hat: Der Passwort-Reset holt das Passwort zurueck, nie den Namen.
 
 Nach dem ersten Start sind die Werte entbehrlich: Beide Bootstraps sind idempotent und
 setzen nichts zurueck - insbesondere wird ein geaendertes Passwort nicht ueberschrieben.

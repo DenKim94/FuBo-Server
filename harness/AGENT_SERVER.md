@@ -111,12 +111,45 @@ Identifikation über den hinterlegten Namen. Rollen: ADMIN, USER, GAST.
   eine Id entgegennimmt, prüft dieselbe Bedingung erneut wie die Liste, aus der die Id stammt.
   Sonst wäre der Ausschluss reine Darstellung – wer die Id kennt, käme daran vorbei. Beim
   Adminprofil hinge daran `ROLE_ADMIN` ohne Passwort.
-- **Der Admin meldet sich über sein Passwort an**, nicht über die Namenswahl:
+- **Der Admin meldet sich mit Anmeldename und Passwort an**, nicht über die Namenswahl:
   `POST /api/{version}/auth/admin/anmelden` gegen `admin_konto.passwort_hash`, ausschliesslich in
   der Stufe `PIN_VERIFIED`. Die zentrale PIN bleibt auch für ihn Pflicht – sie grenzt den Kreis
-  der Zugreifenden ein (A1), das Passwort die Rechte innerhalb dieses Kreises. Der
+  der Zugreifenden ein (A1), die Anmeldedaten die Rechte innerhalb dieses Kreises. Der
   Brute-Force-Zähler ist derselbe wie am PIN-Endpunkt: Es ist derselbe Absender, der dieselbe
   Anwendung angreift.
+- **Der Anmeldename ist der Profilname des Adminprofils** (`profil.spieler.name` zu
+  `admin_konto.spieler_id`, gesetzt über `ADMIN_NAME`) – **keine eigene Spalte** (Festlegung
+  vom 29.08.2026). Eine zweite Namensspalte im Admin-Konto wäre ein zweiter Name für dasselbe
+  Konto, mit einer zweiten Umgebungsvariablen und einer zweiten Startprüfung; `.env.example`
+  beschreibt `ADMIN_NAME` ohnehin schon als Kontonamen, der kein Spielername sein muss.
+  Folge, die dokumentiert bleiben muss: Wird das Adminprofil umbenannt, ändert sich damit der
+  Anmeldename (die Umbenennung durch den Admin kommt in S3).
+- **Verglichen wird zeichengenau, einschliesslich Gross- und Kleinschreibung** (Festlegung
+  vom 29.08.2026). Der Name ist ein Anmeldemerkmal, und bei einem Merkmal ist Nachsicht die
+  falsche Richtung. **Das trägt nur zusammen mit der Zusicherung des Bootstraps:**
+  `AdminBootstrap` sucht das Profil mit `findByName` (zeichengenau) und legt es sonst mit
+  genau der Schreibweise aus `ADMIN_NAME` an; der gespeicherte Profilname entspricht damit
+  zeichengenau dem Wert aus der Umgebung. Weicht ein vorhandenes Profil **allein in der
+  Schreibweise** ab, **bricht der Start ab** (`pruefeSchreibweise`) – es wird weder das
+  abweichende Profil übernommen noch ein zweites, nahezu gleichnamiges angelegt.
+  `uq_spieler_name` ist in PostgreSQL gross-/kleinschreibungsempfindlich und liesse beide
+  nebeneinander zu. Der Abbruch ist das mildere Mittel: Er kostet einen Neustart mit
+  korrigierter `.env`, während der Alternativfall – Admin ausgesperrt – **keinen**
+  Selbstbedienungsweg hat; der Passwort-Reset holt das Passwort zurück, nie den Namen.
+  Randleerzeichen werden weiterhin entfernt, und zwar im DTO, nicht im Service: Ein
+  führendes Leerzeichen ist unsichtbar und nie beabsichtigt, eine Schreibweise ist sichtbar
+  und kann es sein.
+- **Am Anmeldenamen hängen drei weitere Bedingungen:**
+  1. **Falscher Name und falsches Passwort sind nach aussen nicht unterscheidbar** – derselbe
+     Fehlercode (`ADMIN_PASSWORT_FALSCH`), derselbe Anzeigetext. Sonst wäre der Anmeldename
+     über die Fehlermeldung erratbar und die zusätzliche Angabe wertlos.
+  2. **Der BCrypt-Vergleich läuft auch bei falschem Namen** – die beiden Teilprüfungen werden
+     mit `&` verknüpft, nie mit `&&`. Ein vorzeitiges Verlassen spart die teure Berechnung und
+     macht den Endpunkt damit zu einem Zeitorakel über den Namen.
+  3. **Der eingegebene Name gehört nicht ins Audit-Log.** Der Eintrag zum Fehlversuch nennt
+     weiterhin nur Endpunkt und Adresse; ein Protokoll, das jede geratene Eingabe mitschreibt,
+     sammelt fremde Daten ohne Nutzen und stellt einen Vertipper des Admins neben seinen
+     echten Namen.
 - **Skill-Geheimhaltung:** DTOs für USER/GAST enthalten keine Skillwerte. Der Teamgenerator liegt
   serverseitig; die Skillwerte verlassen den Server nicht. Admin-DTOs dürfen Skills enthalten.
 - **Brute-Force-Schutz** am PIN-Endpunkt; echte Client-IP aus `X-Forwarded-For`, daher

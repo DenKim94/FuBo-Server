@@ -8,8 +8,7 @@
 > **Kein Monorepo.** Das Frontend liegt in einem getrennten Repository (`FuBo-Client`, Ordner `client/`).
 > Der übergeordnete Ordner `PRJ_FuBo/` sowie `PRJ_FuBo/harness/` sind bewusst **nicht** versioniert.
 > Repository ist angelegt: `https://github.com/DenKim94/FuBo-Server.git` (privat).
-> Stand: 29.08.2026, **S0, S1, S2 und S2b abgeschlossen; Nachtrag „Anmeldename beim
-> Admin-Login" umgesetzt (Abschnitt 6.13).** S2 und die S2b-Schritte 0 bis 7 sind
+> Stand: 23.08.2026, **S0, S1, S2 und S2b abgeschlossen.** S2 und die S2b-Schritte 0 bis 7 sind
 > mit `./mvnw clean verify` verifiziert (148 Tests); fuer die Schritte 8 bis 11
 > (Spielerverwaltung, Aufraeumjob, Tests) steht der Lauf noch aus – erwartet werden **184 Tests
 > in 19 Klassen**, siehe Abschnitt 6.6
@@ -29,23 +28,13 @@
 > startet auf einer frischen Datenbank durch.** Aufstellung je Klasse in Abschnitt 6.11. Der Lauf
 > braucht Docker (Testcontainers, `postgres:17`) und läuft ausschliesslich lokal.
 >
-> **Nachtrag vom 29.08.2026 (Abschnitt 6.13):** `POST /auth/admin/anmelden` verlangt jetzt
-> **Anmeldename und Passwort**. Der Anmeldename ist der Profilname des Adminprofils
-> (`ADMIN_NAME`); es gibt **keine** neue Spalte und **keine** Migration. Betroffen sind
-> `AdminLoginRequest`, `AdminService`, `AdminController`, `AdminBootstrap`, `SpielerRepository`,
-> `Fehlercode`, `AdminControllerTests`, `AdminBootstrapTests`, `fubo-api.json`, beide
-> `README.md` und die Bruno-Collection. Der Vergleich ist **zeichengenau**; der Bootstrap
-> sichert das ab. **Der Testlauf steht noch aus:
-> erwartet werden jetzt 190 Tests in 19 Klassen** (184 + 5 in `AdminControllerTests`,
-> + 1 in `AdminBootstrapTests`).
->
-> Als Nächstes: **`./mvnw clean verify`** – deckt die S2b-Schritte 8 bis 11 **und** den
-> Nachtrag ab –, dann **S3** (Profile & Skills API). Die manuelle Prüfliste steht in
-> `harness/tmp/S2b_UMSETZUNG.md`, Abschnitt 12.1; die Bruno-Collection deckt sie ab.
+> Als Nächstes: **`./mvnw clean verify` für die S2b-Schritte 8 bis 11**, dann **S3**
+> (Profile & Skills API). Die manuelle Prüfliste steht in `harness/tmp/S2b_UMSETZUNG.md`,
+> Abschnitt 12.1; die Bruno-Collection deckt sie ab.
 >
 > (Vorfassungen archiviert unter `harness/archive/`, zuletzt
-> `CONTEXT_HANDOFF_SERVER_2026-08-23_v7_S2b-vollstaendig.md`. **Die Abschnitte zu S2 sind seit v7
-> auf ihre Regeln und Fallstricke eingedampft**; die Schritt-für-Schritt-Erzählung steht in v6.)
+> `CONTEXT_HANDOFF_SERVER_2026-08-23_v6_S2b-Schritte0-7.md`. **Die Abschnitte zu S2 sind in v7 auf
+> ihre Regeln und Fallstricke eingedampft**; die Schritt-für-Schritt-Erzählung steht in v6.)
 
 ---
 
@@ -107,29 +96,6 @@ Neu im Vertrag seit dem 22.08.2026:
 - **`Retry-After`** und das Feld `wartesekunden` beim `429` des PIN-Endpunkts.
 - **`absolutGueltigBis`** in der Sitzungsauskunft, zusätzlich zu `gueltigBis`.
 
-Geändert am 29.08.2026 (Abschnitt 6.13):
-- **`AdminLoginRequest` hat ein zweites Pflichtfeld `anmeldename`** (max. 60 Zeichen,
-  zeichengenau geprüft). Das ist
-  eine **brechende** Vertragsänderung für den Client-Track: Ein Anfragekörper mit nur
-  `passwort` liefert jetzt `400 EINGABE_UNGUELTIG`. Kein neuer Fehlercode, kein neuer
-  Endpunkt; die Fehlercodeliste bleibt unverändert.
-
-## 4a. Offene Übergabe an den Client-Track
-
-Das Anmeldeformular des Admins braucht ein zweites Eingabefeld. Der Client-Track zieht nach,
-sobald `fubo-api.json` bei ihm angekommen ist. Drei Punkte gehören dabei ins Frontend:
-
-1. **Ein Feld „Anmeldename", Pflicht, maximal 60 Zeichen.** Der Server trimmt Randleerzeichen
-   selbst – das muss das Frontend nicht nachbauen –, prüft die **Schreibweise aber
-   zeichengenau**. Also kein `toLowerCase()` beim Absenden und kein Hinweis, die
-   Schreibweise sei egal.
-2. **Keine getrennte Fehlermeldung für „Name unbekannt".** Der Server liefert für falschen
-   Namen und falsches Passwort denselben Code; eine Unterscheidung im Frontend hätte nichts,
-   woran sie sich festmachen könnte, und würde die Absicht unterlaufen.
-3. **Keine Vorbelegung, kein Autovervollständigen aus einer Liste.** Der Anmeldename ist über
-   keinen Endpunkt abrufbar; ein Auswahlfeld gäbe es nur, wenn ihn jemand ins Frontend
-   schriebe.
-
 ## 5. Meilensteine & Aufwandsschätzung (Server)
 Mid-Level-Entwickler, KI-gestützt, ca. 6,5 h/Woche.
 
@@ -166,7 +132,7 @@ und S5. **Abhängigkeit: S2b setzt einen SMTP-Zugang voraus** (Anbieter, Absende
 Zugangsdaten) – ohne ihn ist der Meilenstein weder umsetzbar noch testbar. Vorschlag und
 Alternativen in `S2b_UMSETZUNG.md`, Abschnitt 0.3.
 
-## 6. Aktueller Code-Zustand (Stand 29.08.2026, Branch `dev`)
+## 6. Aktueller Code-Zustand (Stand 08.08.2026, Branch `dev`, Commit `1d90f67`)
 
 ### 6.1 S0 und S1 sind abgeschlossen
 
@@ -269,7 +235,7 @@ db/migration/         V008__session_rolle_optional.sql (letzte Migration)
 | `GET` | `/api/v1/auth/users/lesen` | `PIN_VERIFIED` und höher | `200` Namensliste, **ohne Skillwerte** |
 | `POST` | `/api/v1/auth/user/waehlen` | nur `PIN_VERIFIED` | `204` + **neues** Cookie |
 | `POST` | `/api/v1/auth/gast/anmelden` | nur `PIN_VERIFIED` | `204` + **neues** Cookie |
-| `POST` | `/api/v1/auth/admin/anmelden` | nur `PIN_VERIFIED` | `204` + **neues** Cookie, Rolle `ADMIN` (seit 29.08.2026 mit Anmeldename, Abschnitt 6.13) |
+| `POST` | `/api/v1/auth/admin/anmelden` | nur `PIN_VERIFIED` | `204` + **neues** Cookie, Rolle `ADMIN` |
 | `GET` | `/api/v1/auth/session/lesen` | `PIN_VERIFIED` und höher | `200` Sitzungsauskunft |
 | `POST` | `/api/v1/auth/session/erneuern` | `PIN_VERIFIED` und höher | `204` + **neues** Cookie |
 | `POST` | `/api/v1/auth/session/beenden` | `PIN_VERIFIED` und höher | `204`, Cookie gelöscht |
@@ -278,9 +244,8 @@ db/migration/         V008__session_rolle_optional.sql (letzte Migration)
 
 1. **Das Adminprofil ist ein technisches Konto.** Nicht in der Namensliste, über die
    Namensauswahl auch mit bekannter Id nicht wählbar (`404`), nie in einem Team. Skillwerte 0 –
-   **kein Ersatz für den Ausschluss**. Der Admin meldet sich über einen eigenen Endpunkt an;
-   ohne diesen Weg käme niemand mehr an `ROLE_ADMIN`. *(Seit dem 29.08.2026 mit Anmeldename
-   **und** Passwort, siehe Abschnitt 6.13.)*
+   **kein Ersatz für den Ausschluss**. Der Admin meldet sich über sein Passwort an; ohne diesen
+   Weg käme niemand mehr an `ROLE_ADMIN`.
 2. **Der Ausschluss wird an jeder Grenze wiederholt**, nicht nur in der Anzeige. Ein Endpunkt,
    der eine Id entgegennimmt, prüft dieselbe Bedingung erneut wie die Liste, aus der sie stammt.
 3. **Ein Brute-Force-Zähler für PIN- und Admin-Login.** Derselbe Absender greift dieselbe
@@ -428,10 +393,9 @@ die gewünschte Staffelung, keine Panne.
 Klassen**, keine Fehler, keine Abbrüche, keine übersprungenen Tests. Die Anwendung startet auf
 einer frischen Datenbank durch.
 
-**Für die S2b-Schritte 8 bis 11 und den Nachtrag vom 29.08.2026 steht der grüne Lauf noch aus.
-Erwartet: 190 Tests in 19 Klassen** – 184 aus S2b, fünf neue Fälle in
-`AdminControllerTests` und einer in `AdminBootstrapTests` (Abschnitt 6.13). Der erste Lauf am 23.08.2026 brachte fünf Fehler –
-**alle drei Ursachen lagen im neuen Code und sind behoben:**
+**Für die S2b-Schritte 8 bis 11 steht der grüne Lauf noch aus. Erwartet: 184 Tests in 19
+Klassen.** Der erste Lauf am 23.08.2026 brachte fünf Fehler – **alle drei Ursachen lagen im neuen
+Code und sind behoben:**
 
 1. **Zwei Tabellennamen in `SpielerRepository#istReferenziert` waren falsch** und führten zu
    `500 relation "spieltag.termin_serie" does not exist`. Sie waren aus den *Constraint-Namen*
@@ -466,12 +430,12 @@ Erwartet: 190 Tests in 19 Klassen** – 184 aus S2b, fünf neue Fälle in
 | `GastControllerTests` | 8 | |
 | `GastServiceTransaktionTests` | 2 | |
 | `SessionControllerTests` | 10 | |
-| `AdminBootstrapTests` | 9 | 8 + 1 (Schreibweise, 29.08.2026) |
-| `AdminControllerTests` | 11 | 6 + 5 (Anmeldename, 29.08.2026) |
+| `AdminBootstrapTests` | 8 | |
+| `AdminControllerTests` | 6 | |
 | `PasswortResetControllerTests` | 14 | neu |
 | `ZugangsdatenControllerTests` | 6 | neu |
 | `SpielerControllerTests` | 16 | neu |
-| **Summe** | **190** | |
+| **Summe** | **184** | |
 
 ```bash
 docker info > /dev/null                                    # muss durchlaufen
@@ -491,164 +455,18 @@ lautete die Antwort `Could not find a valid Docker environment` – Docker lief 
 Die manuelle Prüfliste steht vollständig in `S2b_UMSETZUNG.md`, Abschnitt 12.1; die
 Bruno-Collection deckt sie ab.
 
-### 6.13 Nachtrag – Anmeldename beim Admin-Login (29.08.2026)
-
-**Auftrag:** Für die Anmeldung des Admins muss auch der Anmeldename eingegeben und gegen die
-Datenbank validiert werden.
-
-**Was sich geändert hat**
-
-`POST /api/v1/auth/admin/anmelden` verlangt jetzt zwei Pflichtfelder statt einem:
-
-```json
-{ "anmeldename": "...", "passwort": "..." }
-```
-
-```
-dto/auth/AdminLoginRequest        + anmeldename (@NotBlank, max 60), + bereinigterAnmeldename()
-service/auth/AdminService         + anmeldedatenStimmen(name, passwort), + nameStimmt(...),
-                                  + SpielerRepository im Konstruktor,
-                                  passwortStimmt() auf passwortVergleichen() zurueckgefuehrt
-service/auth/AdminBootstrap       findByName statt findByNameIgnoreCase,
-                                  + pruefeSchreibweise (Startabbruch)
-repository/profil/SpielerRepository  + findByName (exakt),
-                                  findByNameIgnoreCase -> findAllByNameIgnoreCase (List)
-controller/auth/AdminController   ruft anmeldedatenStimmen statt passwortStimmt,
-                                  eigener Anzeigetext beim 401
-common/error/Fehlercode           JavaDoc an ADMIN_PASSWORT_FALSCH (zwei Endpunkte, ein Code)
-fubo-api.json                     AdminLoginRequest + anmeldename, Beispiel, 401-Beschreibung
-README.md, .env.example           ADMIN_NAME ist zugleich der Anmeldename
-```
-
-**Keine Schemaänderung, keine Migration.** `V008` bleibt die letzte Migration.
-
-**Fünf Entscheidungen**
-
-1. **Der Anmeldename ist der Profilname des Adminprofils**, nicht eine neue Spalte
-   `admin_konto.anmeldename`. Entscheidung des Haupt-Entwicklers. Der Wert steht bereits in
-   `profil.spieler.name` (eindeutig über `uq_spieler_name`), stammt aus `ADMIN_NAME` und ist
-   in `.env.example` seit jeher als *Kontoname, der kein Spielername sein muss* beschrieben.
-   Eine eigene Spalte hätte eine Migration, eine zweite Umgebungsvariable und eine zweite
-   Startprüfung gebraucht – für einen zweiten Namen desselben Kontos.
-   **Folge, die in S3 gebraucht wird:** Wird das Adminprofil umbenannt
-   (`/admin/user/bearbeiten`), ändert sich damit der Anmeldename. Das ist konsistent – es ist
-   dasselbe Konto – und ausdrücklich gewollt: Die Änderung des Anmeldenamens durch den Admin
-   ist als S3-Aufgabe bestätigt. Ab dann ist `ADMIN_NAME` in der `.env` **veraltet** und
-   taugt nicht mehr als Auskunft über den gültigen Anmeldenamen; der Bootstrap liest den Wert
-   ohnehin nur, solange kein Konto existiert. Die drei Auflagen für S3 stehen in
-   `harness/tmp/S3_UMSETZUNG.md`, Abschnitt 3.3 – die wichtigste: **den neuen Namen getrimmt
-   speichern**, sonst liesse er sich nie eingeben.
-2. **Falscher Name und falsches Passwort sind nicht unterscheidbar.** Derselbe Code
-   `ADMIN_PASSWORT_FALSCH`, derselbe Anzeigetext („Anmeldename oder Passwort ist nicht
-   korrekt."). Ein eigener Code hätte den Namen über die Fehlermeldung erratbar gemacht und
-   die zusätzliche Angabe entwertet.
-3. **Der bestehende Fehlercode bleibt**, statt eines neuen `ADMIN_ANMELDUNG_FALSCH`.
-   Entscheidung des Haupt-Entwicklers: Der Client-Track muss seine Auswertung nicht ändern,
-   und `detail` ist ohnehin Anzeigetext, der sich ohne Vertragsänderung ändern darf. Der
-   Controller setzt den präziseren Text über den zweiten `FachlicherFehler`-Konstruktor;
-   `/admin/passwort/aendern` behält die Standardmeldung, weil dort tatsächlich nur das
-   Passwort geprüft wird.
-4. **Beide Teilprüfungen laufen immer** – `nameStimmt & passwortStimmt`, verknüpft mit `&`,
-   nie mit `&&`. Ein Abbruch beim falschen Namen spart die BCrypt-Berechnung und macht den
-   Endpunkt zu einem Zeitorakel: schnelle Ablehnung hiesse „Name falsch", langsame „Name
-   richtig". **Wer diese Zeile später vereinfacht, hebt die Massnahme auf.**
-5. **Der eingegebene Name geht nicht ins Audit-Log.** Der Eintrag zum Fehlversuch nennt
-   weiterhin nur Endpunkt und Adresse. Ein Protokoll, das jede geratene Eingabe mitschreibt,
-   sammelt fremde Daten ohne Nutzen und stellt einen Vertipper des Admins neben seinen echten
-   Namen.
-
-### Die Schreibweise: erst nachsichtig, dann zeichengenau (am selben Tag korrigiert)
-
-Die erste Fassung verglich mit `equalsIgnoreCase` – aus Sorge vor einer Aussperrung, weil
-`AdminBootstrap` das Profil bis dahin ebenfalls unempfindlich suchte (`findByNameIgnoreCase`).
-**Der Haupt-Entwickler hat das umgedreht:** Der Anmeldename ist ein Anmeldemerkmal, die
-Schreibweise ist über `ADMIN_NAME` eindeutig vorgegeben (ohne die Angabe bricht der Start
-ohnehin ab), also wird sie auch geprüft.
-
-**Das war keine Ein-Wort-Änderung.** `equals` allein hätte genau die Aussperrung erzeugt, gegen
-die die Nachsicht gedacht war: Stand in der Datenbank „Beispielspieler 05" und in der `.env`
-`beispielspieler 05`, übernahm der Bootstrap das vorhandene Profil – und der Betreiber konnte
-sich anschliessend mit genau dem Wert **nicht** anmelden, den er selbst gesetzt hatte. Ohne
-Rückweg: Der Passwort-Reset holt das Passwort zurück, nie den Namen.
-
-Deshalb sichert der Bootstrap jetzt die Invariante zu, auf der der Login aufsetzt:
-
-> **Der gespeicherte Profilname des Admins entspricht zeichengenau `ADMIN_NAME.trim()`.**
-
-Drei Bausteine tragen sie:
-
-1. **`findByName` statt `findByNameIgnoreCase`.** Nur ein zeichengenauer Treffer wird
-   übernommen; sonst entsteht das Profil neu, mit genau der Schreibweise aus der Umgebung.
-2. **`pruefeSchreibweise` bricht den Start ab**, wenn ein Profil allein in der Schreibweise
-   abweicht – vor jeder Änderung, wie alle Abbruchprüfungen des Runners. Sonst legte der
-   Bootstrap ein zweites, nahezu gleichnamiges Profil an: `uq_spieler_name` ist in PostgreSQL
-   gross-/kleinschreibungsempfindlich und lässt „Admin" neben „admin" zu. In der Namensliste
-   stünden dann zwei fast gleiche Einträge, einer davon ein technisches Konto. Der Abbruch
-   kostet einen Neustart mit korrigierter `.env` – die Alternative kostet den Zugang.
-3. **Die Gegenprobe läuft über eine Liste** (`findAllByNameIgnoreCase`), nicht über ein
-   `Optional`. Existieren bereits zwei Schreibweisen nebeneinander, liefe ein `Optional` in
-   eine `IncorrectResultSizeDataAccessException` – ein Startabbruch mit einer Meldung über
-   Ergebnismengen statt über die Ursache. Die Meldung nennt jetzt alle gefundenen
-   Schreibweisen.
-
-**Randleerzeichen werden weiterhin entfernt**, und zwar im **DTO**
-(`bereinigterAnmeldename()`), nicht im Service: Die Auslegung des Anfragekörpers gehört an die
-API-Grenze, wie bei `GastAnmeldungRequest#bereinigterName()`. Das ist kein Widerspruch zur
-zeichengenauen Prüfung – ein führendes Leerzeichen ist unsichtbar und nie beabsichtigt, eine
-Schreibweise ist sichtbar und kann es sein.
-
-**Fünf neue Testfälle in `AdminControllerTests`** (6 → 11): abweichende Schreibweise
-(`401`), Randleerzeichen (`204`), falscher Name mit richtigem Passwort, Name eines *anderen*
-Profils, fehlender Name (`400`). Die Tests lesen den Anmeldenamen über `adminName()` aus der
-Datenbank statt ihn festzuschreiben – er stammt aus `ADMIN_NAME` in
-`src/test/resources/application.yml`, und ein Test, der den Wert doppelt führt, bricht bei
-jeder Änderung dort mit.
-
-**In `AdminBootstrapTests`** (8 → 9) wurde `abweichendeSchreibweiseDesNamensGenuegt` in sein
-Gegenteil verkehrt (`…BrichtDenStartAb`; prüft zusätzlich, dass kein zweites Profil
-zurückbleibt und dass die Meldung beide Schreibweisen nennt); dazu kam
-`exakteSchreibweiseUebernimmtDasVorhandeneProfil` als Gegenprobe über die Profilanzahl.
-`unbekannterNameLegtDasProfilAn` sichert jetzt ausdrücklich zu, dass der Profilname
-zeichengenau `ADMIN_NAME` entspricht – das ist die Invariante, auf der der Login aufsetzt.
-
-**`ADMIN_NAME: Beispielspieler 12` in `src/test/resources/application.yml` trifft die
-Demodaten zeichengenau**, der Kontextstart ist von der Umstellung also nicht betroffen. Wer
-den Wert dort ändert, muss ihn zeichengenau aus `R__seed_beispielprofile.sql` übernehmen –
-sonst bricht künftig jeder `@SpringBootTest` beim Kontextstart ab.
-
-**Nicht betroffen:** `SecurityConfigTests` schickt `{}` und erwartet `400` bzw. `403` – beides
-gilt unverändert. `/admin/passwort/aendern` prüft weiterhin nur das alte Passwort; dort ist der
-Admin bereits angemeldet, ein Anmeldename wäre dort ohne Aussage.
-
-**Bruno-Collection** (`~/Documents/bruno/fubo_server`): neue Umgebungsvariable `adminName` in
-allen fünf Umgebungen (in `raspberry-pi` als Secret), Anfragekörper in „Admin anmelden",
-„Admin Passwort falsch" und „Admin anmelden in falscher Stufe" ergänzt, neuer Fehlerfall
-„Admin Anmeldename falsch" (seq 19). **`adminName` ist in jeder Umgebung noch auf
-`BITTE_EINTRAGEN` gesetzt** und muss vor dem nächsten Lauf gefüllt werden.
-
 ## 7. Nächste Schritte
 
-1. **`./mvnw clean verify` laufen lassen** – für die S2b-Schritte 8 bis 11 **und** den Nachtrag
-   vom 29.08.2026. Erwartet: 190 Tests in 19 Klassen (Aufstellung in Abschnitt 6.6). - **Bestätigt**
-2. **`adminName` in den Bruno-Umgebungen füllen** (steht überall auf `BITTE_EINTRAGEN`) –
-   **zeichengenau wie `ADMIN_NAME` in der `.env`**, sonst scheitert jeder Admin-Request
-   mit `401`.
-3. **Manuelle Prüfliste abarbeiten** (`S2b_UMSETZUNG.md`, Abschnitt 12.1). Der Reset lässt sich
+1. **`./mvnw clean verify` für die S2b-Schritte 8 bis 11 laufen lassen.** Erwartet: 184 Tests in
+   19 Klassen (Aufstellung in Abschnitt 6.6). Danach die **tatsächlichen** Zahlen aus
+   `server/target/surefire-reports/*.txt` dort eintragen. Vorher `docker info` prüfen – am
+   23.08.2026 scheiterte ein ganzer Lauf allein daran.
+2. **Manuelle Prüfliste abarbeiten** (`S2b_UMSETZUNG.md`, Abschnitt 12.1). Der Reset lässt sich
    nur mit echtem SMTP-Zugang durchspielen; die Bruno-Collection führt durch die Reihenfolge.
-   **Zusätzlich zum Nachtrag:** „Admin anmelden" mit richtigem Namen, mit falschem Namen und
-   mit abweichender Schreibweise – die drei Ablehnungen müssen in Code, Statuscode und
-   Anzeigetext identisch sein.
-4. **Client-Track über die Vertragsänderung informieren** (Abschnitt 4a): Das Anmeldeformular
-   des Admins braucht ein zweites Pflichtfeld, sonst liefert der Endpunkt `400`.
-5. **Danach S3** (Profile & Skills API). Aus S2b kommt dorthin die Bearbeitung bestehender
-   Profile (`/admin/user/bearbeiten`: Name und Skillwerte ändern). Das Anlegen, Entfernen
-   und Sperren steht bereits. **Der Anmeldename des Admins wird dort änderbar** – das ist
-   dieselbe Operation wie das Umbenennen des Adminprofils (Weggabelung C der S3-Anleitung,
-   bestätigt). Die drei Auflagen dazu stehen in `harness/tmp/S3_UMSETZUNG.md`, Abschnitt 3.3:
-   den neuen Namen **getrimmt** speichern (sonst liesse er sich nie eingeben und der Admin
-   sperrte sich aus), die Änderung der Schreibweise als echte Änderung behandeln, und die
-   offene Frage klären, ob das Umbenennen die Adminsitzungen widerruft.
-6. **Domainentscheidung – erledigt (09.08.2026).** Frontend und API liegen auf Subdomains **derselben
+3. **Danach S3** (Profile & Skills API). Aus S2b kommt dorthin die Bearbeitung bestehender
+   Profile (`/admin/user/profil-bearbeiten`: Name und Skillwerte ändern). Das Anlegen, Entfernen
+   und Sperren steht bereits.
+4. **Domainentscheidung – erledigt (09.08.2026).** Frontend und API liegen auf Subdomains **derselben
    registrierbaren Domain** (`app.<domain>` / `api.<domain>`). Damit gilt `SameSite=Lax` und
    `csrf.disable()` bleibt vertretbar; Abschnitt 5.4/5.5 der S2-Anleitung ist entsprechend festgelegt.
    Hintergrund: Das Frontend liegt auf Cloudflare Pages und war zunächst nur unter
@@ -659,20 +477,19 @@ allen fünf Umgebungen (in `raspberry-pi` als Secret), Anfragekörper in „Admi
    Cloudflare Pages (reine Hosting-Konfiguration, kein Code). Offene Folgeaufgaben: Einrichtung der
    Custom Domain sowie der Umgang mit Pages-Preview-Deployments, in denen der Login bauartbedingt nicht
    funktioniert (`S2_UMSETZUNG.md`, Abschnitt 0.1 und offene Punkte 8/9).
-7. **Offene Punkte für S3 und S5:** das Anlegen weiterer Gastplätze, wenn `anz_guests` über vier
+5. **Offene Punkte für S3 und S5:** das Anlegen weiterer Gastplätze, wenn `anz_guests` über vier
    hinaus erhöht werden soll (offener Punkt 18), und die Frage, wie der Teamgenerator Profile ohne
    gepflegte Skillwerte behandelt (offener Punkt 20). **Punkt 20 ist durch S2b kleiner geworden:**
    Über `/admin/user/anlegen` entstandene Profile haben immer vollständige Skillwerte – die
    Vorgaben der Stufe `MITTEL`. Ungepflegt bleiben nur Profile aus einem Datenimport.
-8. **Endpunktkontrakt – erledigt (22.08.2026), S2b nachgezogen (23.08.2026), Anmeldename
-   nachgezogen (29.08.2026).** Er liegt als `server/fubo-api.json` auf der
+6. **Endpunktkontrakt – erledigt (22.08.2026), S2b nachgezogen (23.08.2026).** Er liegt als `server/fubo-api.json` auf der
    Repo-Wurzel und beschreibt alle 15 Endpunkte aus S2 und S2b vollständig (Abschnitt 4). Ab jetzt gilt:
    **Jede Vertragsänderung zuerst dort abbilden**, dann den Client-Track nachziehen. S3 bis S6
    tragen ihre Endpunkte jeweils bei Fertigstellung nach.
-9. **Profildaten** (Vorgehen steht, nichts mehr zu entscheiden): Reale Daten liegen ausserhalb von
+7. **Profildaten** (Vorgehen steht, nichts mehr zu entscheiden): Reale Daten liegen ausserhalb von
    `PRJ_FuBo/`, Pfad in `FUBO_LOCAL_SEED`, Einspielen über `scripts/seed-lokal.sh`. Der anonymisierte
    30er-Satz liegt in `scripts/data/`, der 12er-Demosatz läuft automatisch in Dev und Test.
-10. **Deployment (S8):** Entwurf mit Dockerfile, Compose-Ergänzung, nginx-Block, Backup und Rollout liegt
+8. **Deployment (S8):** Entwurf mit Dockerfile, Compose-Ergänzung, nginx-Block, Backup und Rollout liegt
    in `harness/tmp/S8_DEPLOYMENT.md`.
 
 ## 8. Weitere Anweisungen

@@ -380,8 +380,8 @@
           "Admin"
         ],
         "operationId": "adminAnmelden",
-        "summary": "Als Admin anmelden (zweite Login-Stufe)",
-        "description": "Prüft das Admin-Passwort und hebt die Sitzung auf `PROFILE_AUTHENTICATED` mit der Rolle `ADMIN`. Eingetragen wird das Profil aus `admin_konto.spieler_id`.\n\n**Auch der Admin braucht zuerst die zentrale PIN.** Der Endpunkt ist ausschliesslich in der Stufe `PIN_VERIFIED` erreichbar – die PIN grenzt den Kreis der Zugreifenden ein, das Passwort die Rechte innerhalb dieses Kreises.\n\nDie Antwort trägt ein **neues** Cookie: Beim Stufenwechsel wird der Token rotiert.\n\n**Nicht zu verwechseln mit `/api/v1/admin/…`** (ab S3): Jener Bereich *setzt* `ROLE_ADMIN` voraus, dieser Endpunkt *verleiht* sie.\n\n**Zur Drosselung:** Es ist derselbe Zähler wie am PIN-Endpunkt – wer fünf Admin-Passwörter rät, soll anschliessend auch keine PINs mehr durchprobieren können. Sichtbare Folge: Die Ablehnung trägt den Code `PIN_GESPERRT`, obwohl sie hier auf ein Passwort antwortet. Das ist die ehrliche Bezeichnung derselben Sperre.\n\n**Eine bereits laufende Adminsitzung blockiert nicht.** Anders als bei der Namensauswahl gibt es keine Belegtprüfung: Es existiert nur ein Admin, und ihn nach einem Browserabsturz bis zum Ablauf der Sitzung auszusperren wäre ein Schaden ohne Nutzen.",
+        "summary": "Als Admin anmelden (Anmeldename und Passwort)",
+        "description": "Prüft **Anmeldename und Passwort** und hebt die Sitzung auf `PROFILE_AUTHENTICATED` mit der Rolle `ADMIN`. Eingetragen wird das Profil aus `admin_konto.spieler_id`.\n\n**Der Anmeldename kam am 29.08.2026 hinzu** und ist der Profilname des Adminprofils (`ADMIN_NAME`), **zeichengenau einschliesslich Gross- und Kleinschreibung**. Er ist über keinen Endpunkt abrufbar, weil das Adminprofil aus der Namensliste ausgeschlossen ist – deshalb taugt er als zweite Angabe neben dem Passwort.\n\n**Auch der Admin braucht zuerst die zentrale PIN.** Der Endpunkt ist ausschliesslich in der Stufe `PIN_VERIFIED` erreichbar – die PIN grenzt den Kreis der Zugreifenden ein, das Passwort die Rechte innerhalb dieses Kreises.\n\nDie Antwort trägt ein **neues** Cookie: Beim Stufenwechsel wird der Token rotiert.\n\n**Nicht zu verwechseln mit `/api/v1/admin/…`** (ab S3): Jener Bereich *setzt* `ROLE_ADMIN` voraus, dieser Endpunkt *verleiht* sie.\n\n**Zur Drosselung:** Es ist derselbe Zähler wie am PIN-Endpunkt – wer fünf Admin-Passwörter rät, soll anschliessend auch keine PINs mehr durchprobieren können. Sichtbare Folge: Die Ablehnung trägt den Code `PIN_GESPERRT`, obwohl sie hier auf ein Passwort antwortet. Das ist die ehrliche Bezeichnung derselben Sperre.\n\n**Eine bereits laufende Adminsitzung blockiert nicht.** Anders als bei der Namensauswahl gibt es keine Belegtprüfung: Es existiert nur ein Admin, und ihn nach einem Browserabsturz bis zum Ablauf der Sitzung auszusperren wäre ein Schaden ohne Nutzen.",
         "requestBody": {
           "required": true,
           "content": {
@@ -392,6 +392,7 @@
               "examples": {
                 "standard": {
                   "value": {
+                    "anmeldename": "fubo-admin",
                     "passwort": "geheim"
                   }
                 }
@@ -412,7 +413,7 @@
             "$ref": "#/components/responses/EingabeUngueltig"
           },
           "401": {
-            "description": "Passwort falsch (`ADMIN_PASSWORT_FALSCH`) oder keine gültige Sitzung (`SESSION_UNGUELTIG`). Kein Cookie in der Antwort.\n\nDass sich beide Fälle am Code unterscheiden lassen, ist unkritisch: Wer hier ankommt, hat die zentrale PIN bereits bestanden.",
+            "description": "Anmeldename oder Passwort falsch (`ADMIN_PASSWORT_FALSCH`) oder keine gültige Sitzung (`SESSION_UNGUELTIG`). Kein Cookie in der Antwort.\n\n**Falscher Name – auch eine blosse Abweichung in der Gross-/Kleinschreibung – und falsches Passwort sind nicht unterscheidbar** – weder am Code noch am Anzeigetext. Andernfalls wäre der Anmeldename über die Fehlermeldung erratbar und die zusätzliche Angabe wertlos. Aus demselben Grund läuft die BCrypt-Berechnung auch bei falschem Namen weiter; eine schnellere Ablehnung wäre ein Zeitorakel.\n\nDass sich `ADMIN_PASSWORT_FALSCH` und `SESSION_UNGUELTIG` unterscheiden lassen, ist unkritisch: Wer hier ankommt, hat die zentrale PIN bereits bestanden.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -422,7 +423,7 @@
                   "type": "about:blank",
                   "title": "Unauthorized",
                   "status": 401,
-                  "detail": "Das Admin-Passwort ist nicht korrekt.",
+                  "detail": "Anmeldename oder Passwort ist nicht korrekt.",
                   "code": "ADMIN_PASSWORT_FALSCH"
                 }
               }
@@ -1300,16 +1301,24 @@
       "AdminLoginRequest": {
         "type": "object",
         "properties": {
+          "anmeldename": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60,
+            "description": "Klartext des Anmeldenamens.\n\nEs ist der **Profilname des Adminprofils** (`profil.spieler.name` zu `admin_konto.spieler_id`), gesetzt über `ADMIN_NAME` beim Start-Bootstrap. Er steht in keiner abrufbaren Liste: `GET /auth/users/lesen` filtert das Adminprofil aus.\n\n**Der Vergleich achtet auf Gross- und Kleinschreibung** (Festlegung vom 29.08.2026): Der Name ist ein Anmeldemerkmal, und bei einem Merkmal ist Nachsicht die falsche Richtung. Randleerzeichen werden dagegen serverseitig entfernt – ein führendes Leerzeichen ist unsichtbar und nie beabsichtigt, eine Schreibweise ist sichtbar und kann es sein.\n\nDie Obergrenze von 60 Zeichen ist die Breite der Spalte `profil.spieler.name` – ein längerer Wert kann keinem Profil entsprechen."
+          },
           "passwort": {
             "type": "string",
             "minLength": 1,
             "maxLength": 72,
-            "description": "Klartext des Admin-Passworts.\n\nEs wird ausschliesslich das Passwort übertragen, keine Kennung: Es gibt genau einen Admin, ein Benutzername wäre ein Feld ohne Auswahl.\n\nEine **Mindest**länge steht bewusst nicht im Vertrag – sie wäre eine Auskunft über das Format des echten Passworts. Die Obergrenze schützt vor unnötig teuren BCrypt-Berechnungen."
+            "description": "Klartext des Admin-Passworts.\n\nEine **Mindest**länge steht bewusst nicht im Vertrag – sie wäre eine Auskunft über das Format des echten Passworts. Die Obergrenze schützt vor unnötig teuren BCrypt-Berechnungen."
           }
         },
         "required": [
+          "anmeldename",
           "passwort"
-        ]
+        ],
+        "description": "Anmeldedaten des Admins.\n\n**Seit dem 29.08.2026 gehört der Anmeldename dazu.** Bis dahin wurde ausschliesslich das Passwort übertragen, mit der Begründung, es gebe genau einen Admin (`ck_admin_konto_singleton`) – eine Kennung wäre also ein Feld ohne Auswahl. Das Argument trägt für die *Auswahl*, nicht für die *Absicherung*: Ohne Kennung genügte ein einziges erratenes Geheimnis. Wer die zentrale PIN kennt, muss jetzt zwei Angaben treffen statt einer."
       },
       "GastAnmeldungRequest": {
         "type": "object",
