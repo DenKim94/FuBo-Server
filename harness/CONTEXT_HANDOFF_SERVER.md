@@ -1,65 +1,35 @@
 # Context Handoff – FuBo Backend (Server)
 
-> Übergabedokument für den Server-Agenten. Ergänzt `/PRJ_FuBo/harness/CONTEXT_HANDOFF.md` (Gesamtstand) um den
-> serverseitigen Anteil. Systemprompt: `AGENT_SERVER.md`. Gesamtspezifikation: `/PRJ_FuBo/harness/AGENT.md`.
+> Übergabedokument für den Server-Agenten. Ergänzt `/PRJ_FuBo/harness/CONTEXT_HANDOFF.md`
+> (Gesamtstand) um den serverseitigen Anteil. Systemprompt: `AGENT_SERVER.md`.
+> Gesamtspezifikation: `/PRJ_FuBo/harness/AGENT.md`.
+>
+> **Repository:** eigenständig mit Wurzel in `server/` (`FuBo-Server`, GitHub, privat).
+> **Kein Monorepo** – das Frontend liegt getrennt (`FuBo-Client`). `PRJ_FuBo/` und
+> `PRJ_FuBo/harness/` sind bewusst **nicht** versioniert. Gearbeitet wird auf `dev`.
 
-> Projektordner: `<Projektordner>/PRJ_FuBo`, Backend unter `server/`
-> Git-Repository: **eigenständiges Repository mit Wurzel in `server/`** (GitHub, privat, `FuBo-Server`).
-> **Kein Monorepo.** Das Frontend liegt in einem getrennten Repository (`FuBo-Client`, Ordner `client/`).
-> Der übergeordnete Ordner `PRJ_FuBo/` sowie `PRJ_FuBo/harness/` sind bewusst **nicht** versioniert.
-> Repository ist angelegt: `https://github.com/DenKim94/FuBo-Server.git` (privat).
-> Stand: 29.08.2026, **S0, S1, S2 und S2b abgeschlossen; Nachtrag „Anmeldename beim
-> Admin-Login" (Abschnitt 6.13) und die S3-Pakete 0 bis 4 (Abschnitt 6.14) umgesetzt.** S2 und die S2b-Schritte 0 bis 7 sind
-> mit `./mvnw clean verify` verifiziert (148 Tests); fuer die Schritte 8 bis 11
-> (Spielerverwaltung, Aufraeumjob, Tests) steht der Lauf noch aus – erwartet werden **184 Tests
-> in 19 Klassen**, siehe Abschnitt 6.6
-> (22.08.2026: Gast-Login mit festen Gastplätzen, Admin-Konto im Bootstrap, die drei
-> Sitzungsendpunkte, Ausnahme des Pollings von der Sitzungsverlängerung und maschinenlesbare
-> Restwartezeit beim `429` umgesetzt, siehe Abschnitt 6.10; der Endpunktkontrakt liegt jetzt als
-> **`server/fubo-api.json`** vor, siehe Abschnitt 4. Danach: Das Adminprofil ist ein technisches
-> Konto und aus Namensliste und Teamgenerierung ausgeschlossen; dafür kam der Admin-Login über
-> das Passwort hinzu, siehe Abschnitt 6.12)
-> (16.08.2026: PIN-Login mit Brute-Force-Schutz, Audit-Log, Namensliste/-belegung/-auswahl und
-> PIN-Bootstrap implementiert, siehe Abschnitt 6.6; anschliessend Versionierung der Schnittstelle
-> über ein Pfadsegment, siehe Abschnitt 6.7, sowie Löschfrist und Transaktionskopplung des
-> Audit-Logs, siehe Abschnitt 6.8; `./mvnw clean verify` am 16.08.2026 grün, 99 Tests)
->
-> **Prüfung erfolgreich ausgeführt: `./mvnw clean verify` ist am 22.08.2026 grün durchgelaufen –
-> 148 Tests in 16 Klassen, keine Fehler, keine Abbrüche, keine übersprungenen Tests. Die Anwendung
-> startet auf einer frischen Datenbank durch.** Aufstellung je Klasse in Abschnitt 6.11. Der Lauf
-> braucht Docker (Testcontainers, `postgres:17`) und läuft ausschliesslich lokal.
->
-> **Nachtrag vom 29.08.2026 (Abschnitt 6.13):** `POST /auth/admin/anmelden` verlangt jetzt
-> **Anmeldename und Passwort**. Der Anmeldename ist der Profilname des Adminprofils
-> (`ADMIN_NAME`); es gibt **keine** neue Spalte und **keine** Migration. Betroffen sind
-> `AdminLoginRequest`, `AdminService`, `AdminController`, `AdminBootstrap`, `SpielerRepository`,
-> `Fehlercode`, `AdminControllerTests`, `AdminBootstrapTests`, `fubo-api.json`, beide
-> `README.md` und die Bruno-Collection. Der Vergleich ist **zeichengenau**; der Bootstrap
-> sichert das ab. **Verifiziert** (siehe unten).
->
-> **S3, Pakete 0 bis 4 (29.08.2026):** `GET /admin/user/lesen` (erste Antwort **mit
-> Skillwerten**), `POST /admin/user/bearbeiten`, `GET /admin/skills/lesen` und der zusätzlich
-> vorgegebene `POST /admin/name/aendern`. Dazu ein serverseitiger Zwischenspeicher für die
-> Profilstammdaten. **Keine Migration**, `V008` bleibt die letzte. Einzelheiten in
-> Abschnitt 6.14.
->
-> **Offen aus S3: die Pakete 5 bis 7** – Admin-Konfiguration, Gastplätze, Bestandsaufnahme der
-> Autorisierung. Der Fehlercode `DATEN_VERALTET` und der Tag „Konfiguration" gehören dorthin
-> und fehlen deshalb noch im Vertrag.
->
-> **Verifiziert am 29.08.2026: `./mvnw clean verify` grün – 227 Tests in 21 Klassen**, keine
-> Fehler, keine Abbrüche, keine übersprungenen Tests. Der Lauf schliesst damit auch die
-> S2b-Schritte 8 bis 11 ab, deren Verifikation seit dem 23.08.2026 offen war. Aufstellung je
-> Klasse in Abschnitt 6.6.
->
-> Als Nächstes: **die manuelle Prüfliste** (`harness/tmp/S2b_UMSETZUNG.md`, Abschnitt 12.1)
-> und danach **S3, Pakete 5 bis 7**. Die Bruno-Collection ist um vier Requests gewachsen und
-> deckt alle 19 Endpunkte ab; `adminName` und `neuerAdminName` sind dort vor dem nächsten Lauf
-> zu füllen.
->
-> (Vorfassungen archiviert unter `harness/archive/`, zuletzt
-> `CONTEXT_HANDOFF_SERVER_2026-08-29_v8_Anmeldename.md`. **Die Abschnitte zu S2 sind seit v7
-> auf ihre Regeln und Fallstricke eingedampft**; die Schritt-für-Schritt-Erzählung steht in v6.)
+## Stand: 29.08.2026
+
+**Abgeschlossen und verifiziert: S0, S1, S2, S2b und S3 (Pakete 0 bis 4).**
+`./mvnw clean verify` grün – **227 Tests in 21 Klassen**, keine Fehler, keine Abbrüche, keine
+übersprungenen Tests; die Anwendung startet auf einer frischen Datenbank durch. Der Lauf
+braucht Docker (Testcontainers, `postgres:17`) und läuft ausschliesslich lokal.
+
+**Offen aus S3: die Pakete 5 bis 7** – Admin-Konfiguration lesen und ändern, Gastplätze
+mitpflegen (offener Punkt 18 aus S2), Bestandsaufnahme der Autorisierung. Der Fehlercode
+`DATEN_VERALTET` und der Tag „Konfiguration" gehören dorthin und fehlen deshalb noch im
+Vertrag; er steht bei **19 Endpunkten** und wächst dann auf 21.
+
+**Als Nächstes:** die manuelle Prüfliste (`harness/tmp/S2b_UMSETZUNG.md`, Abschnitt 12.1),
+danach S3 mit den Paketen 5 bis 7. Vor dem nächsten Bruno-Lauf `adminName` und
+`neuerAdminName` in den Umgebungen füllen – beim Anmeldenamen zählt die Schreibweise.
+
+> **Zur Fassung:** Dieses Dokument ist am 29.08.2026 von 836 auf rund 450 Zeilen eingedampft
+> worden. Entscheidungen, die inzwischen **verbindliche Regeln** sind, stehen nur noch in
+> `AGENT_SERVER.md` und werden hier nicht wiederholt; die Schritt-für-Schritt-Erzählung der
+> abgeschlossenen Meilensteine lebt in `harness/archive/` und in den `S<n>_UMSETZUNG.md`
+> weiter. Zuletzt archiviert:
+> `CONTEXT_HANDOFF_SERVER_2026-08-29_v9_S3-Pakete0-4.md`.
 
 ---
 
@@ -108,8 +78,8 @@ TypeScript-Generatoren des Client-Tracks lesen sie unverändert.
 
 **Umfang:** ausschliesslich das, was tatsächlich umgesetzt ist – **19 Endpunkte**: die acht
 Auth- und Sitzungsendpunkte aus S2, die sieben aus S2b (Zugangsdatenpflege und
-Spielerverwaltung, Abschnitt 6.5) und seit dem 29.08.2026 die vier aus den S3-Paketen 2 bis 4
-(Abschnitt 6.14). Spekulative Endpunkte wären ein Vertrag über etwas, das es nicht gibt;
+Spielerverwaltung) und seit dem 29.08.2026 die vier aus den S3-Paketen 2 bis 4
+(Abschnitt 6.1). Spekulative Endpunkte wären ein Vertrag über etwas, das es nicht gibt;
 S3 bis S6 tragen ihre Endpunkte jeweils bei Fertigstellung nach.
 
 Inhaltliche Kernpunkte (unverändert, Herleitung in `AGENT_SERVER.md`, Abschnitt „Schnittstelle zum
@@ -118,11 +88,11 @@ HttpOnly-Session-Cookie, `401`/`403`-Semantik, DTOs ohne Skillwerte für USER/GA
 Belegtstatus-Endpunkt zum Pollen, einheitliches Fehler-JSON nach RFC 9457.
 
 Neu im Vertrag seit dem 22.08.2026:
-- **`X-FuBo-Kein-Refresh: true`** als Anfrageheader für Hintergrundaufrufe (Abschnitt 6.10).
+- **`X-FuBo-Kein-Refresh: true`** als Anfrageheader für Hintergrundaufrufe.
 - **`Retry-After`** und das Feld `wartesekunden` beim `429` des PIN-Endpunkts.
 - **`absolutGueltigBis`** in der Sitzungsauskunft, zusätzlich zu `gueltigBis`.
 
-Geändert am 29.08.2026 (Abschnitt 6.13):
+Geändert am 29.08.2026:
 - **`AdminLoginRequest` hat ein zweites Pflichtfeld `anmeldename`** (max. 60 Zeichen,
   zeichengenau geprüft). Das ist
   eine **brechende** Vertragsänderung für den Client-Track: Ein Anfragekörper mit nur
@@ -183,337 +153,168 @@ Alternativen in `S2b_UMSETZUNG.md`, Abschnitt 0.3.
 
 ## 6. Aktueller Code-Zustand (Stand 29.08.2026, Branch `dev`)
 
-### 6.1 S0 und S1 sind abgeschlossen
+### 6.1 Was steht
+
+**S0, S1, S2, S2b und S3 (Pakete 0 bis 4) sind abgeschlossen und verifiziert.** Offen aus S3
+sind die Pakete 5 bis 7 (Admin-Konfiguration, Gastplätze, Bestandsaufnahme der Autorisierung).
 
 ```
-server/                                  Repository-Wurzel (remote: FuBo-Server, privat)
-  pom.xml                                Spring Boot 4.1.0, Java 25, de.fubo:app-server:0.0.1-SNAPSHOT
-  mvnw, mvnw.cmd, .mvn/                  Maven Wrapper
-  compose.dev.yml                        postgres:17 (Service fubo-db-dev, Volume fubo_db_dev_data)
-  .env / .env.example                    DB-Zugang, FUBO_LOCAL_SEED, FUBO_INITIAL_PIN
-  scripts/seed-lokal.sh                  Import lokaler bzw. anonymisierter Profildaten
-  scripts/data/spielerprofile_anonym.sql 30 Profile, reale Skillwerte, anonymisierte Namen
-  src/main/java/de/fubo/appserver/        AppServerApplication + leere Paketstruktur (siehe 6.2)
-  src/main/resources/application.yml
-  src/main/resources/db/migration/        V001-V007 (Schema + Referenzdaten)
-  src/main/resources/db/demodata/         R__seed_beispielprofile.sql (12 Profile, nur dev/test)
-  src/test/java/de/fubo/appserver/database/  MigrationTests, TestcontainersConfiguration
-  src/test/resources/application.yml      Testprofil: Demodaten-Location, Datasource-Platzhalter
-  harness/                                AGENT_SERVER.md, CONTEXT_HANDOFF_SERVER.md, archive/, tmp/
+server/                        Repo-Wurzel (remote: FuBo-Server, privat)
+  fubo-api.json                Endpunktkontrakt, 19 Endpunkte (Abschnitt 4)
+  compose.dev.yml              postgres:17
+  .env / .env.example          DB-Zugang, FUBO_INITIAL_PIN, ADMIN_*, SMTP_*
+  scripts/                     seed-lokal.sh + anonymisierter 30er-Datensatz
+  src/main/resources/db/       migration/ V001-V008, demodata/ (nur dev und test)
+  src/main/java/de/fubo/appserver/
+    common/  config error security
+    controller/ auth admin        service/ auth profil audit mail config
+    repository/ auth profil audit domain/ auth profil audit config
+    dto/ auth profil admin        utils
 ```
 
-**Abhängigkeiten:** `actuator`, `data-jpa`, `flyway` (+ `flyway-database-postgresql`), `security`,
-`validation`, `webmvc`, `postgresql` (runtime); im Test die zugehörigen `*-test`-Starter sowie
-`spring-boot-testcontainers` und `testcontainers-postgresql`. **`spring-boot-starter-mail` fehlt noch** –
-korrekt so, wird erst in S2b gebraucht.
+**Abhängigkeiten:** `actuator`, `data-jpa`, `flyway` (+ `flyway-database-postgresql`),
+`security`, `validation`, `webmvc`, `mail`, `postgresql`; im Test die `*-test`-Starter,
+`spring-boot-testcontainers`, `testcontainers-postgresql`. **Kein Cache-Starter** – der
+`CacheManager` entsteht von Hand aus `spring-context`.
 
-**Konfiguration (`application.yml`):**
-`spring.config.import=optional:file:./.env[.properties]` (siehe 6.4), Datasource über Umgebungsvariablen,
-`jpa.hibernate.ddl-auto=validate`, `open-in-view=false`, `flyway.schemas=profil, spieltag, configs`,
-`flyway.default-schema=public`, `flyway.locations=classpath:db/migration`,
-`server.forward-headers-strategy=NATIVE`, Actuator-Exposure auf `health` beschränkt.
-Die Demodaten-Location wird ausschliesslich über `src/test/resources/application.yml` ergänzt – die
-Produktionskonfiguration sieht sie nie.
+**Konfiguration:** `spring.config.import=optional:file:./.env[.properties]`,
+`jpa.hibernate.ddl-auto=validate`, `open-in-view=false`, `flyway.schemas=profil, spieltag,
+configs`, `flyway.validate-migration-naming=true`, `server.forward-headers-strategy=NATIVE`,
+Actuator auf `health` beschränkt. Die Demodaten-Location steht **nur** in
+`src/test/resources/application.yml`.
 
-**Datenmodell:** 18 Tabellen in drei Schemas, umgesetzt in `V001`–`V007` gemäss der korrigierten Fassung
-in `/PRJ_FuBo/harness/AGENT.md`. `MigrationTests` enthält sieben Tests (Schemas, Seed, partieller
-Admin-Index, Wertebereichs-Trigger, `NULLS NOT DISTINCT`, Demodaten, Torwart-Bereich).
+**Datenmodell: 18 Tabellen in drei Schemas, `V001`–`V008`. Seit S2 kam keine Migration mehr
+dazu** – weder S2b noch S3 brauchten eine.
 
+**Die 19 Endpunkte** (massgeblich bleibt `fubo-api.json`):
 
-### 6.2 Abweichungen, die während S1 bewusst festgelegt wurden
+| Methode | Pfad unter `/api/v1` | Zweck |
+|---|---|---|
+| `POST` | `/auth/pin/pruefen` | Zentrale PIN prüfen, Sitzung in `PIN_VERIFIED` |
+| `GET` | `/auth/users/lesen` | Namensliste mit Belegtstatus, **ohne** Skillwerte |
+| `POST` | `/auth/user/waehlen` | Profil wählen (zweite Stufe) |
+| `POST` | `/auth/gast/anmelden` | Als Gast anmelden (zweite Stufe) |
+| `POST` | `/auth/admin/anmelden` | Anmeldename **und** Passwort (zweite Stufe) |
+| `GET` | `/auth/session/lesen` | Zustand der eigenen Sitzung |
+| `POST` | `/auth/session/erneuern` | Sitzung verlängern, Token rotiert |
+| `POST` | `/auth/session/beenden` | Abmelden |
+| `POST` | `/auth/passwort/zuruecksetzen` | Reset anfordern, PIN per E-Mail |
+| `POST` | `/auth/passwort/bestaetigen` | PIN einlösen, neues Passwort |
+| `POST` | `/admin/passwort/aendern` | Passwort im angemeldeten Zustand |
+| `POST` | `/admin/pin/aendern` | Zentrale PIN, widerruft **alle** Sitzungen |
+| `POST` | `/admin/name/aendern` | Anmeldename, Sitzung **bleibt** |
+| `POST` | `/admin/user/anlegen` | Profil anlegen |
+| `POST` | `/admin/user/bearbeiten` | Name und/oder Skillwerte |
+| `POST` | `/admin/user/entfernen` | Profil endgültig entfernen |
+| `POST` | `/admin/user/blockieren` | Sperren und freigeben |
+| `GET` | `/admin/user/lesen` | Alle Profile **mit** Skillwerten |
+| `GET` | `/admin/skills/lesen` | Skillkategorien und Wertebereiche |
 
-- **Defaults in `configs.app_config`** weichen von der Vorplanung ab und die Dokumentation wurde
-  angeglichen (`AGENT.md`, Änderungsprotokoll Punkt 13): `min_teilnehmer = 6` (statt 8, Anforderung 10
-  mitgeändert), `anz_team_generator = 1` (statt 2, deckt sich mit dem Wortlaut von A15),
-  `session_maximal_stunden = 1` (statt 8).
-- **`session.stage`** heisst in der zweiten Stufe `PROFILE_AUTHENTICATED` (vorher
-  `PLAYER_AUTHENTICATED`). Begründung: Die Stufe wird auch von Gästen erreicht, die kein Profil in
-  `profil.spieler` haben. Einheitlich in allen aktiven Dokumenten nachgezogen.
-- **`spieltag.termin.fk_termin_serie` ohne `ON DELETE`**, also `NO ACTION`: Eine Serie lässt sich nicht
-  löschen, solange Termine daran hängen. Bewusst konservativ – `ON DELETE CASCADE` hätte über die
-  Kaskadenkette auch Teilnahmen, Teameinteilungen und Ergebnisse gelöscht.
-  Falls erforderlich werden nicht mehr benötigten Termine einer Serie über den Status 'GEPLANT' identifiziert und über die Fachlogik entfernt.  
+Die ersten acht stammen aus S2, die folgenden fünf aus S2b, die letzten sechs aus S2b und S3.
+Alles unterhalb von `/api/*/admin/**` verlangt `ROLE_ADMIN`; die Reset-Endpunkte und die drei
+Login-Wege sind ausschliesslich in `PIN_VERIFIED` erreichbar.
 
-### 6.3 Zwei Fallstricke aus S1, die dokumentiert bleiben sollten
+### 6.2 Festlegungen mit Datum
 
-**`--env-file` gilt nur für Docker Compose, nicht für die JVM.** Beim Start mit `./mvnw spring-boot:run`
-kennt der Java-Prozess `DB_USER`/`DB_PASSWORD` nicht. Spring Boots `Binder` reicht unauflösbare
-Platzhalter **wörtlich** durch (`ignoreUnresolvablePlaceholders = true`, anders als `@Value`), weshalb
-die Fehlermeldung `password authentication failed for user "${DB_USER}"` lautet. Gelöst über
-`spring.config.import=optional:file:./.env[.properties]`. Merkregel: Ein `${...}` in einer
-Fehlermeldung bedeutet immer fehlende Auflösung, nie einen falschen Wert.
+**Die meisten Entscheidungen dieser Meilensteine sind inzwischen verbindliche Regeln in
+`AGENT_SERVER.md`** – Adminprofil als technisches Konto, Anmeldename, Skill-Geheimhaltung,
+Zwischenspeicher, Audit-Log, Start-Bootstrap, Zugangsdatenpflege, Spielerverwaltung. Sie stehen
+hier nicht noch einmal; die Herleitung liegt in den archivierten Fassungen und in den
+`S<n>_UMSETZUNG.md`. Was hier bleibt, sind die Festlegungen, die **keine** Architekturregel
+sind, sondern Weggabelungen mit Datum:
 
-**Beispielcode gehört nicht in Migrationen.** Ein illustratives `UPDATE ... SET session_id = :sessionId`
-aus der S1-Anleitung war versehentlich in `V003` gelandet; `:name` ist ein JDBC-Parameter und für
-PostgreSQL ein Syntaxfehler (`42601`). Auf PostgreSQL rollt Flyway eine fehlgeschlagene Migration
-vollständig zurück, ein `flyway repair` war nicht nötig.
+| Datum | Festlegung | Grund |
+|---|---|---|
+| 09.08. | Auth-Pfade heissen `users`/`user`, nicht `namen`/`name` | Code schlägt Anleitung – dort hängt die Autorisierung samt Tests |
+| 09.08. | Frontend und API auf Subdomains **derselben** registrierbaren Domain | sonst cross-site: `SameSite=None`, CSRF-Pflicht, blockierte Cookies |
+| 22.08. | Kontrakt als `server/fubo-api.json` (OpenAPI 3.1, JSON, Repo-Wurzel) | Vorgabe des Haupt-Entwicklers; Begründung in Abschnitt 4 |
+| 23.08. | Reset unter `/auth/…` statt `/admin/…` | wer sein Passwort vergisst, trägt `ROLE_ADMIN` nicht |
+| 23.08. | Zentrale PIN vierstellig | mündliche Weitergabe, Eingabefeld mit vier Kästchen |
+| 29.08. | Anmeldename = Profilname, keine eigene Spalte | zweiter Name für dasselbe Konto wäre Ballast |
+| 29.08. | Bestehender Fehlercode `ADMIN_PASSWORT_FALSCH` bleibt | kein Vertragsbruch; `detail` darf sich ohne Vertragsänderung ändern |
+| 29.08. | Zwischenspeicher anwendungsweit, nicht je Sitzung | es gibt genau einen Admin |
+| 29.08. | Übersichtsabfrage in zwei geteilt (Abweichung von der Anleitung) | der Belegtstatus darf nicht gecacht werden |
+| 29.08. | Adminprofil-Umbenennung über `/admin/name/aendern` statt `bearbeiten` | Weggabelung C der S3-Anleitung damit überholt |
+| 29.08. | Namensänderung widerruft **keine** Sitzung | Vorgabe des Haupt-Entwicklers |
 
-### 6.4 S2 – Auth und Session (abgeschlossen und verifiziert am 22.08.2026)
+**Zwei Abweichungen aus S1, die im Datenmodell sichtbar sind:** `min_teilnehmer = 6`,
+`anz_team_generator = 1`, `session_maximal_stunden = 1` (statt 8/2/8), und `session.stage`
+heisst in der zweiten Stufe `PROFILE_AUTHENTICATED`, weil auch Gäste sie erreichen.
+`spieltag.termin.fk_termin_serie` hat bewusst kein `ON DELETE` – eine Serie lässt sich nicht
+löschen, solange Termine daran hängen; nicht mehr benötigte Termine gehen über den Status
+`GEPLANT` und die Fachlogik.
 
-Die Schritt-für-Schritt-Erzählung steht in der archivierten Fassung v6 und in
-`harness/tmp/S2_UMSETZUNG.md`. Hier bleibt, was für die Weiterarbeit trägt.
+### 6.3 Fallstricke, die weiter gelten
 
-```
-src/main/java/de/fubo/appserver/
-  common/config/      SecurityConfig, CorsConfig, ApiVersionConfig, FuboProperties,
-                      SchedulingConfig, ZeitConfig
-  common/security/    SessionAuthFilter, SessionCookieFactory, AuthorizationExceptionHandler
-  common/error/       Fehlercode, FachlicherFehler, GlobalExceptionHandler
-  domain/auth/        Session, AdminKonto, Zugangsdaten, AktiveSitzung, Stage, Rolle, GastStufe
-  domain/audit/       AuditAktion
-  domain/profil/      Spieler, NamensEintrag
-  domain/config/      AppConfig, AlgorithmType
-  repository/auth/    SessionRepository (+Custom/Impl), AdminKontoRepository,
-                      ZugangsdatenRepository, GastSlotRepository (JdbcClient)
-  repository/audit/   AuditLogRepository (JdbcClient)
-  repository/profil/  SpielerRepository (+Custom/Impl)
-  service/auth/       SessionService, PinService, AdminService, GastService, NamenService,
-                      BruteForceService, PinBootstrap, AdminBootstrap
-  service/audit/      AuditService
-  controller/auth/    AuthController, NamenController, GastController, AdminController,
-                      SessionController
-  dto/auth/, dto/profil/, utils/
-db/migration/         V008__session_rolle_optional.sql (letzte Migration)
-```
+**Konfiguration und Start**
 
-**Endpunkte aus S2:**
-
-| Methode | Pfad | Erlaubte Stufe | Antwort |
-|---|---|---|---|
-| `POST` | `/api/v1/auth/pin/pruefen` | offen | `204` + Cookie (`PIN_VERIFIED`) |
-| `GET` | `/api/v1/auth/users/lesen` | `PIN_VERIFIED` und höher | `200` Namensliste, **ohne Skillwerte** |
-| `POST` | `/api/v1/auth/user/waehlen` | nur `PIN_VERIFIED` | `204` + **neues** Cookie |
-| `POST` | `/api/v1/auth/gast/anmelden` | nur `PIN_VERIFIED` | `204` + **neues** Cookie |
-| `POST` | `/api/v1/auth/admin/anmelden` | nur `PIN_VERIFIED` | `204` + **neues** Cookie, Rolle `ADMIN` (seit 29.08.2026 mit Anmeldename, Abschnitt 6.13) |
-| `GET` | `/api/v1/auth/session/lesen` | `PIN_VERIFIED` und höher | `200` Sitzungsauskunft |
-| `POST` | `/api/v1/auth/session/erneuern` | `PIN_VERIFIED` und höher | `204` + **neues** Cookie |
-| `POST` | `/api/v1/auth/session/beenden` | `PIN_VERIFIED` und höher | `204`, Cookie gelöscht |
-
-**Die tragenden Entscheidungen** – alle als verbindliche Regeln in `AGENT_SERVER.md`:
-
-1. **Das Adminprofil ist ein technisches Konto.** Nicht in der Namensliste, über die
-   Namensauswahl auch mit bekannter Id nicht wählbar (`404`), nie in einem Team. Skillwerte 0 –
-   **kein Ersatz für den Ausschluss**. Der Admin meldet sich über einen eigenen Endpunkt an;
-   ohne diesen Weg käme niemand mehr an `ROLE_ADMIN`. *(Seit dem 29.08.2026 mit Anmeldename
-   **und** Passwort, siehe Abschnitt 6.13.)*
-2. **Der Ausschluss wird an jeder Grenze wiederholt**, nicht nur in der Anzeige. Ein Endpunkt,
-   der eine Id entgegennimmt, prüft dieselbe Bedingung erneut wie die Liste, aus der sie stammt.
-3. **Ein Brute-Force-Zähler für PIN- und Admin-Login.** Derselbe Absender greift dieselbe
-   Anwendung an. Sichtbare Folge: Die Sperre meldet `PIN_GESPERRT`, auch wenn sie auf ein
-   Passwort antwortet.
-4. **Audit-Log: Ausbreitung `REQUIRED`, nie `REQUIRES_NEW`; Ausnahmen werden nicht verschluckt;
-   Löschfrist 90 Tage.** Ein Protokolleintrag belegt eine *vollzogene* Änderung.
-5. **Zwei-Timer-Modell** mit `gueltigBis` (gleitend) und `absolutGueltigBis` (hart, wandert nie).
-   `X-FuBo-Kein-Refresh: true` schaltet auf einen rein lesenden Prüfpfad – damit misst
-   „15 Minuten Inaktivität" den Nutzer und nicht den offenen Browser-Tab. Der Header ist eine
-   Bitte, kein Sicherheitsmerkmal; Missbrauch schadet nur dem Absender.
-6. **Versionierung als Pfadsegment an Index 1** (`/api/v1/...`), eingegrenzt durch ein
-   `Predicate` auf `/api/` – ohne das antwortete `/actuator/health` mit `400` und der Container
-   bliebe dauerhaft `unhealthy`. Aktionssegment am Pfadende (`/lesen`, `/waehlen`). Feste
-   Version `"1"` an jedem Mapping; vor dem Sprung auf v2 ist die Basislinien-Semantik zu klären.
-7. **Gast-Slots als feste Datensätze**, Belegung per bedingtem `UPDATE`, Wirksamkeit über
-   `id <= anz_guests`. `fk_gast_slot_session` hat kein `ON DELETE`: Jeder Vorgang, der Sitzungen
-   löscht, gibt vorher die Plätze frei.
-8. **Start-Bootstrap statt Flyway** für zentrale PIN und Admin-Konto; beide idempotent.
-   Unvollständige `ADMIN_*`-Angaben brechen den Start ab und die Meldung nennt alle fehlenden
-   Werte auf einmal.
-9. **`Retry-After` und das Feld `wartesekunden`** beim `429` – doppelt geführt, weil der Header
-   die genormte Form ist und das Feld dem Frontend den Header-Zugriff erspart, der bei einer
-   Cross-Origin-Antwort ohne `Access-Control-Expose-Headers` gar nicht möglich wäre.
-
-**Fallstricke, die sonst erneut Zeit kosten:**
-
-- **`Using generated security password` ist kein Indikator** – weder dafür noch dagegen, dass die
-  Filterchain greift. Sie stammt von `UserDetailsServiceAutoConfiguration`, die als einzige
-  Autokonfiguration in `AppServerApplication` ausgenommen ist. **Ob die Filterchain greift, wird
-  am Verhalten geprüft:** Aufruf ohne Cookie → `401` mit `application/problem+json` und dem Feld
-  `code`, kein `WWW-Authenticate`, kein `Location`; `/actuator/health` ohne Cookie → `200`.
-- **`ddl-auto=validate` prüft den JDBC-Typcode, nicht die Zuordnung.** `CHAR(64)` braucht
-  `@JdbcTypeCode(SqlTypes.CHAR)`; die beiden `CHAR(1)`-Spalten aus `V006` sind in S5/S6 als
-  `Character` abzubilden. Mapping-Fehler äussern sich als Kaskade von
-  `UnsatisfiedDependencyException` – **nur die erste Logzeile benennt die Ursache**.
-- **Flyway überspringt falsch benannte Migrationen stillschweigend** (doppelter Unterstrich!).
-  Deshalb ist `validate-migration-naming: true` gesetzt und bleibt es.
+- **Ein `${...}` in einer Fehlermeldung bedeutet immer fehlende Auflösung, nie einen falschen
+  Wert.** Spring Boots `Binder` reicht unauflösbare Platzhalter wörtlich durch – anders als
+  `@Value`. `--env-file` gilt nur für Docker Compose, nicht für die JVM; deshalb
+  `spring.config.import`.
+- **In der `.env` nie Anführungszeichen** – sie wird als Java-Properties-Datei gelesen und
+  übernimmt sie in den Wert. Kostete am 29.08.2026 einen `550`-Fehler beim Mailversand.
 - **`target/classes` vergisst nichts.** Nach dem Umbenennen oder Löschen einer Ressource immer
   `./mvnw clean` – das gilt auch nach jeder Änderung an `application.yml`.
-- **`sitzungsIdZu(token)` nur mit einem noch gültigen Token aufrufen.** Jeder Stufenwechsel und
-  jede Erneuerung rotiert ihn; danach endet die Abfrage in einer
-  `EmptyResultDataAccessException` – ein Fehler, der wie ein Anwendungsfehler aussieht und keiner
-  ist. Die `session.id` überdauert die Rotation, der Token nicht.
-- **Ein `ApplicationRunner`, der beim Kontextstart schreibt, wirkt in jeden `@SpringBootTest`
-  hinein** und wird von keiner Test-Transaktion zurückgerollt. Deshalb stehen `ADMIN_*` und seit
-  S2b auch `fubo.mail.*` in `src/test/resources/application.yml`.
 
-### 6.5 S2b – Zugangsdatenpflege und Spielerverwaltung (abgeschlossen am 23.08.2026)
+**Flyway und JPA**
 
-Passwort-Reset per E-Mail, Passwortänderung im angemeldeten Zustand, Wechsel der zentralen PIN,
-Verwaltung von Spielerprofilen und der Aufräumjob. Anleitung: `harness/tmp/S2b_UMSETZUNG.md`.
+- **Flyway überspringt falsch benannte Migrationen stillschweigend** (doppelter Unterstrich!).
+  `validate-migration-naming: true` ist deshalb gesetzt und bleibt es.
+- **Beispielcode gehört nicht in Migrationen.** Ein `:name` aus einer Anleitung ist für
+  PostgreSQL ein Syntaxfehler (`42601`).
+- **`ddl-auto=validate` prüft Spaltenexistenz und JDBC-Typcode, nicht die Zuordnung.**
+  `CHAR(n)` braucht `@JdbcTypeCode(SqlTypes.CHAR)`; vertauschte gleichartige Spalten fallen
+  nicht auf. Mapping-Fehler äussern sich als Kaskade von `UnsatisfiedDependencyException` –
+  **nur die erste Logzeile benennt die Ursache.**
+- **Tabellennamen immer aus den `CREATE TABLE`-Zeilen lesen, nie aus einem Constraint-Namen.**
+  `fk_terminserie_spieler` gehört zu `spieltag.terminserie`, `fk_kontingent_spieler` zu
+  `spieltag.generierung_kontingent` – zwei falsch abgeleitete Namen in
+  `SpielerRepository#istReferenziert` kosteten am 23.08.2026 einen Testlauf.
+- **Wo JPA schreibt und natives SQL liest, muss geflusht werden** (`saveAndFlush`). Ohne das
+  bleibt die Änderung bis zum Ende der Transaktion unsichtbar.
+- **`@Modifying`-Abfragen mit `clearAutomatically` lösen Entities vom Persistence-Context.**
+  Was danach gebraucht wird (Id, Name), vorher in lokale Variablen holen.
 
-```
-pom.xml                                  + spring-boot-starter-mail
-fubo-api.json                            + 7 Endpunkte, 6 Fehlercodes, 7 Schemas, 2 Tags
-.env / .env.example                      + SMTP_HOST, SMTP_PORT, SMTP_ABSENDER
-src/main/java/de/fubo/appserver/
-  common/config/      MailConfig (neu), FuboProperties + Mail, Reset
-  common/error/       Fehlercode  + RESET_PIN_FALSCH, RESET_UNGUELTIG, RESET_GEDROSSELT,
-                                    VERSAND_FEHLGESCHLAGEN, PROFIL_GESCHUETZT, PROFIL_IN_VERWENDUNG
-  domain/audit/       AuditAktion + 8 Werte (PASSWORT_*, PIN_GEAENDERT, PROFIL_*)
-  domain/auth/        OffenerReset, AnforderungsFenster (neu)
-  domain/profil/      SkillKategorie (neu)
-  repository/auth/    PasswortResetRepository (neu), SessionRepository + loescheFuerSpieler
-  repository/profil/  SkillKategorieRepository (neu), SpielerRepository + vorgabewerteAnlegen,
-                                                       skillwertSetzen, istReferenziert
-  service/auth/       PasswortResetService (neu), ZugangsdatenService (neu),
-                      AdminService + passwortSetzen/email, SessionService + Gastplatzfreigabe,
-                      PinBootstrap: Ersatz-PIN jetzt vierstellig
-  service/profil/     SpielerVerwaltungService (neu)
-  service/mail/       MailService (neu)
-  dto/auth/, dto/admin/                  5 neue Records
-  controller/auth/    PasswortResetController (neu)
-  controller/admin/   ZugangsdatenController (neu), SpielerController (neu)
-```
+**Tests**
 
-**Keine Schemaänderung.** `V008` bleibt die letzte Migration; `profil.passwort_reset` stammt
-unverändert aus `V003`.
+- **Alles, was den Kontextstart überlebt, überlebt auch die Test-Transaktion.** Betrifft den
+  `ApplicationRunner` des Bootstraps (deshalb stehen `ADMIN_*` und `fubo.mail.*` in
+  `src/test/resources/application.yml`), den `BruteForceService` und seit S3 den
+  `ProfilStammdatenCache` – alle drei werden in `@BeforeEach` zurückgesetzt.
+- **`REQUIRES_NEW` und `@Transactional` am Test vertragen sich nicht.** Die eigene Transaktion
+  sieht die Testdaten unter READ COMMITTED nicht. Betroffene Klassen tragen kein
+  `@Transactional` und räumen von Hand auf.
+- **Eine Änderung an `FuboProperties` bricht drei Testklassen**, die den Record von Hand bauen
+  (`SessionAuthFilterTests`, `SessionCookieFactoryTests`, `BruteForceServiceTests`).
+- **`sitzungsIdZu(token)` nur mit noch gültigem Token aufrufen** – jeder Stufenwechsel rotiert
+  ihn. Die `session.id` vorher auflösen und behalten.
+- **`SMALLINT` kommt über `queryForMap` als `Integer` zurück**, über
+  `queryForObject(..., Short.class)` als `Short`. Beide Wege sind richtig, nur nicht
+  miteinander vergleichbar.
+- **Antworten über Jackson auswerten, nicht mit `contains` auf dem rohen JSON** – ein
+  Zeichenkettenvergleich trifft auch eine andere Zeile und meldet eine falsche Zuordnung als
+  Erfolg.
 
-**Endpunkte aus S2b:**
+**Sicherheit und Betrieb**
 
-| Methode | Pfad | Erlaubte Stufe/Rolle | Antwort |
-|---|---|---|---|
-| `POST` | `/api/v1/auth/passwort/zuruecksetzen` | nur `PIN_VERIFIED` | `204`, PIN per E-Mail |
-| `POST` | `/api/v1/auth/passwort/bestaetigen` | nur `PIN_VERIFIED` | `204`, Adminsitzungen widerrufen |
-| `POST` | `/api/v1/admin/passwort/aendern` | `ADMIN` | `204`, Cookie gelöscht |
-| `POST` | `/api/v1/admin/pin/aendern` | `ADMIN` | `204`, **alle** Sitzungen widerrufen |
-| `POST` | `/api/v1/admin/user/anlegen` | `ADMIN` | `201` mit Id und Name |
-| `POST` | `/api/v1/admin/user/entfernen` | `ADMIN` | `204` oder `409` |
-| `POST` | `/api/v1/admin/user/blockieren` | `ADMIN` | `204`, sperrt und gibt frei |
+- **`Using generated security password` ist kein Indikator** – weder dafür noch dagegen, dass
+  die Filterchain greift. Am Verhalten prüfen: ohne Cookie `401` mit
+  `application/problem+json`, `/actuator/health` ohne Cookie `200`.
+- **Der Brute-Force-Zähler ist zwischen PIN- und Admin-Login geteilt.** Fünf Vertipper beim
+  Adminpasswort sperren auch den PIN-Login; die Meldung lautet dann `PIN_GESPERRT`.
+- **`max-versuche-ip` und `fubo.reset.max-versuche` stehen beide auf 5**, deshalb greift im
+  Betrieb die IP-Sperre vor dem Vorgangszähler. Das ist die gewünschte Staffelung.
+- **Git über die Ordnerfreigabe hinterlässt Sperrdateien.** Nach jedem schreibenden Befehl
+  `find .git \( -name 'tmp_obj_*' -o -name '*.lock' \) -delete`, sonst blockiert `HEAD.lock`
+  den nächsten Commit.
 
-**Neun Entscheidungen, die von der Anleitung abweichen oder sie ergänzen:**
+### 6.4 Verifikation
 
-1. **Die Reset-Endpunkte liegen unter `/auth/`, nicht unter `/admin/`** (Abschnitt 10 der
-   Anleitung nannte `/admin/passwort/zuruecksetzen`). `/api/*/admin/**` verlangt `ROLE_ADMIN` –
-   wer sein Passwort vergessen hat, trägt sie gerade nicht. Der Reset gehört zur **Anmeldung**.
-   Er liegt trotzdem hinter der zentralen PIN: Er verschickt E-Mails, und die PIN ist der äussere
-   Zaun aus A1. Preis: Wer beides vergisst, braucht die Datenbank (Betriebsdokumentation).
-2. **Der SMTP-Zugang hängt an `fubo.mail.*`, nicht an `spring.mail.*`**, und die
-   `JavaMailSender`-Bean entsteht in `MailConfig` von Hand. Spring Boots `Binder` reicht einen
-   unauflösbaren Platzhalter **wörtlich** durch – über `spring.mail.host` liefe die Anwendung mit
-   dem Rechnernamen `"${SMTP_HOST}"` durch. `MailConfig` prüft die vier Pflichtwerte und bricht
-   mit einer Meldung ab, die die Umgebungsvariable benennt.
-3. **Der Reset widerruft nur die Sitzungen des Admins**, nicht alle (offener Punkt 5). Alle
-   widerruft ausschliesslich der Wechsel der **zentralen** PIN – dort ändert sich das gemeinsame
-   Geheimnis. Dabei werden auch die Gastplätze freigegeben.
-4. **Der Versuchszähler läuft mit `REQUIRES_NEW`** (offener Punkt 3) – die einzige gerechtfertigte
-   Ausnahme im Projekt. Die Regel in `AGENT_SERVER.md` gilt dem Audit-Log, nicht Zählern. Der
-   Protokolleintrag zum Fehlversuch sitzt dagegen **im Controller**, wo keine Transaktion läuft.
-5. **Die zentrale PIN besteht aus genau vier Ziffern** (Festlegung des Haupt-Entwicklers).
-   `PinBootstrap` erzeugt seine Ersatz-PIN deshalb ebenfalls vierstellig statt sechsstellig – eine
-   längere liesse sich über ein darauf ausgelegtes Eingabefeld nicht mehr eingeben. **10 000
-   Möglichkeiten tragen nur zusammen mit dem `BruteForceService`; dessen Grenzen dürfen nicht
-   gelockert werden.** `/auth/pin/pruefen` schreibt der Eingabe weiterhin kein Format vor, damit
-   ein abweichender Bestandswert eingebbar bleibt.
-6. **Neue Profile bekommen die Skillvorgaben der Stufe `MITTEL`**, nicht Nullen. Ein Profil mit
-   lauter Nullen bekäme in der Teamgenerierung ein Team ohne jede Stärke, ohne dass jemand den
-   Grund sähe. Die Werte stammen aus `profil.gast_vorlage`; angegebene Kategorien überschreiben
-   sie, auch teilweise.
-7. **`entfernen` löscht hart, lehnt aber mit `409 PROFIL_IN_VERWENDUNG` ab**, sobald ein Beleg auf
-   das Profil verweist. Offene Sitzungen werden vorher abgeräumt – sie sind flüchtig. Das
-   Adminprofil ist in jedem Fall geschützt (`409 PROFIL_GESCHUETZT`).
-8. **`blockieren` kennt beide Richtungen** (`blockieren: true|false`) und widerruft beim Sperren
-   die Sitzungen des Profils. Ohne die Gegenrichtung käme der Admin an ein versehentlich
-   gesperrtes Profil bis S3 nicht mehr heran.
-9. **Der Wertebereich der Skillwerte wird im Service geprüft**, nicht nur vom Trigger
-   `pruefe_skill_wertebereich`. Der Trigger allein brächte einen `500` statt einer Meldung, die
-   die betroffene Kategorie und ihren Bereich nennt.
-
-**Betriebsfund vom 29.08.2026: Anführungszeichen in der `.env` brechen den Mailversand.**
-Beim manuellen Durchspielen des Resets antwortete Maileroo mit
-`550 5.6.0 The from address could not be parsed`, die Anwendung mit
-`503 VERSAND_FEHLGESCHLAGEN`. Ursache war
-`SMTP_ABSENDER="FuBo-App<NoReply@…>"`: Die `.env` wird über
-`spring.config.import=optional:file:./.env[.properties]` als **Java-Properties-Datei**
-gelesen, und dort sind Anführungszeichen keine Begrenzer, sondern Teil des Werts. **Das gilt
-für jede Variable dieser Datei, nicht nur für diese.**
-
-Der Fehler zeigte sich erst beim ersten echten Versand – also beim Passwort-Reset, dem
-einzigen Weg zurück, wenn das Adminpasswort vergessen ist. Genau dafür gibt es `MailConfig`:
-`pruefeAbsenderformat` bricht den Start jetzt ab, wenn der Absender keine einzelne gültige
-Adresse ist, und benennt den Anführungszeichen-Fall eigens. **Die Prüfung greift bewusst nur,
-wenn der Wert vorn *und* hinten ein Anführungszeichen trägt** – `"Kim, Denis" <a@b.de>` ist
-eine gültige Form, ein Anzeigename mit Komma *muss* in Anführungszeichen stehen. Abgesichert
-durch `MailConfigTests` (neu, 5 Fälle), Warnhinweis in `.env.example`.
-
-**Zum Zusammenspiel der Grenzen beim Reset.** Fünf Stellen sind 100 000 Möglichkeiten – für sich
-zu wenig. Tragfähig wird die Bestätigungs-PIN erst durch die Summe: fünf Versuche je Vorgang,
-15 Minuten Gültigkeit, drei Anforderungen je Stunde und Adresse, BCrypt statt Klartext, der
-Endpunkt hinter der zentralen PIN und der zusätzliche Brute-Force-Zähler. **Keine dieser Grenzen
-darf entfallen.**
-
-**Beobachtung aus den Tests:** `max-versuche-ip` und `fubo.reset.max-versuche` stehen beide auf 5.
-Im Betrieb greift deshalb die IP-Sperre (`429 PIN_GESPERRT`), *bevor* der Vorgangszähler erschöpft
-ist – `409 RESET_UNGUELTIG` sieht in der Praxis nur, wer die Adresse wechselt oder wartet. Das ist
-die gewünschte Staffelung, keine Panne.
-
-### 6.6 Verifikation
-
-**S2 und die S2b-Schritte 0 bis 7: `./mvnw clean verify` grün am 23.08.2026 – 148 Tests in 16
-Klassen**, keine Fehler, keine Abbrüche, keine übersprungenen Tests. Die Anwendung startet auf
+**`./mvnw clean verify` grün am 29.08.2026 – 227 Tests in 21 Klassen**, keine Fehler, keine
+Abbrüche, keine übersprungenen Tests. Der Lauf schliesst die S2b-Schritte 8 bis 11, den
+Nachtrag zum Anmeldenamen und die S3-Pakete 0 bis 4 gemeinsam ab. Die Anwendung startet auf
 einer frischen Datenbank durch.
-
-**Die S2b-Schritte 8 bis 11, der Nachtrag vom 29.08.2026 und die S3-Pakete 0 bis 4:
-`./mvnw clean verify` grün am 29.08.2026 – 227 Tests in 21 Klassen**, keine Fehler, keine
-Abbrüche, keine übersprungenen Tests. Damit ist auch die seit dem 23.08.2026 offene
-Verifikation von S2b geschlossen.
-
-**Zur Zahl der Klassen:** Erwartet waren „22", es sind **21**. Der Fehler stand nur in der
-Dokumentation: Die 227 Fälle wurden über `grep -c '@Test'` ermittelt und exakt getroffen, die
-Klassenzahl dagegen fortgeschrieben statt nachgezählt. Merkregel: Beide Zahlen aus dem Lauf
-übernehmen – `ls target/surefire-reports/*.txt | wc -l` liefert die Klassen.
-
-Der erste Lauf am 23.08.2026 brachte fünf Fehler – **alle drei Ursachen lagen im neuen Code
-und sind behoben:**
-
-1. **Zwei Tabellennamen in `SpielerRepository#istReferenziert` waren falsch** und führten zu
-   `500 relation "spieltag.termin_serie" does not exist`. Sie waren aus den *Constraint-Namen*
-   abgeleitet, und die stimmen hier nicht mit den Tabellennamen überein:
-   `fk_terminserie_spieler` gehört zu `spieltag.terminserie`, `fk_kontingent_spieler` zu
-   `spieltag.generierung_kontingent`. **Tabellennamen immer aus den `CREATE TABLE`-Zeilen der
-   Migration lesen, nie aus einem Constraint-Namen.** Die Methode trägt den Hinweis jetzt im
-   JavaDoc.
-2. **`blockieren` benutzte `save` statt `saveAndFlush`.** Beim Sperren erzwang der anschliessende
-   Sitzungswiderruf (`@Modifying(flushAutomatically = true)`) ein Flush, beim Freigeben gab es
-   keinen – die Änderung blieb bis zum Ende der Transaktion im Persistence-Context stehen, und
-   die Namensliste liest über nativen JDBC-Zugriff. **Merkregel für dieses Projekt: Wo JPA
-   schreibt und natives SQL liest, muss geflusht werden.**
-3. **`SMALLINT` kommt über `queryForMap` als `Integer` zurück, nicht als `Short`** – der Rohwert
-   des Treibers. `queryForObject(..., Short.class)` wandelt dagegen um. Beide Wege sind richtig,
-   nur nicht miteinander vergleichbar; der Test vergleicht jetzt über `Number#intValue`.
-
-
-| Testklasse | Fälle | |
-|---|---:|---|
-| `MigrationTests` | 7 | |
-| `SessionServiceTests` | 18 | |
-| `ConfigServiceTests` | 2 | |
-| `SessionAuthFilterTests` | 14 | |
-| `SessionCookieFactoryTests` | 9 | |
-| `SecurityConfigTests` | 26 | 24 + 2 (S3-Pfade) |
-| `BruteForceServiceTests` | 10 | |
-| `AuthControllerTests` | 10 | |
-| `NamenControllerTests` | 10 | |
-| `ApiVersionConfigTests` | 5 | |
-| `AuditServiceTests` | 6 | 5 + 1 (JSON-Verschachtelung) |
-| `GastControllerTests` | 8 | |
-| `GastServiceTransaktionTests` | 2 | |
-| `SessionControllerTests` | 10 | |
-| `AdminBootstrapTests` | 9 | 8 + 1 (Schreibweise, 29.08.2026) |
-| `AdminControllerTests` | 11 | 6 + 5 (Anmeldename, 29.08.2026) |
-| `PasswortResetControllerTests` | 15 | 14 + 1 (Adminsitzung → 403) |
-| `ZugangsdatenControllerTests` | 12 | 6 + 6 (Anmeldename, S3) |
-| `SpielerControllerTests` | 34 | 16 + 18 (S3) |
-| `SkillKategorieControllerTests` | 4 | neu (S3) |
-| `MailConfigTests` | 5 | neu (Absenderformat) |
-| **Summe** | **227** | **Istwert aus dem Lauf vom 29.08.2026** |
 
 ```bash
 docker info > /dev/null                                    # muss durchlaufen
@@ -521,316 +322,92 @@ docker compose -f compose.dev.yml --env-file .env up -d
 ./mvnw clean verify
 ```
 
-**Scheitert der Lauf, zuerst die Surefire-Berichte lesen, nicht die Maven-Zusammenfassung.**
+| Testklasse | Fälle | | Testklasse | Fälle |
+|---|---:|---|---|---:|
+| `SpielerControllerTests` | 34 | | `AdminControllerTests` | 11 |
+| `SecurityConfigTests` | 26 | | `NamenControllerTests` | 10 |
+| `SessionServiceTests` | 18 | | `AuthControllerTests` | 10 |
+| `PasswortResetControllerTests` | 15 | | `SessionControllerTests` | 10 |
+| `SessionAuthFilterTests` | 14 | | `AdminBootstrapTests` | 9 |
+| `ZugangsdatenControllerTests` | 12 | | `SessionCookieFactoryTests` | 9 |
+| `BruteForceServiceTests` | 10 | | `GastControllerTests` | 8 |
+| `MigrationTests` | 7 | | `AuditServiceTests` | 6 |
+| `ApiVersionConfigTests` | 5 | | `MailConfigTests` | 5 |
+| `SkillKategorieControllerTests` | 4 | | `ConfigServiceTests` | 2 |
+| `GastServiceTransaktionTests` | 2 | | **Summe** | **227** |
+
+**Erwartungswerte vorab: `grep -c '^\s*@Test\s*$'` je Klasse für die Fälle,
+`find src/test -name '*Tests.java' | wc -l` für die Klassen.** Die Fallzahl traf am 22.08.
+(148), 23.08. (184) und 29.08.2026 (227) exakt; die Klassenzahl war einmal falsch, weil sie
+fortgeschrieben statt nachgezählt wurde. **Nach dem Lauf beide Zahlen aus
+`target/surefire-reports/` übernehmen**, nicht nur die auffällige.
+
+**Scheitert ein Lauf, zuerst die Surefire-Berichte lesen, nicht die Maven-Zusammenfassung.**
 Bei einem Kontextfehler meldet Spring Test jeden betroffenen Fall einzeln, aber nur der *erste*
-Bericht je Kontextkonfiguration nennt die Ursache; alle anderen tragen
-`ApplicationContext failure threshold (1) exceeded`. 115 Fehler bedeuten dann eine Ursache, nicht
-115. Kürzester Weg: `grep -h 'Caused by' target/surefire-reports/*.txt | tail -1`. Am 23.08.2026
-lautete die Antwort `Could not find a valid Docker environment` – Docker lief nicht. Gegenprobe
-über die drei Klassen ohne Spring-Kontext (`SessionAuthFilterTests`, `SessionCookieFactoryTests`,
-`BruteForceServiceTests`): Sind die grün, liegt es nicht am Anwendungscode.
+Bericht je Kontextkonfiguration nennt die Ursache – alle anderen tragen
+`ApplicationContext failure threshold (1) exceeded`. 115 Fehler bedeuten dann eine Ursache.
+Kürzester Weg: `grep -h 'Caused by' target/surefire-reports/*.txt | tail -1`. Gegenprobe über
+die drei Klassen ohne Spring-Kontext (`SessionAuthFilterTests`, `SessionCookieFactoryTests`,
+`BruteForceServiceTests`): Sind die grün, liegt es nicht am Anwendungscode. Am 23.08.2026
+lautete die Antwort `Could not find a valid Docker environment`.
 
-Die manuelle Prüfliste steht vollständig in `S2b_UMSETZUNG.md`, Abschnitt 12.1; die
-Bruno-Collection deckt sie ab.
-
-### 6.13 Nachtrag – Anmeldename beim Admin-Login (29.08.2026)
-
-**Auftrag:** Für die Anmeldung des Admins muss auch der Anmeldename eingegeben und gegen die
-Datenbank validiert werden.
-
-**Was sich geändert hat**
-
-`POST /api/v1/auth/admin/anmelden` verlangt jetzt zwei Pflichtfelder statt einem:
-
-```json
-{ "anmeldename": "...", "passwort": "..." }
-```
-
-```
-dto/auth/AdminLoginRequest        + anmeldename (@NotBlank, max 60), + bereinigterAnmeldename()
-service/auth/AdminService         + anmeldedatenStimmen(name, passwort), + nameStimmt(...),
-                                  + SpielerRepository im Konstruktor,
-                                  passwortStimmt() auf passwortVergleichen() zurueckgefuehrt
-service/auth/AdminBootstrap       findByName statt findByNameIgnoreCase,
-                                  + pruefeSchreibweise (Startabbruch)
-repository/profil/SpielerRepository  + findByName (exakt),
-                                  findByNameIgnoreCase -> findAllByNameIgnoreCase (List)
-controller/auth/AdminController   ruft anmeldedatenStimmen statt passwortStimmt,
-                                  eigener Anzeigetext beim 401
-common/error/Fehlercode           JavaDoc an ADMIN_PASSWORT_FALSCH (zwei Endpunkte, ein Code)
-fubo-api.json                     AdminLoginRequest + anmeldename, Beispiel, 401-Beschreibung
-README.md, .env.example           ADMIN_NAME ist zugleich der Anmeldename
-```
-
-**Keine Schemaänderung, keine Migration.** `V008` bleibt die letzte Migration.
-
-**Fünf Entscheidungen**
-
-1. **Der Anmeldename ist der Profilname des Adminprofils**, nicht eine neue Spalte
-   `admin_konto.anmeldename`. Entscheidung des Haupt-Entwicklers. Der Wert steht bereits in
-   `profil.spieler.name` (eindeutig über `uq_spieler_name`), stammt aus `ADMIN_NAME` und ist
-   in `.env.example` seit jeher als *Kontoname, der kein Spielername sein muss* beschrieben.
-   Eine eigene Spalte hätte eine Migration, eine zweite Umgebungsvariable und eine zweite
-   Startprüfung gebraucht – für einen zweiten Namen desselben Kontos.
-   **Folge, die in S3 gebraucht wird:** Wird das Adminprofil umbenannt
-   (`/admin/user/bearbeiten`), ändert sich damit der Anmeldename. Das ist konsistent – es ist
-   dasselbe Konto – und ausdrücklich gewollt: Die Änderung des Anmeldenamens durch den Admin
-   ist als S3-Aufgabe bestätigt. Ab dann ist `ADMIN_NAME` in der `.env` **veraltet** und
-   taugt nicht mehr als Auskunft über den gültigen Anmeldenamen; der Bootstrap liest den Wert
-   ohnehin nur, solange kein Konto existiert. Die drei Auflagen für S3 stehen in
-   `harness/tmp/S3_UMSETZUNG.md`, Abschnitt 3.3 – die wichtigste: **den neuen Namen getrimmt
-   speichern**, sonst liesse er sich nie eingeben.
-2. **Falscher Name und falsches Passwort sind nicht unterscheidbar.** Derselbe Code
-   `ADMIN_PASSWORT_FALSCH`, derselbe Anzeigetext („Anmeldename oder Passwort ist nicht
-   korrekt."). Ein eigener Code hätte den Namen über die Fehlermeldung erratbar gemacht und
-   die zusätzliche Angabe entwertet.
-3. **Der bestehende Fehlercode bleibt**, statt eines neuen `ADMIN_ANMELDUNG_FALSCH`.
-   Entscheidung des Haupt-Entwicklers: Der Client-Track muss seine Auswertung nicht ändern,
-   und `detail` ist ohnehin Anzeigetext, der sich ohne Vertragsänderung ändern darf. Der
-   Controller setzt den präziseren Text über den zweiten `FachlicherFehler`-Konstruktor;
-   `/admin/passwort/aendern` behält die Standardmeldung, weil dort tatsächlich nur das
-   Passwort geprüft wird.
-4. **Beide Teilprüfungen laufen immer** – `nameStimmt & passwortStimmt`, verknüpft mit `&`,
-   nie mit `&&`. Ein Abbruch beim falschen Namen spart die BCrypt-Berechnung und macht den
-   Endpunkt zu einem Zeitorakel: schnelle Ablehnung hiesse „Name falsch", langsame „Name
-   richtig". **Wer diese Zeile später vereinfacht, hebt die Massnahme auf.**
-5. **Der eingegebene Name geht nicht ins Audit-Log.** Der Eintrag zum Fehlversuch nennt
-   weiterhin nur Endpunkt und Adresse. Ein Protokoll, das jede geratene Eingabe mitschreibt,
-   sammelt fremde Daten ohne Nutzen und stellt einen Vertipper des Admins neben seinen echten
-   Namen.
-
-### Die Schreibweise: erst nachsichtig, dann zeichengenau (am selben Tag korrigiert)
-
-Die erste Fassung verglich mit `equalsIgnoreCase` – aus Sorge vor einer Aussperrung, weil
-`AdminBootstrap` das Profil bis dahin ebenfalls unempfindlich suchte (`findByNameIgnoreCase`).
-**Der Haupt-Entwickler hat das umgedreht:** Der Anmeldename ist ein Anmeldemerkmal, die
-Schreibweise ist über `ADMIN_NAME` eindeutig vorgegeben (ohne die Angabe bricht der Start
-ohnehin ab), also wird sie auch geprüft.
-
-**Das war keine Ein-Wort-Änderung.** `equals` allein hätte genau die Aussperrung erzeugt, gegen
-die die Nachsicht gedacht war: Stand in der Datenbank „Beispielspieler 05" und in der `.env`
-`beispielspieler 05`, übernahm der Bootstrap das vorhandene Profil – und der Betreiber konnte
-sich anschliessend mit genau dem Wert **nicht** anmelden, den er selbst gesetzt hatte. Ohne
-Rückweg: Der Passwort-Reset holt das Passwort zurück, nie den Namen.
-
-Deshalb sichert der Bootstrap jetzt die Invariante zu, auf der der Login aufsetzt:
-
-> **Der gespeicherte Profilname des Admins entspricht zeichengenau `ADMIN_NAME.trim()`.**
-
-Drei Bausteine tragen sie:
-
-1. **`findByName` statt `findByNameIgnoreCase`.** Nur ein zeichengenauer Treffer wird
-   übernommen; sonst entsteht das Profil neu, mit genau der Schreibweise aus der Umgebung.
-2. **`pruefeSchreibweise` bricht den Start ab**, wenn ein Profil allein in der Schreibweise
-   abweicht – vor jeder Änderung, wie alle Abbruchprüfungen des Runners. Sonst legte der
-   Bootstrap ein zweites, nahezu gleichnamiges Profil an: `uq_spieler_name` ist in PostgreSQL
-   gross-/kleinschreibungsempfindlich und lässt „Admin" neben „admin" zu. In der Namensliste
-   stünden dann zwei fast gleiche Einträge, einer davon ein technisches Konto. Der Abbruch
-   kostet einen Neustart mit korrigierter `.env` – die Alternative kostet den Zugang.
-3. **Die Gegenprobe läuft über eine Liste** (`findAllByNameIgnoreCase`), nicht über ein
-   `Optional`. Existieren bereits zwei Schreibweisen nebeneinander, liefe ein `Optional` in
-   eine `IncorrectResultSizeDataAccessException` – ein Startabbruch mit einer Meldung über
-   Ergebnismengen statt über die Ursache. Die Meldung nennt jetzt alle gefundenen
-   Schreibweisen.
-
-**Randleerzeichen werden weiterhin entfernt**, und zwar im **DTO**
-(`bereinigterAnmeldename()`), nicht im Service: Die Auslegung des Anfragekörpers gehört an die
-API-Grenze, wie bei `GastAnmeldungRequest#bereinigterName()`. Das ist kein Widerspruch zur
-zeichengenauen Prüfung – ein führendes Leerzeichen ist unsichtbar und nie beabsichtigt, eine
-Schreibweise ist sichtbar und kann es sein.
-
-**Fünf neue Testfälle in `AdminControllerTests`** (6 → 11): abweichende Schreibweise
-(`401`), Randleerzeichen (`204`), falscher Name mit richtigem Passwort, Name eines *anderen*
-Profils, fehlender Name (`400`). Die Tests lesen den Anmeldenamen über `adminName()` aus der
-Datenbank statt ihn festzuschreiben – er stammt aus `ADMIN_NAME` in
-`src/test/resources/application.yml`, und ein Test, der den Wert doppelt führt, bricht bei
-jeder Änderung dort mit.
-
-**In `AdminBootstrapTests`** (8 → 9) wurde `abweichendeSchreibweiseDesNamensGenuegt` in sein
-Gegenteil verkehrt (`…BrichtDenStartAb`; prüft zusätzlich, dass kein zweites Profil
-zurückbleibt und dass die Meldung beide Schreibweisen nennt); dazu kam
-`exakteSchreibweiseUebernimmtDasVorhandeneProfil` als Gegenprobe über die Profilanzahl.
-`unbekannterNameLegtDasProfilAn` sichert jetzt ausdrücklich zu, dass der Profilname
-zeichengenau `ADMIN_NAME` entspricht – das ist die Invariante, auf der der Login aufsetzt.
-
-**`ADMIN_NAME: Beispielspieler 12` in `src/test/resources/application.yml` trifft die
-Demodaten zeichengenau**, der Kontextstart ist von der Umstellung also nicht betroffen. Wer
-den Wert dort ändert, muss ihn zeichengenau aus `R__seed_beispielprofile.sql` übernehmen –
-sonst bricht künftig jeder `@SpringBootTest` beim Kontextstart ab.
-
-**Nicht betroffen:** `SecurityConfigTests` schickt `{}` und erwartet `400` bzw. `403` – beides
-gilt unverändert. `/admin/passwort/aendern` prüft weiterhin nur das alte Passwort; dort ist der
-Admin bereits angemeldet, ein Anmeldename wäre dort ohne Aussage.
-
-**Bruno-Collection** (`~/Documents/bruno/fubo_server`): neue Umgebungsvariable `adminName` in
-allen fünf Umgebungen (in `raspberry-pi` als Secret), Anfragekörper in „Admin anmelden",
-„Admin Passwort falsch" und „Admin anmelden in falscher Stufe" ergänzt, neuer Fehlerfall
-„Admin Anmeldename falsch" (seq 19). **`adminName` ist in jeder Umgebung noch auf
-`BITTE_EINTRAGEN` gesetzt** und muss vor dem nächsten Lauf gefüllt werden.
-
-### 6.14 S3 – Pakete 0 bis 4 (29.08.2026)
-
-Profile lesen und bearbeiten, Skillkategorien ausliefern, Anmeldenamen ändern. Anleitung:
-`harness/tmp/S3_UMSETZUNG.md`, Abschnitte 0 bis 4. **Die Pakete 5 bis 7 sind offen.**
-
-```
-common/config/      CacheConfig (neu: @EnableCaching + ConcurrentMapCacheManager)
-domain/audit/       AuditAktion + PROFIL_GEAENDERT, ADMIN_NAME_GEAENDERT
-domain/profil/      Profileintrag (neu), SkillKategorie + bezeichnung/gewicht/reihenfolge
-repository/profil/  SpielerRepositoryCustom/Impl + findeProfilstammdaten, findeBelegteProfilIds
-                    SkillKategorieRepository: aktive() liest jetzt alle sechs Spalten
-service/profil/     ProfilStammdatenCache (neu)
-                    SpielerVerwaltungService + uebersicht, bearbeiten, adminProfilUmbenennen
-service/auth/       ZugangsdatenService + adminNameAendern
-dto/admin/          SpielerDetails, SpielerBearbeitenRequest, SkillKategorieInfo,
-                    AdminNameAendernRequest (alle neu)
-controller/admin/   SpielerController + 2 Endpunkte, ZugangsdatenController + 1,
-                    SkillKategorieController (neu)
-fubo-api.json       + 4 Endpunkte, 4 Schemas; Datenschutz-Absatz korrigiert
-```
-
-**Keine Schemaänderung.** `V008` bleibt die letzte Migration; alles Nötige stammt aus `V002`
-bis `V004`.
-
-**Endpunkte:**
-
-| Methode | Pfad | Rolle | Antwort |
-|---|---|---|---|
-| `GET` | `/api/v1/admin/user/lesen` | `ADMIN` | `200` alle Profile **mit Skillwerten** |
-| `POST` | `/api/v1/admin/user/bearbeiten` | `ADMIN` | `204` \| `400` \| `404` \| `409` |
-| `GET` | `/api/v1/admin/skills/lesen` | `ADMIN` | `200` aktive Kategorien |
-| `POST` | `/api/v1/admin/name/aendern` | `ADMIN` | `204`, **ohne** Cookie-Änderung |
-
-**Sechs Entscheidungen, die von der Anleitung abweichen oder sie ergänzen:**
-
-1. **`/admin/user/lesen` ist der Endpunkt aus der Entwickler-Ergänzung zu 2.2** – es entsteht
-   kein zweiter. Weggabelung B bleibt unverändert; hinzu kommt der Zwischenspeicher.
-2. **Der Zwischenspeicher ist anwendungsweit, nicht je Sitzung.** Es gibt genau einen Admin;
-   ein sitzungsbezogener Speicher wäre derselbe Speicher mit mehr Maschinerie. Tragend ist
-   ohnehin nicht die Reichweite, sondern das **Verwerfen beim Schreiben** – jeder der fünf
-   schreibenden Vorgänge ruft `ProfilStammdatenCache#verwerfen()`.
-3. **Die Übersichtsabfrage ist in zwei geteilt** (Abweichung von Abschnitt 2.3, der eine
-   vorsieht). **Der Belegtstatus darf nicht in den Zwischenspeicher.** Er wird aus den aktiven
-   Sitzungen abgeleitet und *nicht* gespeichert (A6) – genau damit kann er nicht veralten.
-   Läge er im Speicher, wäre er erst wieder richtig, wenn jemand ein Profil ändert: Jede
-   Anmeldung, jeder Ablauf, jeder Logout ändert ihn, und keines davon verwirft den Speicher.
-   Die Stammdaten liefert `findeProfilstammdaten` (gecacht), den Rest `findeBelegteProfilIds`
-   (jeder Aufruf frisch, gestützt auf `ix_session_aktiv`). Ein Test hält das fest.
-4. **Der Cache-Manager entsteht von Hand**, ohne `spring-boot-starter-cache`. Die
-   Autokonfiguration legte jeden angefragten Namen stillschweigend an; ein Tippfehler in einem
-   `@CacheEvict` träfe dann einen leeren, neuen Speicher statt des gemeinten, und der Admin
-   sähe nach dem Speichern seine alten Werte. `@EnableCaching` und
-   `ConcurrentMapCacheManager` stehen beide in `spring-context` – eine zusätzliche
-   Abhängigkeit braucht es nicht.
-5. **Weggabelung C ist überholt:** `/admin/user/bearbeiten` lehnt das Adminprofil
-   **vollständig** ab (`409 PROFIL_GESCHUETZT`), nicht nur den Skill-Teil. Grund ist der
-   eigene Endpunkt `/admin/name/aendern` aus der Entwickler-Ergänzung zu 3.3 – ein Endpunkt,
-   eine Regel, und die Logmeldung des Bootstraps („im Adminbereich umbenennen") stimmt
-   weiterhin.
-6. **`/admin/name/aendern` liegt unter dem Tag „Zugangsdaten"**, widerruft **keine** Sitzung
-   und verlangt **kein** aktuelles Passwort. Das erste, weil der Name ein Anmeldemerkmal ist;
-   das zweite ist Vorgabe des Haupt-Entwicklers (die Änderung greift beim nächsten Login);
-   das dritte folgt dem Bestand – `/admin/pin/aendern` verlangt ebenfalls keines. Eigener
-   Audit-Wert `ADMIN_NAME_GEAENDERT` neben `PASSWORT_GEAENDERT` und `PIN_GEAENDERT`.
-
-**Drei Fallstricke, die Zeit kosten würden:**
-
-- **`AuditService` serialisierte verschachtelte Karten still falsch** (gefunden und behoben am
-  29.08.2026 durch einen roten Test). Das JSON für die Spalte `details` entsteht von Hand;
-  eine `Map` fiel bis dahin in den Textzweig, und `Map#toString` lieferte `"{TORWART=1}"` –
-  etwas, das aussieht wie JSON und keines ist. In der Datenbank stand ein *Text*:
-  `details->'skills'` traf, `->>'TORWART'` darauf lieferte `null`. **Kein Fehler, keine
-  Warnung, ein unbrauchbarer Eintrag.** `wert(...)` hat jetzt einen Zweig für `Map` und ruft
-  rekursiv zurück; `AuditServiceTests` sichert es über `jsonb_typeof(...) = 'object'` ab.
-  Für `Collection` gilt der Fallstrick weiter – sie hat heute keinen Aufrufer, wer einen
-  anlegt, ergänzt dort einen Zweig. Bewusst **keine** Ausnahme für unbekannte Typen: Sie
-  risse die umgebende Transaktion mit sich und machte aus einem unschönen Protokolleintrag
-  eine zurückgerollte Fachänderung.
-
-- **`@Cacheable` an einer Methode, die der eigene Service aufruft, wirkt nicht** – der Aufruf
-  läuft am Proxy vorbei, ohne Fehlermeldung. Deshalb ist `ProfilStammdatenCache` eine eigene
-  Bean und keine Methode im `SpielerVerwaltungService`.
-- **Der Zwischenspeicher überlebt die Test-Transaktion.** Jede Testklasse, die die Übersicht
-  liest, verwirft ihn in `@BeforeEach`. Ohne das sieht ein Fall Profile, die ein vorheriger
-  Fall angelegt hat und deren Transaktion zurückgerollt ist – ein Fehler, der wie ein
-  Datenbankfehler aussieht und keiner ist. Vorbild: `bruteForceService.alleZuruecksetzen()`.
-
-**Zur Vormerkung für S4 (A15):** Eine Skilländerung gilt als Teilnehmeränderung und muss die
-`teilnehmer_version` betroffener künftiger Termine hochzählen. `spieltag` hat in S3 weder
-Service noch Entity; der Aufruf ist in S4 als **Pflichtpunkt** aufzunehmen. Der Hinweis steht
-im JavaDoc von `SpielerVerwaltungService#bearbeiten`, in der Endpunktbeschreibung des Vertrags
-und hier – dreifach, weil ein Punkt, der in keiner Liste steht, durch das Raster fällt.
-
-**Tests: 190 → 227 in 21 Klassen, verifiziert am 29.08.2026** (`SkillKategorieControllerTests` und `MailConfigTests` sind neu):
-`SpielerControllerTests` 16 → 34, `ZugangsdatenControllerTests` 6 → 12,
-`SecurityConfigTests` 24 → 26, `AuditServiceTests` 5 → 6,
-`PasswortResetControllerTests` 14 → 15, `SkillKategorieControllerTests` 4.
+Die manuelle Prüfliste steht in `S2b_UMSETZUNG.md`, Abschnitt 12.1; die Bruno-Collection deckt
+sie ab.
 
 ## 7. Nächste Schritte
 
-1. **`./mvnw clean verify` – erledigt und grün am 29.08.2026**, 227 Tests in 21 Klassen. Die
-   Zahlen in Abschnitt 6.6 stammen aus `server/target/surefire-reports/*.txt`, nicht aus einer
-   Schätzung. Für den nächsten Lauf unverändert: vorher `docker info` prüfen – am 23.08.2026
-   scheiterte ein ganzer Lauf allein daran.
-2. **`adminName` in den Bruno-Umgebungen füllen** (steht überall auf `BITTE_EINTRAGEN`) –
-   **zeichengenau wie `ADMIN_NAME` in der `.env`**, sonst scheitert jeder Admin-Request
-   mit `401`.
-3. **Manuelle Prüfliste abarbeiten** (`S2b_UMSETZUNG.md`, Abschnitt 12.1). Der Reset lässt sich
+1. **Manuelle Prüfliste abarbeiten** (`S2b_UMSETZUNG.md`, Abschnitt 12.1). Der Reset lässt sich
    nur mit echtem SMTP-Zugang durchspielen; die Bruno-Collection führt durch die Reihenfolge.
-   **Zusätzlich zum Nachtrag:** „Admin anmelden" mit richtigem Namen, mit falschem Namen und
-   mit abweichender Schreibweise – die drei Ablehnungen müssen in Code, Statuscode und
-   Anzeigetext identisch sein.
-4. **Client-Track über die Vertragsänderung informieren** (Abschnitt 4a): Das Anmeldeformular
+   Vorher `adminName` und `neuerAdminName` in den Umgebungen füllen – beim Anmeldenamen
+   **zeichengenau wie `ADMIN_NAME`**, sonst scheitert jeder Admin-Request mit `401`.
+   Zusätzlich zu prüfen: „Admin anmelden" mit richtigem Namen, mit falschem Namen und mit
+   abweichender Schreibweise – die drei Ablehnungen müssen in Code, Statuscode und Anzeigetext
+   identisch sein.
+2. **Client-Track über die Vertragsänderung informieren** (Abschnitt 4a). Das Anmeldeformular
    des Admins braucht ein zweites Pflichtfeld, sonst liefert der Endpunkt `400`.
-5. **S3 fortsetzen mit den Paketen 5 bis 7** (`harness/tmp/S3_UMSETZUNG.md`, Abschnitte 5
-   bis 7): Admin-Konfiguration lesen und ändern samt Fehlercode `DATEN_VERALTET`, Gastplätze
-   mitpflegen (offener Punkt 18 aus S2) und die Bestandsaufnahme der Autorisierung. Die
-   Pakete 0 bis 4 stehen (Abschnitt 6.14).
-   **Zwei Punkte, die dabei nicht untergehen dürfen:** Der Vertrag wächst um zwei Endpunkte
-   auf 21, und `KonfigurationControllerTests` braucht `@Transactional` – die Klasse ändert
-   eine anwendungsweit gültige, einzeilige Tabelle und liefe sonst anderen Klassen in die
-   Quere, etwa `GastControllerTests`, das sich auf `anz_guests = 4` verlässt.
-6. **Domainentscheidung – erledigt (09.08.2026).** Frontend und API liegen auf Subdomains **derselben
-   registrierbaren Domain** (`app.<domain>` / `api.<domain>`). Damit gilt `SameSite=Lax` und
-   `csrf.disable()` bleibt vertretbar; Abschnitt 5.4/5.5 der S2-Anleitung ist entsprechend festgelegt.
-   Hintergrund: Das Frontend liegt auf Cloudflare Pages und war zunächst nur unter
-   `<projekt>.pages.dev` erreichbar. `pages.dev` steht auf der Public Suffix List, ist für Browser also
-   selbst eine registrierbare Domain – gegenüber `api.<domain>` wäre das cross-site gewesen, mit
-   `SameSite=None; Secure`, zwingendem CSRF-Schutz und einem Session-Cookie, das Safari und der
-   Chrome-Inkognito-Modus als Third-Party-Cookie blockieren. Gelöst über eine **Custom Domain** in
-   Cloudflare Pages (reine Hosting-Konfiguration, kein Code). Offene Folgeaufgaben: Einrichtung der
-   Custom Domain sowie der Umgang mit Pages-Preview-Deployments, in denen der Login bauartbedingt nicht
-   funktioniert (`S2_UMSETZUNG.md`, Abschnitt 0.1 und offene Punkte 8/9).
-7. **Offene Punkte für S3 und S5:** das Anlegen weiterer Gastplätze, wenn `anz_guests` über vier
-   hinaus erhöht werden soll (offener Punkt 18), und die Frage, wie der Teamgenerator Profile ohne
-   gepflegte Skillwerte behandelt (offener Punkt 20). **Punkt 20 ist durch S2b kleiner geworden:**
-   Über `/admin/user/anlegen` entstandene Profile haben immer vollständige Skillwerte – die
-   Vorgaben der Stufe `MITTEL`. Ungepflegt bleiben nur Profile aus einem Datenimport.
-8. **Endpunktkontrakt – erledigt (22.08.2026), S2b nachgezogen (23.08.2026), Anmeldename
-   nachgezogen (29.08.2026).** Er liegt als `server/fubo-api.json` auf der
-   Repo-Wurzel und beschreibt alle 15 Endpunkte aus S2 und S2b vollständig (Abschnitt 4). Ab jetzt gilt:
-   **Jede Vertragsänderung zuerst dort abbilden**, dann den Client-Track nachziehen. S3 bis S6
-   tragen ihre Endpunkte jeweils bei Fertigstellung nach.
-9. **Profildaten** (Vorgehen steht, nichts mehr zu entscheiden): Reale Daten liegen ausserhalb von
-   `PRJ_FuBo/`, Pfad in `FUBO_LOCAL_SEED`, Einspielen über `scripts/seed-lokal.sh`. Der anonymisierte
-   30er-Satz liegt in `scripts/data/`, der 12er-Demosatz läuft automatisch in Dev und Test.
-10. **Deployment (S8):** Entwurf mit Dockerfile, Compose-Ergänzung, nginx-Block, Backup und Rollout liegt
-   in `harness/tmp/S8_DEPLOYMENT.md`.
+3. **S3 fortsetzen mit den Paketen 5 bis 7** (`harness/tmp/S3_UMSETZUNG.md`, Abschnitte 5
+   bis 7): Admin-Konfiguration lesen und ändern samt neuem Fehlercode `DATEN_VERALTET`,
+   Gastplätze mitpflegen, Bestandsaufnahme der Autorisierung. **Zwei Punkte, die dabei nicht
+   untergehen dürfen:** Der Vertrag wächst um zwei Endpunkte auf 21, und
+   `KonfigurationControllerTests` braucht `@Transactional` – die Klasse ändert eine
+   anwendungsweit gültige, einzeilige Tabelle und liefe sonst anderen Klassen in die Quere,
+   etwa `GastControllerTests`, das sich auf `anz_guests = 4` verlässt.
+4. **Danach S4** (Termine & Teilnahme). **Pflichtpunkt von dort:** Eine Skilländerung ist eine
+   Teilnehmeränderung (A15) und muss die `teilnehmer_version` betroffener künftiger Termine
+   hochzählen – in S3 mangels `spieltag`-Service nicht umsetzbar.
+
+**Offene Punkte, die keine Aufgabe für heute sind:**
+
+- **Punkt 18 (S3/S5):** Weitere Gastplätze anlegen, wenn `anz_guests` über vier steigt.
+- **Punkt 20 (S5):** Wie behandelt der Teamgenerator Profile ohne gepflegte Skillwerte? Durch
+  S2b und S3 kleiner geworden – über `/admin/user/anlegen` entstandene Profile haben immer
+  vollständige Werte, ungepflegt bleiben nur Profile aus einem Datenimport, und
+  `/admin/user/lesen` macht die Lücke sichtbar.
+- **Betriebsaufgabe ohne Code:** Custom Domain `app.<domain>` in Cloudflare Pages einrichten.
+  Ohne sie funktioniert die Anmeldung produktiv nicht – `pages.dev` steht auf der Public Suffix
+  List und wäre gegenüber `api.<domain>` cross-site, mit `SameSite=None; Secure`, zwingendem
+  CSRF-Schutz und einem Cookie, das Safari und der Chrome-Inkognito-Modus blockieren. Lokale
+  Entwicklung und Tests sind nicht betroffen. Ebenfalls offen: der Umgang mit
+  Pages-Preview-Deployments, in denen der Login bauartbedingt nicht funktioniert.
+- **Deployment (S8):** Entwurf mit Dockerfile, Compose-Ergänzung, nginx-Block, Backup und
+  Rollout liegt in `harness/tmp/S8_DEPLOYMENT.md`.
+
+**Profildaten** (Vorgehen steht): Reale Daten liegen ausserhalb von `PRJ_FuBo/`, Pfad in
+`FUBO_LOCAL_SEED`, Einspielen über `scripts/seed-lokal.sh`. Der anonymisierte 30er-Satz liegt
+in `scripts/data/`, der 12er-Demosatz läuft automatisch in Dev und Test.
 
 ## 8. Weitere Anweisungen
-- **Repository-Konventionen:** Repo-Wurzel ist `server/`. Gearbeitet wird auf dem Entwicklungsbranch
-  **`dev`**; `main` bleibt der freigegebene Stand. Commit-Nachrichten nach Conventional Commits **ohne**
-  Scope `(server)` – die Zuordnung ergibt sich aus dem Repository.
-  *Hinweis:* Frühere Fassungen dieses Dokuments nannten Meilenstein-Branches
-  (`feature/s1-datenmodell`). Praktiziert wird ein durchgehender `dev`-Branch; die Konvention ist hiermit
-  daran angepasst.
-- **Getrennte Repositories:** Änderungen an Server und Client können nicht in einem gemeinsamen Commit
-  erfolgen. Vertragsänderungen daher immer zuerst in `server/fubo-api.json` abbilden und den
-  Client-Track separat nachziehen.
-- Ohne ausdrückliche Anweisung des Entwicklers nichts in `main` mergen/pushen; Feature-Branch erlaubt.
-- `.env`-Dateien nie einchecken. Dokumentation in deutscher Sprache. **Keine realen Personennamen** in
-  Code, Testdaten oder Dokumentation.
-- Nach Abschluss eines Arbeitspakets kurze Verifikation durchführen und diesen Handoff aktualisieren
-  (veraltete Fassung zuvor unter `server/harness/archive/` ablegen). 
-  Zudem soll auch das zentrale Handoff in `/PRJ_FuBo/harness/CONTEXT_HANDOFF.md` (Gesamtstand) entsprechend aktualisiert werden.
-  *Hinweis:* `/PRJ_FuBo/harness/` liegt **außerhalb** dieses Repositories und wird nicht mit committet.
+
+- **Repository:** Wurzel `server/`, gearbeitet wird auf **`dev`**, `main` bleibt der
+  freigegebene Stand. Commit-Nachrichten nach Conventional Commits **ohne** Scope, Umlaute
+  transliteriert. **Ohne ausdrückliche Anweisung nichts nach `main` mergen oder pushen.**
+- **Getrennte Repositories:** Server und Client lassen sich nicht gemeinsam committen.
+  Vertragsänderungen deshalb **immer zuerst** in `server/fubo-api.json`, der Client-Track zieht
+  danach nach.
+- **`.env` nie einchecken.** Dokumentation in deutscher Sprache, **keine realen Personennamen**
+  in Code, Testdaten oder Dokumentation.
+- **Nach Abschluss eines Arbeitspakets:** kurz verifizieren, diesen Handoff fortschreiben und
+  die Vorfassung unter `harness/archive/` ablegen; zusätzlich
+  `/PRJ_FuBo/harness/CONTEXT_HANDOFF.md` (Gesamtstand) nachziehen. Verbindliche Regeln, die
+  sich aus der Umsetzung ergeben, gehören in `AGENT_SERVER.md` – **nicht** zusätzlich hierher,
+  sonst laufen beide auseinander. `/PRJ_FuBo/harness/` liegt ausserhalb dieses Repositories.

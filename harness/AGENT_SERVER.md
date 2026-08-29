@@ -76,228 +76,168 @@ Identifikation über den hinterlegten Namen. Rollen: ADMIN, USER, GAST.
   deaktiviert.
 
 ### Verbindliche Architekturregeln (Server)
-- **Schichtung:** Controller → Service → Repository. JPA-Entities verlassen die API-Grenze nie; nach
-  außen ausschließlich DTOs.
-- **Authentifizierung als Querschnitt:** Prüfung des Session-Tokens in einer Spring-Security-Filterchain
-  vor dem Controller, Deny-by-default. Keine Tokenprüfung in einzelnen Endpunkten. Eine Session in
-  `PIN_VERIFIED` darf ausschließlich die Namensliste abrufen und die Namensauswahl absenden.
-  Die Security-Auto-Konfiguration wird **nie** über
-  `@SpringBootApplication(exclude = SecurityAutoConfiguration.class)` abgeschaltet – das entfernte
-  genau die Deny-by-default-Haltung, die diese Regel verlangt.
-- **Zur Log-Zeile „Using generated security password" (korrigiert 09.08.2026):** Sie stammt nicht von
-  der Filterchain, sondern von `UserDetailsServiceAutoConfiguration`. Diese weicht nur zurück, wenn
-  eine `AuthenticationManager`-, `AuthenticationProvider`-, `UserDetailsService`- oder
-  `AuthenticationManagerResolver`-Bean existiert; eine eigene `SecurityFilterChain` genügt ihr
-  **nicht**. Die Zeile ist damit **kein** Indikator dafür, ob die Filterchain greift – weder in die
-  eine noch in die andere Richtung. Deshalb ist ausschliesslich
-  `UserDetailsServiceAutoConfiguration` in `AppServerApplication` ausgenommen. Das ist etwas anderes
-  als der Ausschluss von `SecurityAutoConfiguration` und ausdrücklich erlaubt.
-- **Ob die Filterchain greift, wird am Verhalten geprüft**, nicht am Log: ein Aufruf ohne Cookie muss
-  `401` mit `application/problem+json` und dem Feld `code` liefern (das kann nur aus dem eigenen
-  `AuthorizationExceptionHandler` stammen), und `/actuator/health` muss ohne Cookie `200` liefern.
-- **`/actuator/health` ist in der Filterchain freizugeben** (`permitAll`). Der Container-Healthcheck ruft
-  den Endpunkt lokal auf; mit `401` bliebe der Container dauerhaft `unhealthy` und
-  `depends_on: condition: service_healthy` würde nie erfüllt. Die Abschottung nach aussen übernimmt
-  nginx, nicht die Anwendung.
-- **Das Adminprofil ist ein technisches Konto (verbindlich ab 22.08.2026).** Es erfüllt die
-  Fremdschlüsselpflicht von `admin_konto.spieler_id` und sonst nichts: Es steht **nicht** in der
-  Namensliste, ist über die Namensauswahl **nicht** wählbar (auch nicht über seine Id), nimmt an
-  keinem Termin teil und wird **nie in ein Team eingeteilt**. Seine Skillwerte stehen auf 0 – das
-  macht das Profil vollständig, ist aber **kein Ersatz für den Ausschluss**: Geriete es doch in
-  eine Generierung, bekäme sein Team einen Spieler ohne jede Stärke. Jede Abfrage, die Mitspieler
-  aufzählt (Namensliste, Teilnehmerliste, Datengrundlage des Teamgenerators ab S5), filtert
-  `rolle <> 'ADMIN'`.
-- **Der Ausschluss wird an jeder Grenze wiederholt, nicht nur in der Anzeige.** Ein Endpunkt, der
-  eine Id entgegennimmt, prüft dieselbe Bedingung erneut wie die Liste, aus der die Id stammt.
-  Sonst wäre der Ausschluss reine Darstellung – wer die Id kennt, käme daran vorbei. Beim
-  Adminprofil hinge daran `ROLE_ADMIN` ohne Passwort.
-- **Der Admin meldet sich mit Anmeldename und Passwort an**, nicht über die Namenswahl:
-  `POST /api/{version}/auth/admin/anmelden` gegen `admin_konto.passwort_hash`, ausschliesslich in
-  der Stufe `PIN_VERIFIED`. Die zentrale PIN bleibt auch für ihn Pflicht – sie grenzt den Kreis
-  der Zugreifenden ein (A1), die Anmeldedaten die Rechte innerhalb dieses Kreises. Der
-  Brute-Force-Zähler ist derselbe wie am PIN-Endpunkt: Es ist derselbe Absender, der dieselbe
-  Anwendung angreift.
-- **Der Anmeldename ist der Profilname des Adminprofils** (`profil.spieler.name` zu
-  `admin_konto.spieler_id`, gesetzt über `ADMIN_NAME`) – **keine eigene Spalte** (Festlegung
-  vom 29.08.2026). Eine zweite Namensspalte im Admin-Konto wäre ein zweiter Name für dasselbe
-  Konto, mit einer zweiten Umgebungsvariablen und einer zweiten Startprüfung; `.env.example`
-  beschreibt `ADMIN_NAME` ohnehin schon als Kontonamen, der kein Spielername sein muss.
-  Folge, die dokumentiert bleiben muss: Wird das Adminprofil umbenannt, ändert sich damit der
-  Anmeldename (die Umbenennung durch den Admin kommt in S3).
-- **Verglichen wird zeichengenau, einschliesslich Gross- und Kleinschreibung** (Festlegung
-  vom 29.08.2026). Der Name ist ein Anmeldemerkmal, und bei einem Merkmal ist Nachsicht die
-  falsche Richtung. **Das trägt nur zusammen mit der Zusicherung des Bootstraps:**
-  `AdminBootstrap` sucht das Profil mit `findByName` (zeichengenau) und legt es sonst mit
-  genau der Schreibweise aus `ADMIN_NAME` an; der gespeicherte Profilname entspricht damit
-  zeichengenau dem Wert aus der Umgebung. Weicht ein vorhandenes Profil **allein in der
-  Schreibweise** ab, **bricht der Start ab** (`pruefeSchreibweise`) – es wird weder das
-  abweichende Profil übernommen noch ein zweites, nahezu gleichnamiges angelegt.
-  `uq_spieler_name` ist in PostgreSQL gross-/kleinschreibungsempfindlich und liesse beide
-  nebeneinander zu. Der Abbruch ist das mildere Mittel: Er kostet einen Neustart mit
-  korrigierter `.env`, während der Alternativfall – Admin ausgesperrt – **keinen**
-  Selbstbedienungsweg hat; der Passwort-Reset holt das Passwort zurück, nie den Namen.
-  Randleerzeichen werden weiterhin entfernt, und zwar im DTO, nicht im Service: Ein
-  führendes Leerzeichen ist unsichtbar und nie beabsichtigt, eine Schreibweise ist sichtbar
-  und kann es sein.
-- **Am Anmeldenamen hängen drei weitere Bedingungen:**
-  1. **Falscher Name und falsches Passwort sind nach aussen nicht unterscheidbar** – derselbe
-     Fehlercode (`ADMIN_PASSWORT_FALSCH`), derselbe Anzeigetext. Sonst wäre der Anmeldename
-     über die Fehlermeldung erratbar und die zusätzliche Angabe wertlos.
-  2. **Der BCrypt-Vergleich läuft auch bei falschem Namen** – die beiden Teilprüfungen werden
-     mit `&` verknüpft, nie mit `&&`. Ein vorzeitiges Verlassen spart die teure Berechnung und
-     macht den Endpunkt damit zu einem Zeitorakel über den Namen.
-  3. **Der eingegebene Name gehört nicht ins Audit-Log.** Der Eintrag zum Fehlversuch nennt
-     weiterhin nur Endpunkt und Adresse; ein Protokoll, das jede geratene Eingabe mitschreibt,
-     sammelt fremde Daten ohne Nutzen und stellt einen Vertipper des Admins neben seinen
-     echten Namen.
-- **Skillwerte verlassen den Server ausschliesslich unterhalb von `/api/*/admin/**`
-  (präzisiert 29.08.2026, S3).** Bis S2b enthielt kein Antwortobjekt welche; seit
-  `GET /admin/user/lesen` ist der Prüfpunkt nicht mehr „kommen Skillwerte vor", sondern
-  „kommen sie ausserhalb von `/admin/` vor". Der Schutz hängt am Pfad – die Filterchain
-  verlangt dort `ROLE_ADMIN` –, nicht am DTO; dass `SpielerDetails` nur unter `/admin/`
-  auftaucht, bleibt trotzdem eine Regel, die beim Lesen auffallen soll.
-- **Der Belegtstatus gehört in keinen Zwischenspeicher (verbindlich ab S3, 29.08.2026).**
-  Er wird aus den aktiven Sitzungen abgeleitet und nicht gespeichert (A6) – genau damit
-  *kann er nicht veralten*. Läge er in einem Speicher, der nur bei Profiländerungen verworfen
-  wird, wäre er erst wieder richtig, wenn jemand ein Profil anfasst: Jede Anmeldung, jeder
-  Ablauf, jeder Logout ändert ihn. Wo eine Abfrage beides liefern soll, wird sie geteilt.
-- **Zwischenspeicher werden beim Schreiben verworfen, nie über eine Frist (ab S3).** Drei
-  Regeln:
+
+> Jede Regel steht mit dem einen Grund da, der sie trägt – wer sie ändern will, muss diesen
+> Grund entkräften. Die Vorfälle, aus denen sie entstanden sind, stehen in
+> `CONTEXT_HANDOFF_SERVER.md` und in den archivierten Fassungen.
+
+- **Schichtung:** Controller → Service → Repository. JPA-Entities und `domain`-Wertobjekte
+  verlassen die API-Grenze nie; nach aussen ausschliesslich DTOs.
+- **Authentifizierung als Querschnitt:** Session-Token in einer Spring-Security-Filterchain vor
+  dem Controller, Deny-by-default, keine Tokenprüfung in einzelnen Endpunkten. Eine Session in
+  `PIN_VERIFIED` darf nur die Namensliste lesen und eine Identität wählen (Namensauswahl,
+  Gast-Login, Admin-Login, Passwort-Reset). **`SecurityAutoConfiguration` wird nie
+  abgeschaltet** – das entfernte genau die Deny-by-default-Haltung. Ausgenommen ist allein
+  `UserDetailsServiceAutoConfiguration`.
+  - **Die Log-Zeile „Using generated security password" ist kein Indikator** – weder dafür noch
+    dagegen, dass die Filterchain greift. Sie stammt aus `UserDetailsServiceAutoConfiguration`,
+    der eine eigene `SecurityFilterChain` nicht genügt.
+  - **Geprüft wird am Verhalten:** Aufruf ohne Cookie → `401` mit `application/problem+json` und
+    dem Feld `code` (das kann nur aus dem eigenen `AuthorizationExceptionHandler` stammen);
+    `/actuator/health` ohne Cookie → `200`.
+  - **`/actuator/health` bleibt `permitAll`.** Mit `401` bliebe der Container dauerhaft
+    `unhealthy` und `depends_on: condition: service_healthy` nie erfüllt. Nach aussen schottet
+    nginx ab, nicht die Anwendung.
+- **Das Adminprofil ist ein technisches Konto** (22.08.2026). Es erfüllt die
+  Fremdschlüsselpflicht von `admin_konto.spieler_id` und sonst nichts: nicht in der
+  Namensliste, über die Namensauswahl auch mit bekannter Id nicht wählbar, nie in einem Team.
+  Skillwerte 0 – **kein Ersatz für den Ausschluss**, sondern nur seine Absicherung.
+  - **Jede Abfrage, die Mitspieler aufzählt** (Namensliste, Teilnehmerliste, Datengrundlage des
+    Teamgenerators), filtert `rolle <> 'ADMIN'`. **Die Verwaltungsübersicht nicht** – sie zählt
+    den Datenbestand auf, nicht Mitspieler, und weist die Rolle im DTO aus (29.08.2026).
+  - **Der Ausschluss wird an jeder Grenze wiederholt.** Ein Endpunkt, der eine Id entgegennimmt,
+    prüft dieselbe Bedingung erneut wie die Liste, aus der sie stammt – sonst käme daran vorbei,
+    wer die Id kennt, und beim Adminprofil hinge `ROLE_ADMIN` ohne Passwort daran.
+  - **Schreibend ist es in jedem Fall geschützt** (`409 PROFIL_GESCHUETZT`): entfernen,
+    blockieren, bearbeiten. Umbenannt wird es allein über `/admin/name/aendern`.
+- **Der Admin meldet sich mit Anmeldename und Passwort an** (`POST /auth/admin/anmelden` gegen
+  `admin_konto.passwort_hash`, ausschliesslich in `PIN_VERIFIED`). Die zentrale PIN bleibt Pflicht: Sie grenzt den Kreis der
+  Zugreifenden ein (A1), die Anmeldedaten die Rechte darin. Der Brute-Force-Zähler ist derselbe
+  wie am PIN-Endpunkt – derselbe Absender greift dieselbe Anwendung an.
+  - **Der Anmeldename ist der Profilname des Adminprofils**, keine eigene Spalte (29.08.2026).
+    Folge: Eine Umbenennung ändert den Anmeldenamen, und `ADMIN_NAME` in der `.env` ist danach
+    veraltet.
+  - **Verglichen wird zeichengenau**, Gross-/Kleinschreibung eingeschlossen. **Das trägt nur
+    zusammen mit der Zusicherung des Bootstraps:** `AdminBootstrap` sucht mit `findByName` und
+    bricht ab (`pruefeSchreibweise`), wenn ein Profil allein in der Schreibweise abweicht – sonst sperrte sich der
+    Admin mit dem eigenen `ADMIN_NAME` aus, und dafür gibt es keinen Selbstbedienungsweg (der
+    Reset holt das Passwort zurück, nie den Namen). Randleerzeichen entfernt das **DTO**.
+  - **Falscher Name und falsches Passwort sind nach aussen nicht unterscheidbar** – derselbe
+    Fehlercode (`ADMIN_PASSWORT_FALSCH`), derselbe Anzeigetext. Sonst wäre der Name über die Fehlermeldung erratbar.
+  - **Der BCrypt-Vergleich läuft auch bei falschem Namen** (`&`, nie `&&`). Ein vorzeitiges
+    Verlassen machte den Endpunkt zum Zeitorakel über den Namen.
+  - **Der eingegebene Name gehört nicht ins Audit-Log** – ein Protokoll geratener Eingaben
+    sammelt fremde Daten ohne Nutzen.
+- **Skill-Geheimhaltung (A12):** Skillwerte erscheinen ausschliesslich in Antworten unterhalb von
+  `/api/*/admin/**`. Der Prüfpunkt ist seit S3 nicht mehr „kommen Skillwerte vor", sondern
+  „kommen sie ausserhalb von `/admin/` vor". Der Schutz hängt am Pfad; dass die Skill-DTOs nur
+  dort auftauchen, bleibt trotzdem eine Regel, die beim Lesen auffallen soll. Der Teamgenerator
+  liegt serverseitig.
+- **Zwischenspeicher werden beim Schreiben verworfen, nie über eine Frist** (ab S3):
   1. **Jeder schreibende Vorgang verwirft**, ausnahmslos. Eine vergessene Stelle liefert
-     unbegrenzt lange veraltete Daten – es gibt keine Frist, die den Fehler von selbst heilte.
-  2. **Der `CacheManager` entsteht als eigene Bean mit fester Namensliste**, nie über die
-     Autokonfiguration. Diese legt jeden angefragten Namen stillschweigend an; ein Tippfehler
-     in einem `@CacheEvict` träfe dann einen leeren, neuen Speicher statt des gemeinten.
-     Dieselbe Überlegung wie bei `MailConfig`.
-  3. **`@Cacheable` gehört in eine eigene Bean**, nicht an eine Methode, die der aufrufende
-     Service selbst aufruft: Ein Aufruf innerhalb derselben Klasse läuft am Proxy vorbei, und
-     der Speicher bleibt wirkungslos – ohne Fehlermeldung.
-- **Das Adminprofil ist in jedem schreibenden Zugriff geschützt, im lesenden nicht
-  (präzisiert 29.08.2026, S3).** `entfernen`, `blockieren` und `bearbeiten` lehnen es mit
-  `409 PROFIL_GESCHUETZT` ab; umbenannt wird es ausschliesslich über
-  `POST /api/{version}/admin/name/aendern`, weil sein Name zugleich der Anmeldename ist.
-  **Die Verwaltungsübersicht enthält es dagegen**, erkennbar am Feld `rolle`: Die Regel
-  „jede Abfrage, die Mitspieler aufzählt, filtert `rolle <> 'ADMIN'`" gilt Mitspielern, und
-  eine Profilverwaltung zählt den Datenbestand auf. Ohne die Zeile sähe der Admin 30 Profile,
-  während die Datenbank 31 enthält, und die Differenz wäre nirgends erklärt.
-- **Eine Skilländerung ist eine Teilnehmeränderung (A15) – Pflichtpunkt für S4.** Ändert der
-  Admin einen Skillwert, ist jede erzeugte Teameinteilung für einen künftigen Termin mit
-  diesem Spieler veraltet; einziger zulässiger Auslöser ist das Hochzählen von
-  `spieltag.termin.teilnehmer_version`. In S3 ist das nicht umsetzbar (`spieltag` hat weder
-  Service noch Entity) und darf trotzdem nicht vergessen werden.
-- **Skill-Geheimhaltung:** DTOs für USER/GAST enthalten keine Skillwerte. Der Teamgenerator liegt
-  serverseitig; die Skillwerte verlassen den Server nicht. Admin-DTOs dürfen Skills enthalten.
-- **Brute-Force-Schutz** am PIN-Endpunkt; echte Client-IP aus `X-Forwarded-For`, daher
-  `server.forward-headers-strategy=NATIVE`.
-- **Teilnehmer-Version:** je Termin ein Zähler, der bei jeder Teilnehmeränderung transaktional steigt;
-  einziger Auslöser für die Kontingent-Rücksetzung und Kennzeichen veralteter Einteilungen.
+     unbegrenzt lange veraltete Daten – keine Frist heilt das von selbst.
+  2. **Der `CacheManager` entsteht als eigene Bean mit fester Namensliste.** Die
+     Autokonfiguration legt jeden angefragten Namen still an; ein Tippfehler im `@CacheEvict`
+     träfe dann einen leeren, neuen Speicher.
+  3. **`@Cacheable` gehört in eine eigene Bean**, nie an eine Methode, die der aufrufende
+     Service selbst aufruft: Der Aufruf liefe am Proxy vorbei, wirkungslos und ohne Meldung.
+  4. **Abgeleitete Live-Werte gehören nicht hinein** – allen voran der Belegtstatus. Er wird aus
+     den aktiven Sitzungen abgeleitet und nicht gespeichert (A6), *damit er nicht veralten kann*;
+     jede Anmeldung und jeder Logout ändert ihn, ohne dass ein Profil angefasst wird. Wo eine
+     Abfrage beides liefern soll, wird sie geteilt.
+- **Teilnehmer-Version:** je Termin ein Zähler, der bei jeder Teilnehmeränderung transaktional
+  steigt; einziger Auslöser für die Kontingent-Rücksetzung und das Veraltet-Kennzeichen.
+  **Eine Skilländerung zählt dazu (A15) – Pflichtpunkt für S4**, in S3 mangels `spieltag`-Service
+  nicht umsetzbar und deshalb ausdrücklich vermerkt.
 - **Teamzuteilung als Snapshot:** jeder Lauf speichert die gültigen Skillwerte und seinen Seed.
-- **Gast-Slots (präzisiert 22.08.2026):** feste Datensätze, Belegung per bedingtem UPDATE (keine
-  gezählte Abfrage). Die Admin-Konfiguration `configs.app_config.anz_guests` wirkt über
-  `id <= :maxGaeste`, nicht über die Zahl der Zeilen – eine Änderung ist damit sofort wirksam, ohne
-  Datensätze anzulegen oder zu löschen. **`fk_gast_slot_session` hat kein `ON DELETE`:** Jeder
-  Vorgang, der Sitzungen löscht, muss vorher die zugehörigen Plätze freigeben, sonst scheitert er an
-  einer Fremdschlüsselverletzung und bricht vollständig ab. Freigabe und Widerruf einer Sitzung
-  gehören in dieselbe Transaktion.
-- **Audit-Log (verbindlich ab S2, entschieden 16.08.2026):**
-  1. **Ausbreitung immer `REQUIRED`, nie `REQUIRES_NEW`.** Ein Protokolleintrag belegt eine
-     *vollzogene* Änderung. Scheitert die Änderung, wird der Eintrag mit ihr zurückgerollt –
-     ein Protokoll, das eine nie erfolgte Änderung behauptet, ist schlechter als eine Lücke.
-     **Präzisierung (23.08.2026):** Die Regel gilt dem *Audit-Log*, nicht Zählern. Ein Zähler
-     belegt nichts, er misst einen Versuch – und der hat stattgefunden, auch wenn die Anfrage
-     abgelehnt wird. `PasswortResetRepository#versuchZaehlen` ist die **einzige** Stelle mit
-     `REQUIRES_NEW`; jede weitere braucht eine ebenso ausdrückliche Begründung. Soll ein
-     Protokolleintrag eine abgelehnte Anfrage überleben, gehört er stattdessen dorthin, wo
-     keine Transaktion läuft: in den Controller, wie beim PIN- und beim Admin-Login.
-  2. **Ausnahmen aus dem Schreibvorgang werden nicht verschluckt.** Innerhalb einer gemeinsamen
-     Transaktion wäre das wirkungslos: Ein fehlgeschlagenes `INSERT` markiert die Transaktion
-     bereits als „rollback-only"; das Abfangen verschöbe den Fehler nur bis zum Commit und
-     ersetzte die Ursache durch eine `UnexpectedRollbackException`.
-  3. **Löschfrist 90 Tage**, konfigurierbar über `fubo.audit.aufbewahrung-tage`, umgesetzt als
-     geplanter Auftrag. Grund ist der Personenbezug (bei PIN-Fehlversuchen steht die Client-IP
-     im Eintrag) – nach der DSGVO gilt Speicherbegrenzung. Die Frist ist eine Betriebs- und
-     Rechtsgröße und gehört deshalb in die Property-Konfiguration, **nicht** in
-     `configs.app_config`: Ein Admin soll die Nachvollziehbarkeit seiner eigenen Änderungen
-     nicht per Formular verkürzen können.
-  4. **Der Aufräumlauf selbst wird nicht ins Audit-Log geschrieben** – das wäre zirkulär und
-     würde die Tabelle genau um das füllen, was sie leeren soll.
-- **Start-Bootstrap (verbindlich ab S2, entschieden 22.08.2026):** Zentrale PIN und Admin-Konto
-  entstehen beim Start über `ApplicationRunner`, nie über eine Flyway-Migration – ein BCrypt-Hash in
-  einer Migration wäre ein Geheimnis in der unveränderlichen Git-Historie. Drei Regeln:
-  1. **Beide Runner sind idempotent.** Existiert der Datensatz, passiert nichts; ein geändertes
-     Passwort wird nie auf den Wert aus der Umgebung zurückgesetzt. Nur so dürfen `FUBO_INITIAL_PIN`
-     und `ADMIN_PASSWORD` nach dem ersten Start aus der Umgebung verschwinden.
-  2. **Unvollständige Admin-Angaben führen zum Startabbruch**, nicht zu einer Notlösung. Ein
-     willkürlich gewählter Admin wäre ein stilles Sicherheitsproblem, und für das Adminpasswort gibt
-     es mit dem Reset per E-Mail (S2b) einen zweiten Weg, der genau die Adresse braucht, die dann
-     ebenfalls fehlen könnte. Die Meldung nennt alle fehlenden Werte auf einmal. Für die zentrale PIN
-     gilt das bewusst **nicht**: Dort wird eine Zufalls-PIN erzeugt und einmalig protokolliert.
-  3. **Was der Bootstrap braucht, legt er an** (ergänzt 22.08.2026). Fehlt das Profil zu
-     `ADMIN_NAME`, wird es erzeugt – der Abbruch gilt der fehlenden *Angabe*, nicht der fehlenden
-     *Zeile*. Sonst wäre der Erststart auf einer leeren Datenbank ein Zweischritt, und die
-     Datenbank müsste vorbereitet sein, bevor die Anwendung sie überhaupt anlegen konnte. Der
-     Preis – ein Tippfehler legt ein überflüssiges Profil an – wird durch eine Logmeldung
-     aufgefangen, die „übernommen" und „neu angelegt" unterscheidet. Jede Prüfung, die einen
-     Abbruch auslösen kann, läuft **vor** der ersten Änderung; andernfalls bliebe bei jedem
-     fehlgeschlagenen Start ein Rest zurück, der den nächsten Versuch behindert.
+- **Gast-Slots:** feste Datensätze, Belegung per bedingtem `UPDATE` (keine gezählte Abfrage);
+  `configs.app_config.anz_guests` wirkt über `id <= :maxGaeste`, eine Änderung also sofort.
+  **`fk_gast_slot_session` hat kein `ON DELETE`:** Wer Sitzungen löscht, gibt vorher die Plätze
+  frei – in derselben Transaktion, sonst scheitert der ganze Vorgang an der
+  Fremdschlüsselverletzung.
+- **Audit-Log** (ab S2):
+  1. **Ausbreitung immer `REQUIRED`, nie `REQUIRES_NEW`.** Ein Eintrag belegt eine *vollzogene*
+     Änderung; scheitert sie, verschwindet er mit ihr. **Zähler sind etwas anderes** – sie messen
+     einen Versuch, der stattgefunden hat: `PasswortResetRepository#versuchZaehlen` ist die
+     einzige Stelle mit `REQUIRES_NEW`. Soll ein Eintrag eine Ablehnung überleben, gehört er in
+     den Controller, wo keine Transaktion läuft.
+  2. **Ausnahmen aus dem Schreibvorgang werden nicht verschluckt** – das Abfangen verschöbe den
+     Fehler nur bis zum Commit und ersetzte die Ursache durch eine `UnexpectedRollbackException`.
+  3. **Löschfrist 90 Tage** über `fubo.audit.aufbewahrung-tage`, als geplanter Auftrag. Grund ist
+     der Personenbezug (Client-IP). Die Frist gehört in die Property-Konfiguration, **nicht** in
+     `configs.app_config`: Ein Admin soll die Nachvollziehbarkeit seiner eigenen Änderungen nicht
+     per Formular verkürzen können.
+  4. **Der Aufräumlauf schreibt sich nicht selbst ins Log** – das wäre zirkulär.
+  5. **`details` verträgt geschachtelte Karten** (29.08.2026). Der Serialisierer ist
+     handgeschrieben; andere zusammengesetzte Typen landen weiterhin in ihrer `toString`-Form.
+     Wer einen neuen übergibt, ergänzt dort einen Zweig – **bewusst ohne Ausnahme für unbekannte
+     Typen**, die risse die umgebende Transaktion mit sich.
+- **Start-Bootstrap** (ab S2): Zentrale PIN und Admin-Konto entstehen über `ApplicationRunner`,
+  nie über eine Flyway-Migration – ein BCrypt-Hash in einer Migration wäre ein Geheimnis in der
+  unveränderlichen Git-Historie.
+  1. **Beide Runner sind idempotent.** Ein geändertes Passwort wird nie auf den Umgebungswert
+     zurückgesetzt; nur so dürfen `FUBO_INITIAL_PIN` und `ADMIN_PASSWORD` danach verschwinden.
+  2. **Unvollständige `ADMIN_*`-Angaben brechen den Start ab**, mit allen fehlenden Werten in
+     einer Meldung. Ein willkürlich gewählter Admin wäre ein stilles Sicherheitsproblem. Für die
+     zentrale PIN gilt das **nicht** – dort entsteht eine Zufalls-PIN und wird einmalig
+     protokolliert.
+  3. **Was der Bootstrap braucht, legt er an.** Der Abbruch gilt der fehlenden *Angabe*, nicht
+     der fehlenden *Zeile* – sonst wäre der Erststart auf leerer Datenbank ein Zweischritt.
+     **Jede Prüfung, die abbrechen kann, läuft vor der ersten Änderung**, sonst behindert ein
+     Rest den nächsten Versuch.
   4. **Folge für Tests:** Ohne `ADMIN_NAME`, `ADMIN_EMAIL` und `ADMIN_PASSWORD` startet kein
-     Anwendungskontext. Die Werte gehören in `src/test/resources/application.yml`, und das gewählte
-     Adminprofil darf mit keiner Testerwartung kollidieren.
-- **Zugangsdatenpflege (verbindlich ab S2b, 23.08.2026).** Drei Regeln:
-  1. **Der Passwort-Reset liegt unter `/api/{version}/auth/passwort/…`, nicht unter `/admin/…`.**
-     `/api/*/admin/**` setzt `ROLE_ADMIN` voraus – wer sein Passwort vergessen hat, trägt sie
-     gerade nicht. Der Reset ist eine *Anmeldeangelegenheit* und ausschliesslich in der Stufe
-     `PIN_VERIFIED` erreichbar, wie Namensauswahl, Gast-Login und Admin-Login. Er liegt bewusst
-     **hinter** der zentralen PIN: Er verschickt E-Mails, und die PIN ist der äussere Zaun aus A1.
-     Preis: Wer Passwort *und* PIN vergisst, braucht die Datenbank – das gehört in die
-     Betriebsdokumentation, nicht in die Anwendung.
+     Kontext. Die Werte stehen in `src/test/resources/application.yml`, das gewählte Adminprofil
+     kollidiert mit keiner Testerwartung.
+- **Zugangsdatenpflege** (ab S2b):
+  1. **Der Passwort-Reset liegt unter `/auth/passwort/…`, nicht unter `/admin/…`** – wer sein
+     Passwort vergessen hat, trägt `ROLE_ADMIN` gerade nicht. Er ist eine Anmeldeangelegenheit,
+     erreichbar nur in `PIN_VERIFIED`, und liegt trotzdem hinter der zentralen PIN, weil er
+     E-Mails verschickt. Preis: Wer Passwort *und* PIN vergisst, braucht die Datenbank.
   2. **Der Umfang des Sitzungswiderrufs richtet sich nach der Reichweite des Geheimnisses.**
-     Passwort-Reset und Passwortänderung widerrufen nur die Sitzungen des Adminprofils; der
-     Wechsel der *zentralen* PIN widerruft ausnahmslos alle und gibt dabei die Gastplätze frei –
-     sonst blieben Nutzer angemeldet, die nur die alte PIN kannten.
+     Passwortwechsel widerrufen die Adminsitzungen; der Wechsel der *zentralen* PIN widerruft
+     ausnahmslos alle und gibt die Gastplätze frei. **Die Änderung des Anmeldenamens widerruft
+     nichts** (29.08.2026) – der Name verschafft allein keinen Zugang, und ein Widerruf würfe den
+     Admin aus seiner eigenen Sitzung.
   3. **Die Bestätigungs-PIN trägt nur, solange alle Grenzen zusammen gelten:** fünf Versuche je
-     Vorgang, 15 Minuten Gültigkeit, drei Anforderungen je Stunde und Adresse, BCrypt statt
-     Klartext, der Endpunkt hinter der zentralen PIN und der zusätzliche Brute-Force-Zähler.
-     Fünf Stellen sind 100 000 Möglichkeiten – für sich zu wenig. **Keine dieser Grenzen darf
-     entfallen.** `fubo.reset.max-versuche` ist zusätzlich an `ck_passwort_reset_versuche`
-     gebunden und darf 5 nicht überschreiten.
-  4. **Die zentrale PIN besteht aus genau vier Ziffern** (Festlegung vom 23.08.2026). Sie wird
-     mündlich oder über einen Aushang weitergegeben und auf Zifferntastaturen eingegeben; die feste
-     Länge erlaubt dem Frontend ein Eingabefeld mit vier Kästchen. `PinBootstrap` erzeugt seine
-     Ersatz-PIN im selben Format. **Daran hängt eine Bedingung:** 10 000 Möglichkeiten tragen
-     ausschliesslich zusammen mit dem `BruteForceService` – fünf Fehlversuche je Adresse, 30
-     insgesamt, steigende Sperrdauern. **Diese Grenzen dürfen nicht gelockert werden, solange die
-     PIN vierstellig ist.** Das Format gilt dem *Setzen* über `/admin/pin/aendern`;
-     `/auth/pin/pruefen` schreibt der Eingabe weiterhin kein Format vor, damit ein abweichender
-     Bestandswert aus `FUBO_INITIAL_PIN` eingebbar bleibt.
-- **Spielerverwaltung durch den Admin (verbindlich ab S2b, 23.08.2026).** Vier Regeln:
-  1. **Ein neues Profil bekommt vollständige Skillwerte, nie Nullen.** Fehlen Angaben ganz oder
-     teilweise, gelten die Vorgaben der Stufe `MITTEL` aus `profil.gast_vorlage`. Nullen sind dem
-     Adminprofil vorbehalten – das ist ein technisches Konto und wird nie eingeteilt; ein
-     Spielerprofil mit lauter Nullen bekäme dagegen ein Team ohne jede Stärke, ohne dass jemand
-     den Grund sähe.
+     Vorgang, 15 Minuten, drei Anforderungen je Stunde und Adresse, BCrypt, der Endpunkt hinter
+     der zentralen PIN, der Brute-Force-Zähler. **Keine darf entfallen.**
+     `fubo.reset.max-versuche` ist an `ck_passwort_reset_versuche` gebunden und darf 5 nicht
+     überschreiten.
+  4. **Die zentrale PIN besteht aus genau vier Ziffern.** 10 000 Möglichkeiten tragen nur
+     zusammen mit dem `BruteForceService` – fünf Fehlversuche je Adresse, 30 insgesamt, steigende
+     Sperrdauern. **Diese Grenzen dürfen nicht gelockert werden, solange die PIN vierstellig
+     ist.** Das Format gilt dem *Setzen*; `/auth/pin/pruefen` schreibt keines vor, damit ein
+     abweichender Bestandswert eingebbar bleibt.
+- **Spielerverwaltung durch den Admin** (ab S2b):
+  1. **Ein neues Profil bekommt vollständige Skillwerte, nie Nullen** – die Vorgaben der Stufe
+     `MITTEL` aus `profil.gast_vorlage`. Nullen sind dem Adminprofil vorbehalten, das nie
+     eingeteilt wird; ein Spielerprofil mit lauter Nullen bekäme ein Team ohne jede Stärke.
   2. **Skillwerte werden gegen `profil.skill_kategorie` geprüft, bevor sie geschrieben werden.**
      Der Trigger `pruefe_skill_wertebereich` bleibt die letzte Instanz, brächte aber einen `500`
-     statt einer Meldung, die Kategorie und Wertebereich nennt. Die Kategorien kommen aus der
-     Datenbank, nie aus einer Liste im Code – auch der Torwart-Bereich (0 bis 3) ist kein
-     Sonderfall im Code.
-  3. **Löschen nur, solange nichts darauf verweist.** Offene Sitzungen räumt der Vorgang selbst ab
-     – sie sind flüchtig und gehören der Anwendung. Belege (Teilnahmen, Terminserien,
-     Generierungsläufe, Kontingente, Ergebnisse, Audit-Log) verhindern das Löschen und führen zu
-     `409 PROFIL_IN_VERWENDUNG`; dann ist Sperren der richtige Weg. Ein Beleg darf nicht
-     verschwinden, weil jemand ein Profil aufräumt.
-  4. **Sperren widerruft die Sitzungen des Profils sofort**, und **das Adminprofil ist gegen
-     Löschen wie Sperren geschützt** (`409 PROFIL_GESCHUETZT`) – sonst spärrte sich der Admin mit
-     einem einzigen Aufruf selbst aus. Geprüft wird über die Rolle, nicht über die Id.
-- **Externe Zugänge werden über `fubo.*` gebunden und beim Start geprüft (ab S2b).** Der SMTP-Zugang
-  steht unter `fubo.mail.*`, und die `JavaMailSender`-Bean entsteht in `common/config/MailConfig`.
+     statt einer Meldung mit Kategorie und Bereich. **Die Kategorien kommen aus der Datenbank, nie aus einer Liste im
+     Code** – auch der Torwart-Bereich ist kein Sonderfall.
+  3. **Löschen nur, solange nichts darauf verweist.** Offene Sitzungen räumt der Vorgang selbst
+     ab; Belege führen zu `409 PROFIL_IN_VERWENDUNG` – dann ist Sperren der richtige Weg.
+  4. **Sperren widerruft die Sitzungen des Profils sofort.** Geprüft wird über die Rolle, nicht
+     über die Id.
+  5. **Bearbeiten ist feldweise: Weglassen heisst „nicht ändern"** (ab S3). Eine leere Skillkarte
+     löscht nichts – der Teamgenerator braucht vollständige Werte. Ein Aufruf ohne jede Angabe
+     wird abgelehnt; er täte nichts, hinterliesse aber einen Protokolleintrag. Der **eigene**
+     Name zählt nicht als Namenskollision, sonst scheiterte jede Korrektur der Schreibweise.
+- **Externe Zugänge werden über `fubo.*` gebunden und beim Start geprüft** (ab S2b). Der
+  SMTP-Zugang steht unter `fubo.mail.*`, die `JavaMailSender`-Bean entsteht in `MailConfig`.
   Grund: Spring Boots `Binder` reicht einen unauflösbaren Platzhalter **wörtlich** durch – über
-  `spring.mail.host` liefe die Anwendung mit dem Rechnernamen `"${SMTP_HOST}"` durch und der Fehler
-  zeigte sich erst im Ernstfall. Wo ein fehlender Wert den Betrieb still beschädigt, prüft eine
-  eigene Bean die Werte und bricht mit einer Meldung ab, die die Umgebungsvariable benennt.
-- **Ergänzend:** zentrale Fehlerbehandlung (`@RestControllerAdvice`) mit einheitlichem Fehler-JSON,
-  Bean Validation, CORS-Allowlist mit `allowCredentials`, Actuator-Health-Endpunkt, Flyway-Migrationen,
-  Audit-Log für Adminaktionen und Generierungsläufe.
+  `spring.mail.host` liefe die Anwendung mit dem Rechnernamen `"${SMTP_HOST}"`. **Wo ein falscher
+  Wert den Betrieb erst spät beschädigt, prüft die eigene Bean und bricht mit einer Meldung ab,
+  die die Umgebungsvariable benennt** – seit dem 29.08.2026 auch das Absenderformat, weil ein
+  syntaktisch falscher Absender sich erst beim ersten echten Versand zeigt.
+  **In der `.env` nie Anführungszeichen:** Sie wird als Java-Properties-Datei gelesen und
+  übernimmt sie wörtlich in den Wert.
+- **Brute-Force-Schutz** am PIN-Endpunkt; echte Client-IP aus `X-Forwarded-For`, daher
+  `server.forward-headers-strategy=NATIVE`.
+- **Ergänzend:** zentrale Fehlerbehandlung (`@RestControllerAdvice`) mit einheitlichem
+  Fehler-JSON, Bean Validation, CORS-Allowlist mit `allowCredentials`, Actuator-Health-Endpunkt,
+  Flyway-Migrationen, Audit-Log für Adminaktionen und Generierungsläufe.
 
 ### Teamgenerator (verbindlich)
 Zielfunktion für beide Verfahren identisch:
@@ -314,71 +254,52 @@ Da deterministisch, wählt der `seed` die A/B-Zuordnung und – bei Gleichstand 
 `O(Iterationen · n²)`; liefert je Seed eine andere, nah-optimale Lösung (erfüllt A15 direkt).
 
 ### Schnittstelle zum Frontend (Vertrag)
-- **Der Kontrakt ist eine Datei, kein Abschnitt (verbindlich ab 22.08.2026):**
-  `server/fubo-api.json` – OpenAPI 3.1 in JSON, auf der Wurzel des Server-Repositories und damit
-  mitversioniert. Sie ist bei Abweichungen massgeblich. Ablageort und Format sind eine Festlegung des
-  Haupt-Entwicklers; die Begründung steht in `CONTEXT_HANDOFF_SERVER.md`, Abschnitt 4. Zwei Regeln:
-  1. **Vertragsänderungen zuerst dort abbilden**, dann im Code, dann in den Anleitungen. Server und
-     Client liegen in getrennten Repositories, ein gemeinsamer Commit ist unmöglich – die Datei ist
-     der einzige Übergabepunkt.
-  2. **Nur beschreiben, was umgesetzt ist.** Spekulative Endpunkte wären ein Vertrag über etwas, das
-     es nicht gibt; der Client-Track entwickelte dagegen. S3 bis S6 tragen ihre Endpunkte jeweils bei
-     Fertigstellung nach.
-- **Hintergrundaufrufe verlängern die Sitzung nicht (verbindlich ab 22.08.2026):** Ein Aufruf mit dem
-  Anfrageheader `X-FuBo-Kein-Refresh: true` läuft über einen rein lesenden Prüfpfad – weder wandert
-  `gueltig_bis` nach hinten noch wird `letzte_aktivitaet_am` fortgeschrieben. Damit misst das
-  Leerlauf-Fenster die Untätigkeit des Nutzers und nicht die eines offenen Browser-Tabs, der pollt.
-  Drei Punkte dazu: Nur der Wert `true` zählt (ein Tippfehler führt zum bisherigen Verhalten, nicht
-  zu unerwartet ablaufenden Sitzungen); der Header ist eine Bitte und **kein Sicherheitsmerkmal** –
-  Missbrauch verkürzt nur die eigene Sitzung; und **jeder eigene Anfrageheader muss in
-  `allowedHeaders` der CORS-Konfiguration stehen**, sonst lehnt der Browser bereits den Preflight ab.
-- **Zeitangaben an den Client gehören maschinenlesbar in Header oder Felder, nie nur in den
-  Meldungstext.** `detail` ist Anzeigetext und darf sich ohne Vertragsänderung ändern; Programmlogik
-  stützt sich ausschliesslich auf `code`, den Statuscode und eigene Felder. Umgesetzt beim `429` des
-  PIN-Endpunkts: `Retry-After` (RFC 9110) **und** das Feld `wartesekunden`. Antwortheader, auf die
-  sich das Frontend stützen soll, gehören zusätzlich in `exposedHeaders` – bei einer
-  Cross-Origin-Antwort sind sie sonst unsichtbar.
-- **Das einheitliche Fehlerformat gilt ausnahmslos**, auch für einen unlesbaren Anfragekörper.
-  `handleHttpMessageNotReadable` ist deshalb überschrieben: Die Basisklasse liefert zwar `400`, aber
-  ohne das Feld `code` – das Frontend hätte zwei Formate zu unterscheiden. Die Meldung der
-  Serialisierungsbibliothek nennt Klassennamen und Feldpfade und geht ins Log, nicht in die Antwort.
-- **Versionierung (verbindlich ab S2):** Jeder Endpunkt liegt unter
-  `/api/{version}/<bereich>/<ressource>/<aktion>`, zum Beispiel
-  `GET /api/v1/auth/users/lesen`. Umgesetzt mit der Bordausstattung von Spring Framework 7
-  (`ApiVersionConfigurer#usePathSegment`, `@RequestMapping(version = …)`), nicht mit einem
-  eigenen Mechanismus. Drei Regeln dazu:
-  1. **Die Version steht als Präfix an Segment-Index 1**, nie als Suffix. Der Index gilt global;
-     bei einem Suffix wanderte er mit der Pfadtiefe und träfe tiefere Pfade nicht mehr.
-  2. **Die Versionierung gilt nur unterhalb von `/api/`.** `usePathSegment` bekommt dazu ein
-     `Predicate<RequestPath>`. Ohne das würde der Resolver auch bei `/actuator/health` ein
-     Versionssegment erwarten und den Container-Healthcheck mit `400` beantworten.
-  3. **Jede Controller-Methode trägt ein `version`-Attribut.** Eine Methode ohne das Attribut
-     bedient jede Version – das ist für einen versionierten Endpunkt nie gewollt.
-  Die Aktion steht zusätzlich als eigenes Pfadsegment (`/lesen`, `/waehlen`, `/pruefen`,
-  `/anmelden`), damit jede Operation einen eigenen, unabhängig versionierbaren Pfad hat.
-  Regeln der Filterchain verwenden für das Versionssegment ein Sternchen
-  (`/api/*/auth/users/lesen`): Welche Versionen es gibt, entscheidet die Versionskonfiguration,
-  nicht die Autorisierung.
-- **Transport:** REST/JSON über HTTPS. Getrennte Origins (`app.<domain>` Frontend, `api.<domain>`
-  Backend); CORS-Allowlist mit `allowCredentials=true`. Cookies werden vom Browser automatisch gesendet.
-- **Auth:** opakes Session-Cookie (HttpOnly). Das Frontend liest den Token nie; es ruft mit
-  `credentials: 'include'` auf. Antworten `401` bei ungültiger/abgelaufener Session, `403` bei fehlender
-  Rolle/Stage.
+
+- **Der Kontrakt ist eine Datei, kein Abschnitt:** `server/fubo-api.json`, OpenAPI 3.1, auf der
+  Repo-Wurzel und damit mitversioniert. Bei Abweichungen ist sie massgeblich. Zwei Regeln:
+  1. **Vertragsänderungen zuerst dort abbilden**, dann im Code, dann in den Anleitungen – auch in
+     der Commit-Reihenfolge. Server und Client liegen in getrennten Repositories, ein gemeinsamer
+     Commit ist unmöglich; die Datei ist der einzige Übergabepunkt.
+  2. **Nur beschreiben, was umgesetzt ist.** Spekulative Endpunkte wären ein Vertrag über etwas,
+     das es nicht gibt; jeder Meilenstein trägt seine bei Fertigstellung nach.
+- **Versionierung:** `/api/{version}/<bereich>/<ressource>/<aktion>`, umgesetzt mit der
+  Bordausstattung von Spring Framework 7 (`ApiVersionConfigurer#usePathSegment`), nicht mit einem
+  eigenen Mechanismus. Drei Regeln:
+  1. **Die Version steht als Präfix an Segment-Index 1**, nie als Suffix – der Index gilt global
+     und wanderte sonst mit der Pfadtiefe.
+  2. **Nur unterhalb von `/api/`** (`Predicate<RequestPath>`). Ohne das erwartete der Resolver
+     auch bei `/actuator/health` ein Versionssegment und beantwortete den Healthcheck mit `400`.
+  3. **Jede Controller-Methode trägt ein `version`-Attribut.** Ohne bediente sie jede Version.
+  Die Aktion ist ein eigenes Pfadsegment, damit jede Operation unabhängig versionierbar bleibt.
+  **Regeln der Filterchain verwenden dort ein Sternchen** (`/api/*/auth/users/lesen`): Welche
+  Versionen es gibt, entscheidet die Versionskonfiguration, nicht die Autorisierung.
+- **Transport und Auth:** REST/JSON über HTTPS, getrennte Origins (`app.<domain>` /
+  `api.<domain>`), CORS-Allowlist mit `allowCredentials=true`. Opakes Session-Cookie (HttpOnly);
+  das Frontend liest den Token nie und ruft mit `credentials: 'include'` auf. `401` bei
+  ungültiger Sitzung, `403` bei fehlender Rolle oder Stufe.
+- **Das einheitliche Fehlerformat gilt ausnahmslos**, auch für einen unlesbaren Anfragekörper
+  (`handleHttpMessageNotReadable` ist überschrieben – die Basisklasse liefert `400` ohne das Feld
+  `code`, und das Frontend hätte zwei Formate zu unterscheiden). Die Meldung der
+  Serialisierungsbibliothek geht ins Log, nicht in die Antwort.
+- **Maschinenlesbares gehört in Header oder Felder, nie nur in den Meldungstext.** `detail` ist
+  Anzeigetext und darf sich ohne Vertragsänderung ändern; Programmlogik stützt sich auf `code`,
+  Statuscode und eigene Felder. Umgesetzt beim `429`: `Retry-After` **und** `wartesekunden`.
+  **Antwortheader, auf die sich das Frontend stützt, gehören in `exposedHeaders`**, eigene
+  Anfragheader in `allowedHeaders` – sonst scheitert schon der Preflight.
+- **Hintergrundaufrufe verlängern die Sitzung nicht:** `X-FuBo-Kein-Refresh: true` schaltet auf
+  einen rein lesenden Prüfpfad, damit das Leerlauf-Fenster die Untätigkeit des Nutzers misst und
+  nicht die eines pollenden Browser-Tabs. Nur der Wert `true` zählt (ein Tippfehler führt zum
+  bisherigen Verhalten, nicht zu unerwartet ablaufenden Sitzungen), und der Header ist eine Bitte,
+  **kein Sicherheitsmerkmal** – Missbrauch verkürzt nur die eigene Sitzung.
+- **Sitzungsverwaltung ist ab `PIN_VERIFIED` erreichbar**, nicht erst ab `PROFILE_AUTHENTICATED`
+  (`/auth/session/lesen`, `/erneuern`, `/beenden`). Nach einem Seitenneuladen zwischen PIN-Eingabe und Namenswahl muss das Frontend erfahren, in
+  welcher Stufe es steht – mit `403` liefe es zurück zur PIN-Eingabe, obwohl die Sitzung gültig
+  ist. Und einen angefangenen Login abzubrechen muss möglich sein.
 - **Datenschutz in DTOs:** Team-Antworten für USER/GAST enthalten nur Name, Team (A/B) und
-  Auswechselspieler-Flag, **keine Skillwerte**. Nur Admin-Endpunkte liefern Skills.
-- **Namensbelegung:** Endpunkt liefert belegte/freie Namen (aus aktiven Sessions); vom Frontend gepollt.
-- **Teamgenerierung:** Endpunkte für Auslösen eines Laufs, Rückgabe von Kontingentstand,
-  `teilnehmer_version` und Veraltet-Kennzeichen.
-- **Fehlerformat:** einheitliches JSON (`@RestControllerAdvice`) mit maschinenlesbarem Code und
-  deutschsprachiger Meldung.
-- **Sitzungsverwaltung ist ab `PIN_VERIFIED` erreichbar**, nicht erst ab `PROFILE_AUTHENTICATED`.
-  `/auth/session/lesen`, `/auth/session/erneuern` und `/auth/session/beenden` gelten für beide
-  Stufen. Grund: Nach einem Seitenneuladen zwischen PIN-Eingabe und Namenswahl muss das Frontend
-  erfahren, in welcher Stufe es steht – mit `403` liefe es zurück zur PIN-Eingabe, obwohl die Sitzung
-  gültig ist. Und einen angefangenen Login abzubrechen muss möglich sein.
-- Der Kontrakt wird mit dem Client-Agenten abgestimmt; der Stand wird zusätzlich in
-  `CONTEXT_HANDOFF_SERVER.md` bzw. `CONTEXT_HANDOFF_CLIENT.md` erläutert. Massgeblich ist bei
-  Abweichungen aber `server/fubo-api.json`.
+  Auswechselspieler-Flag. Skillwerte liefern ausschliesslich Endpunkte unterhalb von `/admin/`.
+- **Noch zu bauen:** Namensbelegung wird gepollt (belegte/freie Namen aus aktiven Sitzungen); der
+  Teamgenerator bekommt Endpunkte für Lauf, Kontingentstand, `teilnehmer_version` und
+  Veraltet-Kennzeichen.
 
 ### Techstack (Server)
 - Java 25, **Spring Boot 4.1.0**, Maven (Wrapper im Repository). Artefakt `de.fubo:app-server`,
@@ -403,12 +324,12 @@ maßgebliche Quelle; dieser Agent setzt es per Flyway um und pflegt es dort fort
 ### Paketstruktur (verbindlich ab S2)
 
 Basispaket `de.fubo.appserver`. Geschnitten wird zuerst nach Schicht, darunter nach Fachbereich
-(`auth`, `profil`, `termin`, `team`, `ergebnis`, `config`):
+(`auth`, `profil`, `audit`, `mail`, `admin`, `termin`, `team`, `ergebnis`, `config`):
 
 ```
 de/fubo/appserver/
-  common/config      Beans und Property-Bindung: SecurityConfig, CorsConfig,
-                     FuboProperties, SchedulingConfig
+  common/config      Beans und Property-Bindung: SecurityConfig, CorsConfig, FuboProperties,
+                     SchedulingConfig, ZeitConfig, MailConfig, CacheConfig
   common/security    Laufzeitverhalten der Absicherung: SessionAuthFilter,
                      SessionCookieFactory, AuthorizationExceptionHandler
   common/error       @RestControllerAdvice, Fehlercodes, ProblemDetail-Aufbau
@@ -421,87 +342,62 @@ de/fubo/appserver/
   utils              zustandslose Helfer ohne Spring-Abhaengigkeit
 ```
 
-`domain` und `dto` getrennt zu halten ist die technische Absicherung der Regel „JPA-Entities verlassen
-die API-Grenze nie" und damit der Skill-Geheimhaltung: Liegt eine Entity in einem anderen Paket als die
-DTOs, fällt beim Lesen sofort auf, wenn ein Controller den falschen Typ zurückgibt.
+**Warum `domain` und `dto` getrennt bleiben:** Das ist die technische Absicherung der Regel
+„JPA-Entities verlassen die API-Grenze nie" und damit der Skill-Geheimhaltung. Liegt eine Entity
+in einem anderen Paket als die DTOs, fällt beim Lesen sofort auf, wenn ein Controller den
+falschen Typ zurückgibt. Die Abbildung Wertobjekt → DTO steht **im DTO** (`SpielerDetails#von`),
+nicht im Service: Der Service soll nicht wissen müssen, wie der Vertrag aussieht.
 
-**Präzisierungen aus S2 (09.08.2026):**
+**Schnitt der Pakete:**
 
-- `common/security` ist gegenüber der ursprünglichen Fassung neu. Filter, Cookie-Fabrik und
-  Fehler-Writer sind **Laufzeitverhalten**, kein Konfigurationscode; ein Paket namens `config`, in dem
-  Verhalten steckt, führt beim Lesen in die Irre. `common/config` enthält nur noch Beans und
-  Property-Bindung.
-- `domain` enthält neben Entities auch schlanke Wertobjekte wie `AktiveSitzung` – das Ergebnis der
-  `RETURNING`-Klausel der Sitzungsprüfung. Für sie gilt dieselbe Regel wie für Entities: Sie
-  überschreiten die API-Grenze nie.
+- **`common/config` enthält nur Beans und Property-Bindung, `common/security` das
+  Laufzeitverhalten.** Filter, Cookie-Fabrik und Fehler-Writer sind Verhalten, kein
+  Konfigurationscode; ein Paket namens `config`, in dem Verhalten steckt, führt beim Lesen in die
+  Irre.
+- **Aktivierungsklassen sind eigene `@Configuration`-Klassen** – `SchedulingConfig`,
+  `CacheConfig`. Ohne sie bleiben `@Scheduled` und `@Cacheable` **wirkungslos, und zwar ohne
+  Fehlermeldung**.
+- **`audit` ist ein eigener Fachbereich**, kein Anhängsel von `auth`: In S2 schreibt der
+  Auth-Bereich hinein, ab S3 die Adminaktionen, ab S5 die Generierungsläufe.
+- **`admin` ist ein Zugriffs-, kein Datenbereich** (`dto/admin`, `controller/admin`) – die
+  Fachlogik der Zugangsdatenpflege bleibt in `service/auth`.
+- **`utils` enthält nur zustandslose Helfer ohne Spring-Abhängigkeit.** Die Abhängigkeit von
+  `ClientIpErmittler` zu `jakarta.servlet` ist kein Widerspruch: Die Regel richtet sich gegen
+  Spring-Kontext und Zustand, nicht gegen die Servlet-API.
 
-**Ergänzungen aus S2, Abschnitte 6 und 7 (16.08.2026):**
+**Zuständigkeiten, die feststehen:**
 
-- **`audit` ist ein zusätzlicher Fachbereich** (`domain/audit`, `repository/audit`, `service/audit`).
-  Das Audit-Log gehört keinem der übrigen Bereiche allein: In S2 schreibt der Auth-Bereich hinein, ab
-  S3 die Adminaktionen, ab S5 die Generierungsläufe. Ein eigener Schnitt ist deshalb ehrlicher, als
-  es unter `auth` einzuhängen.
-- **`AuditLogRepository` ist bewusst kein Spring-Data-Repository**, sondern nutzt `JdbcClient` direkt.
-  Ein Audit-Log wird nur angehängt und nie über JPA gelesen oder geändert; die Spalte `details` ist
-  `jsonb` und bräuchte eine eigene Typabbildung. Vorbild ist `SessionRepositoryImpl`, das aus demselben
-  Grund direkt JDBC nutzt.
-- **`common/config/ZeitConfig` stellt eine `Clock`-Bean bereit.** Zeitlogik, die nicht in der Datenbank
-  stattfindet, holt sich die Zeit über diese Bean statt über `Instant.now()` – sonst sind Sperrdauern
-  von 1 bis 15 Minuten (`BruteForceService`) nur mit `Thread.sleep` prüfbar. Zeitpunkte, die in der
-  Datenbank entstehen, werden weiterhin gegen `now()` der Datenbank geprüft; zwei Uhren für denselben
-  Sachverhalt wären eine Fehlerquelle.
-- **`dto` wird nach Fachbereich geschnitten wie die übrigen Schichten** (`dto/auth`, `dto/profil`).
-- **`utils` enthält weiterhin nur zustandslose Helfer ohne Spring-Abhängigkeit** – jetzt neben
-  `TokenGenerator` auch `ClientIpErmittler`. Die Abhängigkeit zu `jakarta.servlet` ist kein
-  Widerspruch: Die Regel richtet sich gegen Spring-Kontext und Zustand, nicht gegen die Servlet-API.
-
-**Ergänzungen aus S2, Abschnitte 8 bis 10 (22.08.2026):**
-
-- **Repositories ohne Entity sind erlaubt, wenn die Tabelle nur angehängt oder nur bedingt
-  aktualisiert wird** – `AuditLogRepository` und `GastSlotRepository` nutzen beide `JdbcClient`
-  direkt. Bei `gast_slot` wäre eine Entity mit `@Version` sogar nachteilig: Optimistic Locking meldet
-  den Konflikt erst beim Schreiben und verlangt eine Wiederholung, während das bedingte `UPDATE` den
-  Wettlauf ohne Wiederholung entscheidet. Wird eine `version`-Spalte per SQL geändert, ist sie von
-  Hand fortzuschreiben (`version = version + 1`).
-- **Die Auslegung des Anfragekörpers gehört ins DTO**, nicht in den Service: Vorgabewerte für
-  fehlende Felder (`GastAnmeldungRequest#stufeOderVorgabe`) und das Entfernen von Randleerzeichen
-  stehen dort. Sie sind Teil der API-Grenze, nicht der Fachlogik.
 - **`SessionService` ist der einzige Ort für Sitzungsübergänge** – anlegen, prüfen, rotieren,
-  erneuern, abmelden, aufräumen. Ein Fachbereich, der eine Sitzung verändert (etwa der Gast-Login),
-  ruft ihn auf, statt selbst zu schreiben. Andernfalls verteilte sich das Zwei-Timer-Modell über
-  mehrere Klassen.
-
-**Ergänzungen aus S3, Pakete 0 bis 4 (29.08.2026):**
-
-- **`common/config/CacheConfig`** aktiviert `@Cacheable`/`@CacheEvict` und stellt den
-  `CacheManager` bereit – wie `SchedulingConfig` eine Klasse, ohne die Annotationen
-  **wirkungslos bleiben, und zwar ohne Fehlermeldung**.
-- **Ein Zwischenspeicher ist eine eigene Bean in `service/<bereich>`**
-  (`service/profil/ProfilStammdatenCache`), keine annotierte Methode im Service, der ihn
-  benutzt. Grund ist der Proxy, siehe Regel oben.
-- **Ein Controller ohne Fachlogik darf ohne Service auskommen.**
-  `SkillKategorieController` ruft das Repository direkt: keine Transaktionsgrenze, keine
-  Prüfung, kein Protokolleintrag – nur eine Abfrage und die Abbildung auf das DTO. Eine
-  Serviceklasse, die einen Repository-Aufruf durchreicht, ist eine Schicht ohne Inhalt.
-  Sobald eine Entscheidung hinzukommt, bekommt der Bereich einen Service.
-- **Die Abbildung Wertobjekt → DTO steht im DTO** (`SpielerDetails#von`,
-  `SkillKategorieInfo#von`), nicht im Service: Der Service soll nicht wissen müssen, wie der
-  Vertrag aussieht.
-
-**Ergänzungen aus S2b (23.08.2026):**
-
-- **Drei neue Fachbereiche:** `service/mail` (Versand), `dto/admin` und `controller/admin`
-  (Endpunkte, die `ROLE_ADMIN` voraussetzen). Der Schnitt folgt der bestehenden Regel „zuerst nach
-  Schicht, darunter nach Fachbereich"; `admin` ist dabei kein Datenbereich, sondern ein
-  Zugriffsbereich – die Fachlogik der Zugangsdatenpflege bleibt in `service/auth`.
+  erneuern, abmelden, aufräumen. Wer eine Sitzung verändert, ruft ihn auf; andernfalls verteilte
+  sich das Zwei-Timer-Modell über mehrere Klassen.
 - **Anwendungsfall-Dienste dürfen andere Dienste bündeln.** `ZugangsdatenService` schreibt selbst
-  nichts, sondern reiht `AdminService`/`PinService`, den Sitzungswiderruf und den Audit-Eintrag in
-  *einer* Transaktion. Die Alternative – jeden Controller die drei Schritte selbst aufrufen zu
-  lassen – verteilte die Transaktionsgrenze über die HTTP-Schicht.
+  nichts, sondern reiht Fachdienst, Sitzungswiderruf und Audit-Eintrag in *einer* Transaktion –
+  sonst verteilte sich die Transaktionsgrenze über die HTTP-Schicht.
+- **Die Auslegung des Anfragekörpers gehört ins DTO**, nicht in den Service: Vorgabewerte für
+  fehlende Felder und das Entfernen von Randleerzeichen sind Teil der API-Grenze.
 - **Ein Service meldet „richtig/falsch" als Rückgabewert, nicht als Ausnahme**, wenn der Aufrufer
   den Fehlversuch zählen und protokollieren muss (`PinService#stimmt`,
-  `AdminService#passwortStimmt`, `PasswortResetService#versuchPruefen`). Endzustände, aus denen nur
-  ein neuer Anlauf herausführt, bleiben Ausnahmen.
+  `AdminService#anmeldedatenStimmen`). Endzustände, aus denen nur ein neuer Anlauf herausführt,
+  bleiben Ausnahmen.
+- **Ein Controller ohne Fachlogik darf ohne Service auskommen** (`SkillKategorieController`):
+  keine Transaktionsgrenze, keine Prüfung, kein Protokolleintrag – nur Abfrage und Abbildung.
+  Eine Schicht, die einen Repository-Aufruf durchreicht, hat keinen Inhalt. Sobald eine
+  Entscheidung hinzukommt, bekommt der Bereich einen Service.
+- **Ein Zwischenspeicher ist eine eigene Bean in `service/<bereich>`**
+  (`service/profil/ProfilStammdatenCache`), nie eine annotierte Methode im Service, der ihn
+  benutzt – Proxy, siehe Architekturregeln.
+
+**Repositories ohne Entity sind erlaubt**, wenn die Tabelle nur angehängt oder nur bedingt
+aktualisiert wird (`AuditLogRepository`, `GastSlotRepository`, `SkillKategorieRepository`,
+`SessionRepositoryImpl` – alle über `JdbcClient`). Bei `gast_slot` wäre eine Entity mit
+`@Version` sogar nachteilig: Optimistic Locking meldet den Konflikt erst beim Schreiben und
+verlangt eine Wiederholung, während das bedingte `UPDATE` den Wettlauf ohne Wiederholung
+entscheidet. **Wird eine `version`-Spalte per SQL geändert, ist sie von Hand fortzuschreiben.**
+
+**`ZeitConfig` stellt eine `Clock`-Bean bereit.** Zeitlogik ausserhalb der Datenbank holt sich die
+Zeit darüber statt über `Instant.now()` – sonst wären Sperrdauern nur mit `Thread.sleep` prüfbar.
+Zeitpunkte, die in der Datenbank entstehen, werden weiterhin gegen deren `now()` geprüft; zwei
+Uhren für denselben Sachverhalt wären eine Fehlerquelle.
 
 ### Flyway-Konventionen (verbindlich ab S1)
 - Ablage: `src/main/resources/db/migration`. Namensschema `V<nnn>__<kurze_beschreibung>.sql` mit
