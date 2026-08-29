@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -30,14 +31,38 @@ public interface SpielerRepository extends JpaRepository<Spieler, Long>, Spieler
     boolean existsByNameIgnoreCase(String name);
 
     /**
-     * Sucht ein Profil ueber seinen Namen. Der Name ist ueber {@code uq_spieler_name}
-     * eindeutig.
+     * Sucht ein Profil ueber seinen Namen - <b>zeichengenau</b>. Der Name ist ueber
+     * {@code uq_spieler_name} eindeutig, und dieser Index ist in PostgreSQL
+     * gross-/kleinschreibungsempfindlich; hoechstens ein Treffer ist damit garantiert.
      *
-     * <p>Wird vom Admin-Bootstrap benoetigt, der das Adminprofil ueber {@code ADMIN_NAME}
-     * aus der Umgebung auswaehlt. Die Suche ignoriert Gross- und Kleinschreibung, damit
-     * eine abweichende Schreibweise in der {@code .env} nicht zum Startabbruch fuehrt.
+     * <p>Wird vom {@code AdminBootstrap} benoetigt, der das Adminprofil ueber
+     * {@code ADMIN_NAME} auswaehlt. <b>Seit dem 29.08.2026 exakt statt unempfindlich:</b>
+     * Der Anmeldename des Admins wird zeichengenau geprueft, also muss der Bootstrap den
+     * Profilnamen auch zeichengenau so ablegen, wie {@code ADMIN_NAME} ihn nennt. Eine
+     * unempfindliche Suche uebernaehme sonst ein Profil mit abweichender Schreibweise, und
+     * der Betreiber koennte sich mit dem Wert aus seiner eigenen {@code .env} nicht anmelden.
      */
-    Optional<Spieler> findByNameIgnoreCase(String name);
+    Optional<Spieler> findByName(String name);
+
+    /**
+     * Sucht <b>alle</b> Profile, deren Name ohne Ruecksicht auf Gross- und Kleinschreibung
+     * uebereinstimmt.
+     *
+     * <p>Dient im {@code AdminBootstrap} allein der Diagnose: Findet
+     * {@link #findByName(String)} nichts, diese Suche aber doch, weicht ein vorhandenes
+     * Profil nur in der Schreibweise ab - fast immer ein Vertipper in {@code ADMIN_NAME}.
+     * Der Bootstrap bricht dann ab, statt ein zweites, nahezu gleichnamiges Profil anzulegen.
+     *
+     * <p><b>Rueckgabetyp {@code List}, nicht {@code Optional}, und das mit Absicht:</b>
+     * {@code uq_spieler_name} ist in PostgreSQL gross-/kleinschreibungsempfindlich, "Admin"
+     * und "admin" duerfen also nebeneinander stehen. Ein {@code Optional} liefe dann in eine
+     * {@code IncorrectResultSizeDataAccessException} - ein Startabbruch mit einer Meldung
+     * ueber Ergebnismengen statt ueber die Ursache.
+     *
+     * <p><b>Nie fuer die Auswahl oder die Anmeldung verwenden</b> - beide brauchen die
+     * zeichengenaue Suche.
+     */
+    List<Spieler> findAllByNameIgnoreCase(String name);
 
     /**
      * Liefert das Profil mit der Rolle {@code ADMIN}, falls es eines gibt.

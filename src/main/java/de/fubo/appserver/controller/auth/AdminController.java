@@ -34,6 +34,10 @@ import java.util.Map;
  *
  * <p><b>Keine Tokenpruefung in dieser Methode.</b> Wer hier ankommt, hat die Filterchain
  * bereits passiert.
+ *
+ * <p><b>Seit dem 29.08.2026 verlangt die Anmeldung Anmeldename und Passwort</b> (statt nur
+ * das Passwort). Der Anmeldename ist der Profilname des Adminprofils; er steht in keiner
+ * abrufbaren Liste, weil das Adminprofil aus der Namensliste ausgeschlossen ist.
  */
 @RestController
 @RequestMapping(ApiVersionConfig.API_PRAEFIX + "/auth")
@@ -62,9 +66,21 @@ public class AdminController {
      * <ol>
      *   <li>Sperre pruefen - eine gesperrte Anfrage soll gar nicht erst gegen den
      *       BCrypt-Hash rechnen, sonst waere die Drosselung selbst der Angriffsvektor.</li>
-     *   <li>Passwort pruefen; bei Misserfolg zaehlen, protokollieren, ablehnen.</li>
+     *   <li>Anmeldename und Passwort pruefen; bei Misserfolg zaehlen, protokollieren,
+     *       ablehnen.</li>
      *   <li>Bei Erfolg den Zaehler der Adresse leeren und die Anmeldung protokollieren.</li>
      * </ol>
+     *
+     * <p><b>Seit dem 29.08.2026 wird auch der Anmeldename geprueft</b> - der Profilname des
+     * Adminprofils. Die Ablehnung unterscheidet die beiden Faelle bewusst nicht: Weder der
+     * Fehlercode noch die Laufzeit verraten, ob der Name getroffen war. Die Begruendung steht
+     * an {@code AdminService#anmeldedatenStimmen}, die Auswertung des Codes bleibt fuer das
+     * Frontend unveraendert ({@code ADMIN_PASSWORT_FALSCH}).
+     *
+     * <p><b>Der Anmeldename gehoert nicht ins Protokoll.</b> Der Audit-Eintrag zum
+     * Fehlversuch nennt weiterhin nur Endpunkt und Adresse. Ein Log, das jeden geratenen
+     * Namen mitschreibt, sammelte fremde Eingaben, ohne dass jemand etwas davon haette - und
+     * ein Vertipper des Admins landete darin neben seinem echten Namen.
      *
      * <p><b>Der Brute-Force-Zaehler ist derselbe wie am PIN-Endpunkt</b> - bewusst. Es ist
      * derselbe Absender, der dieselbe Anwendung angreift; wer fuenf Admin-Passwoerter raet,
@@ -78,7 +94,7 @@ public class AdminController {
      * bei {@code 401}; die Sperre wirkt ab dem <i>naechsten</i> Aufruf. Andernfalls verriete
      * der Statuscode, an welcher Stelle die Zaehlung genau steht.
      *
-     * @param anfrage Klartext-Passwort aus dem Anfragekoerper
+     * @param anfrage Anmeldename und Klartext-Passwort aus dem Anfragekoerper
      * @param request fuer die Ermittlung der Client-IP
      * @param sitzung aufrufende Sitzung aus dem Sicherheitskontext; nie {@code null}, weil
      *                die Filterchain den Zugriff sonst gar nicht durchgelassen haette
@@ -92,14 +108,20 @@ public class AdminController {
         String clientIp = ClientIpErmittler.ermitteln(request);
         bruteForceService.pruefeGesperrt(clientIp);
 
-        if (!adminService.passwortStimmt(anfrage.passwort())) {
+        if (!adminService.anmeldedatenStimmen(anfrage.bereinigterAnmeldename(), anfrage.passwort())) {
             boolean sperreAusgeloest = bruteForceService.fehlversuchZaehlen(clientIp);
             auditService.protokolliere(
                     clientIp,
                     sperreAusgeloest ? AuditAktion.PIN_GESPERRT : AuditAktion.ADMIN_LOGIN_FEHLVERSUCH,
                     Map.of("endpunkt", "/auth/admin/anmelden"));
 
-            throw new FachlicherFehler(Fehlercode.ADMIN_PASSWORT_FALSCH);
+            // Derselbe Code wie bisher - das Frontend wertet ihn unveraendert aus, und der
+            // Client-Track muss nicht nachziehen. Nur der Anzeigetext wird praeziser: Er
+            // nennt beide Angaben, weil die Ablehnung bewusst offen laesst, welche der
+            // beiden nicht stimmte. "detail" ist Anzeigetext und darf sich ohne
+            // Vertragsaenderung aendern - Programmlogik stuetzt sich auf "code".
+            throw new FachlicherFehler(Fehlercode.ADMIN_PASSWORT_FALSCH,
+                    "Anmeldename oder Passwort ist nicht korrekt.");
         }
 
         bruteForceService.zuruecksetzen(clientIp);

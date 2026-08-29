@@ -137,7 +137,7 @@ class AdminBootstrapTests {
                 bootstrap(NEUER_NAME, TEST_EMAIL, "passwort").run(null))
                 .isInstanceOf(IllegalStateException.class);
 
-        assertThat(spielerRepository.findByNameIgnoreCase(NEUER_NAME))
+        assertThat(spielerRepository.findByName(NEUER_NAME))
                 .as("Vor dem Abbruch darf kein Profil entstanden sein")
                 .isEmpty();
     }
@@ -161,7 +161,7 @@ class AdminBootstrapTests {
         // Flush-Zeitpunkt noch nicht.
         AdminKonto konto = adminKontoRepository.findById(ADMIN_KONTO_ID).orElseThrow();
 
-        Long spielerId = spielerRepository.findByNameIgnoreCase("Beispielspieler 05")
+        Long spielerId = spielerRepository.findByName("Beispielspieler 05")
                 .orElseThrow().getId();
 
         assertThat(konto.getSpielerId()).isEqualTo(spielerId);
@@ -194,8 +194,12 @@ class AdminBootstrapTests {
 
         bootstrap(NEUER_NAME, TEST_EMAIL, "start-passwort").run(null);
 
-        Spieler admin = spielerRepository.findByNameIgnoreCase(NEUER_NAME).orElseThrow();
+        Spieler admin = spielerRepository.findByName(NEUER_NAME).orElseThrow();
 
+        assertThat(admin.getName())
+                .as("Der Profilname muss zeichengenau ADMIN_NAME entsprechen - darauf setzt "
+                        + "die zeichengenaue Pruefung des Anmeldenamens auf")
+                .isEqualTo(NEUER_NAME);
         assertThat(admin.getRolle()).isEqualTo(Rolle.ADMIN);
         assertThat(admin.isAktiv()).isTrue();
         assertThat(admin.getErstelltAm()).isNotNull();
@@ -219,15 +223,61 @@ class AdminBootstrapTests {
                 .isZero();
     }
 
-    /** Der Name wird ohne Ruecksicht auf Gross- und Kleinschreibung gesucht. */
+    /**
+     * Weicht ein vorhandenes Profil allein in der Schreibweise ab, bricht der Start ab
+     * (Festlegung vom 29.08.2026).
+     *
+     * <p><b>Dieser Test stand vorher genau andersherum</b> - die Suche war unempfindlich
+     * und uebernahm das Profil. Das ging nicht mehr, seit der Anmeldename zeichengenau
+     * geprueft wird: Der Betreiber koennte sich sonst mit genau dem Wert nicht anmelden,
+     * den er selbst in {@code ADMIN_NAME} gesetzt hat - und dafuer gibt es keinen
+     * Selbstbedienungsweg, der Passwort-Reset holt das Passwort zurueck, nie den Namen.
+     *
+     * <p>Das blosse Anlegen eines zweiten Profils waere die schlechtere Antwort:
+     * {@code uq_spieler_name} laesst "Beispielspieler 05" und "beispielspieler 05"
+     * nebeneinander zu, in der Namensliste stuenden dann zwei fast gleiche Eintraege.
+     *
+     * <p>Geprueft wird zusaetzlich, dass die Meldung <b>beide</b> Schreibweisen nennt -
+     * ohne sie muesste der Betreiber raten, welche Seite er angleichen soll.
+     */
     @Test
-    void abweichendeSchreibweiseDesNamensGenuegt() {
+    void abweichendeSchreibweiseDesNamensBrichtDenStartAb() {
         kontoEntfernen();
         jdbc.update("UPDATE profil.spieler SET rolle = 'USER' WHERE rolle = 'ADMIN'");
 
-        bootstrap("beispielspieler 05", TEST_EMAIL, "start-passwort").run(null);
+        AdminBootstrap runner = bootstrap("beispielspieler 05", TEST_EMAIL, "start-passwort");
 
-        assertThat(adminKontoRepository.existsById(ADMIN_KONTO_ID)).isTrue();
+        assertThatThrownBy(() -> runner.run(null))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("beispielspieler 05")
+                .hasMessageContaining("Beispielspieler 05")
+                .hasMessageContaining("ADMIN_NAME");
+
+        assertThat(adminKontoRepository.existsById(ADMIN_KONTO_ID))
+                .as("Die Pruefung laeuft vor jeder Aenderung - es darf nichts zurueckbleiben")
+                .isFalse();
+        assertThat(spielerRepository.findByName("beispielspieler 05"))
+                .as("Kein zweites, nahezu gleichnamiges Profil")
+                .isEmpty();
+    }
+
+    /**
+     * Gegenprobe: Stimmt die Schreibweise, wird das vorhandene Profil uebernommen - es wird
+     * kein zweites angelegt.
+     */
+    @Test
+    void exakteSchreibweiseUebernimmtDasVorhandeneProfil() {
+        kontoEntfernen();
+        jdbc.update("UPDATE profil.spieler SET rolle = 'USER' WHERE rolle = 'ADMIN'");
+
+        Integer vorher = jdbc.queryForObject(
+                "SELECT count(*) FROM profil.spieler", Integer.class);
+
+        bootstrap("Beispielspieler 05", TEST_EMAIL, "start-passwort").run(null);
+
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM profil.spieler", Integer.class))
+                .as("Das vorhandene Profil wird uebernommen, nicht ergaenzt")
+                .isEqualTo(vorher);
     }
 
     // ------------------------------------------------------------------ Hilfsmittel

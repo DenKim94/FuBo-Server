@@ -5,6 +5,16 @@ import org.springframework.http.HttpStatus;
 public enum Fehlercode {
     PIN_FALSCH(HttpStatus.UNAUTHORIZED, "Die PIN ist nicht korrekt."),
     PIN_GESPERRT(HttpStatus.TOO_MANY_REQUESTS, "Zu viele Fehlversuche. Bitte später erneut versuchen."),
+    /**
+     * Die Adminanmeldung wurde abgelehnt.
+     *
+     * <p><b>Der Code deckt zwei Endpunkte mit unterschiedlichem Anzeigetext ab.</b> Bei
+     * {@code /admin/passwort/aendern} ist nur das alte Passwort im Spiel, dort gilt die
+     * Standardmeldung. Bei {@code /auth/admin/anmelden} gehoert seit dem 29.08.2026 auch der
+     * Anmeldename dazu; der Controller setzt deshalb eine eigene Meldung, die beide Angaben
+     * nennt. Der Code bleibt derselbe - er soll nicht verraten, welche der beiden Angaben
+     * nicht stimmte, sonst waere der Anmeldename ueber die Fehlermeldung erratbar.
+     */
     ADMIN_PASSWORT_FALSCH(HttpStatus.UNAUTHORIZED, "Das Admin-Passwort ist nicht korrekt."),
 
     /**

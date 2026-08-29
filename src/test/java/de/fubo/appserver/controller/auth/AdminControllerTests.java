@@ -24,6 +24,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.WebApplicationContext;
 
+import java.util.Locale;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -37,6 +38,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p><b>Zur Client-IP:</b> Jeder Test setzt einen eigenen Wert im Header
  * {@code CF-Connecting-IP}. Der Brute-Force-Zaehler ist derselbe wie am PIN-Endpunkt; ohne
  * eigene Adressen wuerden die Faelle sich gegenseitig sperren.
+ *
+ * <p><b>Zum Anmeldenamen (ergaenzt am 29.08.2026):</b> Die Anmeldung verlangt zusaetzlich
+ * den Profilnamen des Adminprofils, zeichengenau. Die Tests lesen ihn ueber
+ * {@link #adminName()} aus der
+ * Datenbank statt ihn festzuschreiben - er stammt aus {@code ADMIN_NAME} in
+ * {@code src/test/resources/application.yml}, und ein Test, der den Wert doppelt fuehrt,
+ * bricht bei jeder Aenderung dort mit.
  */
 @SpringBootTest
 @Import(TestcontainersConfiguration.class)
@@ -46,6 +54,7 @@ class AdminControllerTests {
     private static final String COOKIE = "FUBO_SESSION";
     private static final String RICHTIGES_PASSWORT = "pruef-admin-4711";
     private static final String FALSCHES_PASSWORT = "falsch-0000";
+    private static final String FALSCHER_NAME = "Kein Adminprofil 9999";
 
     @Autowired
     private WebApplicationContext kontext;
@@ -116,6 +125,22 @@ class AdminControllerTests {
                 .isZero();
     }
 
+    /**
+     * Randleerzeichen werden im DTO entfernt, nicht im Dienst - sie gehoeren zur Auslegung
+     * des Anfragekoerpers. Ein aus der Zwischenablage eingefuegter Name soll die Anmeldung
+     * nicht scheitern lassen.
+     *
+     * <p><b>Kein Widerspruch zur zeichengenauen Pruefung der Schreibweise:</b> Ein
+     * fuehrendes Leerzeichen ist unsichtbar und nie beabsichtigt, eine Schreibweise ist
+     * sichtbar und kann es sein.
+     */
+    @Test
+    void randleerzeichenImAnmeldenamenStoerenNicht() throws Exception {
+        mockMvc.perform(anmeldung(pinVerifiedSitzung(), "  " + adminName() + "  ",
+                        RICHTIGES_PASSWORT, "203.0.113.27"))
+                .andExpect(status().isNoContent());
+    }
+
     // --------------------------------------------------------------------- Fehlerfaelle
 
     /** Falsches Passwort: 401 mit eigenem Code, kein Cookie. */
@@ -130,6 +155,78 @@ class AdminControllerTests {
         assertThat(ergebnis.getResponse().getHeader(HttpHeaders.SET_COOKIE)).isNull();
     }
 
+    /**
+     * Falscher Anmeldename bei richtigem Passwort: dieselbe Antwort wie bei falschem
+     * Passwort - {@code 401} mit {@code ADMIN_PASSWORT_FALSCH}.
+     *
+     * <p><b>Das ist der Kern der Ergaenzung vom 29.08.2026.</b> Wuerde die Antwort die
+     * beiden Faelle unterscheiden, waere der Anmeldename ueber den Fehlercode erratbar und
+     * die zusaetzliche Angabe wertlos. Aus demselben Grund laeuft im Dienst auch die
+     * BCrypt-Berechnung bei falschem Namen weiter (Verknuepfung mit {@code &} statt
+     * {@code &&}) - eine schnelle Ablehnung waere ein Zeitorakel. Das laesst sich hier nicht
+     * sinnvoll messen; die Absicherung ist die Codeform, nicht dieser Test.
+     */
+    @Test
+    void falscherAnmeldenameLiefertDieselbeAntwortWieEinFalschesPasswort() throws Exception {
+        MvcResult ergebnis = mockMvc.perform(anmeldung(pinVerifiedSitzung(), FALSCHER_NAME,
+                        RICHTIGES_PASSWORT, "203.0.113.28"))
+                .andExpect(status().isUnauthorized())
+                .andReturn();
+
+        assertThat(ergebnis.getResponse().getContentAsString())
+                .contains("\"code\":\"ADMIN_PASSWORT_FALSCH\"");
+        assertThat(ergebnis.getResponse().getHeader(HttpHeaders.SET_COOKIE)).isNull();
+    }
+
+    /**
+     * Abweichende Gross-/Kleinschreibung genuegt nicht (Festlegung vom 29.08.2026).
+     *
+     * <p>Der Name ist ein Anmeldemerkmal, und bei einem Merkmal ist Nachsicht die falsche
+     * Richtung. Aussperren kann das niemanden: {@code AdminBootstrap} legt den Profilnamen
+     * zeichengenau nach {@code ADMIN_NAME} ab und bricht sonst den Start ab - die
+     * Gegenprobe dazu steht in {@code AdminBootstrapTests}.
+     */
+    @Test
+    void abweichendeSchreibweiseDesAnmeldenamensLiefert401() throws Exception {
+        MvcResult ergebnis = mockMvc.perform(anmeldung(pinVerifiedSitzung(),
+                        adminName().toUpperCase(Locale.ROOT), RICHTIGES_PASSWORT, "203.0.113.26"))
+                .andExpect(status().isUnauthorized())
+                .andReturn();
+
+        assertThat(ergebnis.getResponse().getContentAsString())
+                .contains("\"code\":\"ADMIN_PASSWORT_FALSCH\"");
+        assertThat(ergebnis.getResponse().getHeader(HttpHeaders.SET_COOKIE)).isNull();
+    }
+
+    /**
+     * Der Name eines gewoehnlichen Spielerprofils traegt nicht: Geprueft wird gegen das
+     * Profil aus {@code admin_konto.spieler_id}, nicht gegen die Profiltabelle im Ganzen.
+     */
+    @Test
+    void nameEinesAnderenProfilsLiefert401() throws Exception {
+        String fremderName = jdbc.queryForObject("""
+                SELECT name FROM profil.spieler WHERE rolle <> 'ADMIN' ORDER BY name LIMIT 1
+                """, String.class);
+
+        mockMvc.perform(anmeldung(pinVerifiedSitzung(), fremderName,
+                        RICHTIGES_PASSWORT, "203.0.113.29"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    /** Fehlender Anmeldename: Bean Validation, also {@code 400} statt {@code 401}. */
+    @Test
+    void fehlenderAnmeldenameLiefert400() throws Exception {
+        String antwort = mockMvc.perform(post("/api/v1/auth/admin/anmelden")
+                        .cookie(new Cookie(COOKIE, pinVerifiedSitzung()))
+                        .header("CF-Connecting-IP", "203.0.113.30")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"passwort\":\"%s\"}".formatted(RICHTIGES_PASSWORT)))
+                .andExpect(status().isBadRequest())
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(antwort).contains("\"code\":\"EINGABE_UNGUELTIG\"").contains("anmeldename");
+    }
+
     /** Bean Validation greift vor jeder BCrypt-Berechnung. */
     @Test
     void leeresPasswortLiefert400() throws Exception {
@@ -137,7 +234,7 @@ class AdminControllerTests {
                         .cookie(new Cookie(COOKIE, pinVerifiedSitzung()))
                         .header("CF-Connecting-IP", "203.0.113.22")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"passwort\":\"\"}"))
+                        .content("{\"anmeldename\":\"%s\",\"passwort\":\"\"}".formatted(adminName())))
                 .andExpect(status().isBadRequest())
                 .andReturn().getResponse().getContentAsString();
 
@@ -221,12 +318,33 @@ class AdminControllerTests {
 
     // --------------------------------------------------------------------- Hilfsmittel
 
-    private static MockHttpServletRequestBuilder anmeldung(String token, String passwort, String ip) {
+    /** Anmeldung mit dem richtigen Anmeldenamen; nur das Passwort variiert. */
+    private MockHttpServletRequestBuilder anmeldung(String token, String passwort, String ip) {
+        return anmeldung(token, adminName(), passwort, ip);
+    }
+
+    private static MockHttpServletRequestBuilder anmeldung(String token, String anmeldename,
+                                                           String passwort, String ip) {
         return post("/api/v1/auth/admin/anmelden")
                 .cookie(new Cookie(COOKIE, token))
                 .header("CF-Connecting-IP", ip)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"passwort\":\"%s\"}".formatted(passwort));
+                .content("{\"anmeldename\":\"%s\",\"passwort\":\"%s\"}"
+                        .formatted(anmeldename, passwort));
+    }
+
+    /**
+     * Liest den Profilnamen des Adminprofils aus der Datenbank.
+     *
+     * <p>Ueber den Umweg {@code admin_konto.spieler_id} statt ueber {@code rolle = 'ADMIN'}:
+     * Das ist genau der Weg, den auch der Dienst geht, und damit derselbe Datensatz.
+     */
+    private String adminName() {
+        return jdbc.queryForObject("""
+                SELECT s.name FROM profil.spieler s
+                  JOIN profil.admin_konto k ON k.spieler_id = s.id
+                 WHERE k.id = 1
+                """, String.class);
     }
 
     private String pinVerifiedSitzung() {

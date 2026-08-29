@@ -16,7 +16,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * Legt beim Start das Admin-Konto an, falls {@code profil.admin_konto} noch leer ist
@@ -61,10 +63,17 @@ import java.util.Optional;
  * Logmeldung unterscheidet deshalb ausdruecklich zwischen "vorhandenes Profil verwendet" und
  * "Profil neu angelegt".
  *
+ * <h2>Die Suche laeuft zeichengenau (Festlegung vom 29.08.2026)</h2>
+ * {@code findByName} statt {@code findByNameIgnoreCase}: Der Anmeldename des Admins wird
+ * zeichengenau geprueft, also muss der gespeicherte Profilname zeichengenau dem Wert aus
+ * {@code ADMIN_NAME} entsprechen. <b>Das ist die Zusicherung, auf der der Login aufsetzt.</b>
+ * Weicht ein vorhandenes Profil allein in der Schreibweise ab, bricht der Start ab, statt ein
+ * zweites, nahezu gleichnamiges Profil anzulegen - siehe {@link #pruefeSchreibweise}.
+ *
  * <h2>Das Adminprofil ist ein technisches Konto (Entscheidung vom 22.08.2026)</h2>
  * Es nimmt weder an der Namensauswahl noch an Terminen noch an der Teamgenerierung teil. Der
- * Admin meldet sich ueber {@code POST /auth/admin/anmelden} mit dem Passwort aus
- * {@code admin_konto} an; in der Namensliste taucht das Profil nicht auf.
+ * Admin meldet sich ueber {@code POST /auth/admin/anmelden} mit dem Profilnamen und dem
+ * Passwort aus {@code admin_konto} an; in der Namensliste taucht das Profil nicht auf.
  *
  * <p>Die Skillwerte werden deshalb je aktiver Kategorie auf {@code 0} gesetzt. Sie sind
  * fachlich bedeutungslos - das Profil wird nie eingeteilt -, machen es aber vollstaendig,
@@ -135,11 +144,12 @@ public class AdminBootstrap implements ApplicationRunner {
         pruefeAngaben();
 
         String name = adminName.trim();
-        Spieler vorhandenes = spielerRepository.findByNameIgnoreCase(name).orElse(null);
+        Spieler vorhandenes = spielerRepository.findByName(name).orElse(null);
 
-        // Vor jeder Aenderung: Gibt es bereits einen anderen Admin? Sonst scheiterte weiter
-        // unten das UPDATE beziehungsweise das INSERT am partiellen Unique-Index, und die
-        // Meldung benennte den Index statt der Ursache.
+        // Beide Pruefungen laufen vor jeder Aenderung. Andernfalls bliebe bei einem
+        // fehlgeschlagenen Start ein neu angelegtes Profil zurueck, das den naechsten
+        // Versuch behindert.
+        pruefeSchreibweise(vorhandenes, name);
         pruefeKeinAndererAdmin(vorhandenes, name);
 
         Spieler admin;
@@ -192,6 +202,68 @@ public class AdminBootstrap implements ApplicationRunner {
                             + "Ohne diese Angaben liesse sich nur willkuerlich ein Admin bestimmen.")
                             .formatted(fehlend));
         }
+    }
+
+    /**
+     * Bricht ab, wenn ein Profil allein in der Schreibweise von {@code ADMIN_NAME} abweicht
+     * (Festlegung vom 29.08.2026).
+     *
+     * <h2>Warum diese Pruefung noetig wurde</h2>
+     * Der Anmeldename des Admins wird seit dem 29.08.2026 <b>zeichengenau</b> geprueft
+     * ({@code AdminService#anmeldedatenStimmen}). Das traegt nur, solange der gespeicherte
+     * Profilname zeichengenau dem Wert aus {@code ADMIN_NAME} entspricht. Frueher suchte
+     * dieser Runner mit {@code findByNameIgnoreCase}: Stand in der Datenbank
+     * "Beispielspieler 05" und in der {@code .env} {@code beispielspieler 05}, uebernahm er
+     * das vorhandene Profil - und der Betreiber konnte sich anschliessend mit genau dem Wert
+     * <i>nicht</i> anmelden, den er selbst gesetzt hatte.
+     *
+     * <h2>Warum Abbruch und nicht Anlegen</h2>
+     * Die Suche laeuft jetzt exakt, ein Profil mit abweichender Schreibweise wird also nicht
+     * mehr gefunden. Ohne diese Pruefung legte der Runner daneben ein zweites, nahezu
+     * gleichnamiges Profil an - {@code uq_spieler_name} laesst das zu, weil der Index in
+     * PostgreSQL gross-/kleinschreibungsempfindlich ist. In der Namensliste stuenden dann
+     * zwei fast gleiche Eintraege, von denen einer ein technisches Konto ist.
+     *
+     * <p>Ein Abbruch ist hier das mildere Mittel: Er kostet einen Neustart mit korrigierter
+     * {@code .env}, waehrend der Alternativfall - Admin ausgesperrt - <b>keinen</b>
+     * Selbstbedienungsweg hat. Der Passwort-Reset holt das Passwort zurueck, nie den Namen;
+     * es bliebe nur ein Eingriff an der Datenbank. Das entspricht der Linie des Runners:
+     * lieber ein benennender Abbruch als eine stille Notloesung.
+     *
+     * <p><b>Es bleibt bei der bisherigen Nachsicht, wo kein Profil im Weg steht:</b> Findet
+     * sich gar nichts, wird das Profil angelegt wie bisher. Nur die Zweideutigkeit fuehrt
+     * zum Abbruch.
+     *
+     * <p>Die Gegenprobe laeuft ueber eine <b>Liste</b>, nicht ueber ein {@code Optional}:
+     * {@code uq_spieler_name} ist gross-/kleinschreibungsempfindlich, es koennen also
+     * mehrere Schreibweisen nebeneinander stehen. Die Meldung nennt sie dann alle.
+     *
+     * @param exakterTreffer Ergebnis der zeichengenauen Suche oder {@code null}
+     * @param gewuenschterName Wert aus {@code ADMIN_NAME}, bereits getrimmt
+     */
+    private void pruefeSchreibweise(Spieler exakterTreffer, String gewuenschterName) {
+        if (exakterTreffer != null) {
+            return;
+        }
+
+        List<Spieler> abweichend = spielerRepository.findAllByNameIgnoreCase(gewuenschterName);
+        if (abweichend.isEmpty()) {
+            return;
+        }
+
+        String gefundene = abweichend.stream()
+                .map(spieler -> "'" + spieler.getName() + "'")
+                .collect(Collectors.joining(", "));
+
+        throw new IllegalStateException(
+                ("ADMIN_NAME nennt '%s', in profil.spieler steht aber %s - der Unterschied "
+                        + "liegt allein in der Gross-/Kleinschreibung. Der Anmeldename des "
+                        + "Admins wird zeichengenau geprueft; wuerde hier ein vorhandenes "
+                        + "Profil uebernommen, liesse sich der Wert aus ADMIN_NAME nicht zum "
+                        + "Anmelden verwenden - und ein zweites, nahezu gleichnamiges Profil "
+                        + "anzulegen waere noch schlechter. Entweder ADMIN_NAME an die "
+                        + "vorhandene Schreibweise angleichen oder das Profil umbenennen.")
+                        .formatted(gewuenschterName, gefundene));
     }
 
     /**
