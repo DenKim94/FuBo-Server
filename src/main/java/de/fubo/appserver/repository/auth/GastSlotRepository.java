@@ -31,8 +31,9 @@ public class GastSlotRepository {
      * <p>{@code id <= :maxGaeste} setzt die Admin-Konfiguration
      * ({@code configs.app_config.anz_guests}) um, ohne Datensaetze anzulegen oder zu
      * loeschen: Die Plaetze sind fest, wirksam sind nur die ersten {@code anz_guests}.
-     * Eine Erhoehung ueber die Zahl der vorhandenen Zeilen hinaus bleibt wirkungslos -
-     * das Anlegen weiterer Plaetze gehoert zum Admin-Bereich in S3.
+     * Fehlende Zeilen legt seit S3 {@link #plaetzeSicherstellen(int)} an, in derselben
+     * Transaktion wie die Konfigurationsaenderung - vorher blieb eine Erhoehung ueber die
+     * Zahl der vorhandenen Zeilen hinaus wirkungslos.
      *
      * <p>{@code version = version + 1} wird von Hand fortgeschrieben, weil kein Hibernate
      * beteiligt ist. Ohne das bliebe die Spalte stehen und eine spaetere Entity auf
@@ -101,6 +102,45 @@ public class GastSlotRepository {
                AND id <= :maxGaeste
             """;
 
+    /**
+     * Legt die Plaetze 1 bis {@code anzahl} an, soweit sie fehlen (S3, Abschnitt 6).
+     *
+     * <p><b>Warum es das braucht:</b> {@code configs.app_config.anz_guests} wirkt ueber
+     * {@code id <= :maxGaeste}. Das erledigt das <i>Senken</i> vollstaendig - fuers <i>Erhoehen</i>
+     * fehlte bis S3 der Rest: {@code V007} legt genau vier Zeilen an, eine Einstellung auf 6 blieb
+     * deshalb wirkungslos. Der Admin stellte 6 ein, das Formular meldete Erfolg, und der fuenfte
+     * Gast bekam {@code 409 KEIN_GAST_SLOT_FREI}.
+     *
+     * <p>{@code generate_series} statt einer Schleife in Java: eine Anweisung, eine Transaktion,
+     * kein Wettlauf zwischen Pruefen und Anlegen. {@code ON CONFLICT (id) DO NOTHING} macht den
+     * Aufruf wiederholbar und laesst bestehende Plaetze - auch belegte - unangetastet; der
+     * Konfigurations-Endpunkt ruft ihn deshalb bei jedem Speichern auf, ohne vorher zu vergleichen.
+     *
+     * <p>{@code anzeige_name} wird mitgeschrieben, weil die Spalte {@code NOT NULL} ist. Das Muster
+     * "Gast n" setzt {@code V007} fort; der Name ist ein Vorschlag, den der Gast beim Anmelden
+     * ueberschreibt.
+     */
+    private static final String SQL_PLAETZE_SICHERSTELLEN = """
+            INSERT INTO profil.gast_slot (id, anzeige_name)
+            SELECT n::smallint, 'Gast ' || n
+              FROM generate_series(1, :anzahl) AS n
+            ON CONFLICT (id) DO NOTHING
+            """;
+
+    /**
+     * Zaehlt belegte Plaetze <b>oberhalb</b> der wirksamen Grenze.
+     *
+     * <p>Nur fuer Protokollausgaben. Senkt der Admin die Zahl, waehrend hoehere Plaetze besetzt
+     * sind, bleiben diese Gaeste angemeldet, bis ihre Sitzung endet - die Zaehlung geht dann
+     * voruebergehend nicht auf, und ohne Log-Zeile raetselt der Betrieb daran.
+     */
+    private static final String SQL_BELEGTE_OBERHALB = """
+            SELECT count(*)
+              FROM profil.gast_slot
+             WHERE belegt
+               AND id > :maxGaeste
+            """;
+
     private final JdbcClient jdbc;
 
     public GastSlotRepository(JdbcClient jdbc) {
@@ -150,6 +190,43 @@ public class GastSlotRepository {
      */
     public int freieSlotsZaehlen(int maxGaeste) {
         return jdbc.sql(SQL_FREIE_ZAEHLEN)
+                .param("maxGaeste", maxGaeste)
+                .query(Integer.class)
+                .single();
+    }
+
+    /**
+     * Stellt sicher, dass die Plaetze 1 bis {@code anzahl} existieren.
+     *
+     * <p><b>Gehoert in dieselbe Transaktion wie die Konfigurationsaenderung.</b> Scheitert das
+     * Anlegen, darf auch {@code anz_guests} nicht steigen - sonst stuende in der Konfiguration
+     * eine Zahl, die die Anwendung nicht einloesen kann.
+     *
+     * <p>Bestehende Plaetze bleiben unveraendert, auch belegte. {@code anzahl = 0} legt nichts an:
+     * {@code generate_series(1, 0)} liefert keine Zeile.
+     *
+     * @param anzahl hoechste Platznummer, die es geben soll (aus {@code anz_guests})
+     * @return Anzahl neu angelegter Plaetze; 0, wenn schon alle vorhanden waren
+     */
+    public int plaetzeSicherstellen(int anzahl) {
+        return jdbc.sql(SQL_PLAETZE_SICHERSTELLEN)
+                .param("anzahl", anzahl)
+                .update();
+    }
+
+    /**
+     * Zaehlt die belegten Plaetze jenseits der wirksamen Obergrenze.
+     *
+     * <p><b>Nur zur Protokollierung.</b> Die Zahl beschreibt einen Uebergangszustand nach einer
+     * Senkung von {@code anz_guests} und ist bereits ueberholt, wenn eine dieser Sitzungen endet.
+     * Fuer eine Belegungsentscheidung ist ausschliesslich {@link #freienSlotBelegen(Long, int)}
+     * zustaendig.
+     *
+     * @param maxGaeste neue wirksame Obergrenze
+     * @return Anzahl belegter Plaetze mit einer Nummer groesser als {@code maxGaeste}
+     */
+    public int belegteOberhalbZaehlen(int maxGaeste) {
+        return jdbc.sql(SQL_BELEGTE_OBERHALB)
                 .param("maxGaeste", maxGaeste)
                 .query(Integer.class)
                 .single();
