@@ -4,7 +4,7 @@
     "title": "FuBo Server API",
     "version": "1.0.0",
     "summary": "Vertrag zwischen FuBo-Server und FuBo-Client.",
-    "description": "Maßgebliche Beschreibung der REST-Schnittstelle des FuBo-Servers.\n\n**Diese Datei ist die Quelle der Wahrheit für den Client-Track.** Server und Client liegen in getrennten Repositories; eine Vertragsänderung wird deshalb immer zuerst hier abgebildet und der Client anschließend nachgezogen.\n\n**Stand:** S2 (Auth und Session) und S2b vollständig. S2b umfasst die Zugangsdatenpflege (Passwort-Reset per E-Mail, Passwortänderung im angemeldeten Zustand, Wechsel der zentralen PIN) und das Anlegen, Entfernen und Sperren von Spielerprofilen durch den Admin. Profile, Termine, Teams und Ergebnisse folgen mit S3 bis S6 und stehen bewusst noch nicht hier – spekulative Endpunkte wären ein Vertrag über etwas, das es nicht gibt.\n\n### Versionierung\nJeder fachliche Endpunkt liegt unter `/api/{version}/<bereich>/<ressource>/<aktion>`. Die Version steht als Präfix an Segment-Index 1, die Aktion als eigenes Segment am Ende. Umgesetzt mit `ApiVersionConfigurer#usePathSegment` aus Spring Framework 7.\n\n- `/api/v1/...` und `/api/1/...` werden beide als Version 1 gelesen; nach außen wird durchgängig `v1` verwendet.\n- Eine unbekannte Version (`/api/v99/...`) liefert `400`.\n- Ein fehlendes Versionssegment liefert `404` – ohne das Segment passt der Pfad schlicht auf kein Mapping.\n\n### Authentifizierung\nOpakes Session-Cookie (`FUBO_SESSION`, `HttpOnly`, `Secure`, `SameSite=Lax`, kein Ablaufdatum). Das Frontend kann den Token weder lesen noch prüfen und muss das auch nicht: Die Validierung passiert ausschließlich serverseitig in der Filterchain. Alle Aufrufe erfolgen mit `credentials: 'include'`.\n\n**Die zentrale PIN besteht aus vier Ziffern.** Das Eingabefeld im Frontend darf darauf ausgelegt werden. `POST /auth/pin/pruefen` schreibt der Eingabe trotzdem **kein** Format vor – ein abweichender Bestandswert aus der Erstkonfiguration muss eingebbar bleiben, und eine Mindestlänge im Vertrag wäre eine Auskunft über das Format der echten PIN. Verbindlich ist das Format nur beim *Setzen* über `POST /admin/pin/aendern`.\n\nDer Login ist zweistufig und wird serverseitig erzwungen:\n1. `PIN_VERIFIED` – zentrale PIN geprüft, Identität noch offen.\n2. `PROFILE_AUTHENTICATED` – erst hier existiert eine Rolle. Es führen drei Wege dorthin: Namensauswahl (`USER`), Gast-Login (`GAST`) und Admin-Login mit Passwort (`ADMIN`).\n\n**Das Adminprofil ist ein technisches Konto.** Es steht nicht in der Namensliste, nimmt an keinem Termin teil und wird nie in ein Team eingeteilt; seine Skillwerte stehen auf 0. Der Admin meldet sich deshalb über `POST /api/v1/auth/admin/anmelden` mit seinem Passwort an – die Namensauswahl lehnt das Adminprofil auch dann ab, wenn seine Id bekannt ist.\n\nBei jedem Stufenwechsel und bei jeder Erneuerung wird der Token rotiert (Schutz vor Session Fixation). Die `session.id` bleibt dabei erhalten.\n\n### Sitzungsdauer (Zwei-Timer-Modell)\n`gueltigBis` ist ein gleitendes Leerlauf-Fenster (Vorgabe 15 Minuten) und wandert bei jedem Aufruf nach hinten. `absolutGueltigBis` ist eine harte Obergrenze (Vorgabe 1 Stunde) und wird nie verschoben – auch nicht durch `/auth/session/erneuern`.\n\nHintergrundaufrufe (etwa das Pollen des Belegtstatus) sollen das Leerlauf-Fenster **nicht** verlängern und senden dazu `X-FuBo-Kein-Refresh: true`. Ohne diesen Header würde „15 Minuten Inaktivität\" den offenen Browser-Tab messen statt den Nutzer.\n\n### CORS\nFrontend und API liegen auf Subdomains derselben registrierbaren Domain (`app.<domain>` / `api.<domain>`). Der Server führt eine Allowlist mit `allowCredentials=true`; erlaubte Anfrageheader sind `Content-Type` und `X-FuBo-Kein-Refresh`, freigegebener Antwortheader ist `Retry-After`.\n\n### Datenschutz\nSkillbewertungen verlassen den Server nie in Richtung USER oder GAST (Anforderung A12). Kein Antwortobjekt dieser Beschreibung enthält Skillwerte; die Teamgenerierung läuft vollständig serverseitig.\n\n### Nicht enthalten\n`GET /actuator/health` bleibt bewusst unversioniert und ist kein Teil der fachlichen API. Der Endpunkt dient dem Container-Healthcheck und wird von nginx nach außen abgeschottet.",
+    "description": "Maßgebliche Beschreibung der REST-Schnittstelle des FuBo-Servers.\n\n**Diese Datei ist die Quelle der Wahrheit für den Client-Track.** Server und Client liegen in getrennten Repositories; eine Vertragsänderung wird deshalb immer zuerst hier abgebildet und der Client anschließend nachgezogen.\n\n**Stand:** S2 (Auth und Session) und S2b vollständig. S2b umfasst die Zugangsdatenpflege (Passwort-Reset per E-Mail, Passwortänderung im angemeldeten Zustand, Wechsel der zentralen PIN) und das Anlegen, Entfernen und Sperren von Spielerprofilen durch den Admin. Profile, Termine, Teams und Ergebnisse folgen mit S3 bis S6 und stehen bewusst noch nicht hier – spekulative Endpunkte wären ein Vertrag über etwas, das es nicht gibt.\n\n### Versionierung\nJeder fachliche Endpunkt liegt unter `/api/{version}/<bereich>/<ressource>/<aktion>`. Die Version steht als Präfix an Segment-Index 1, die Aktion als eigenes Segment am Ende. Umgesetzt mit `ApiVersionConfigurer#usePathSegment` aus Spring Framework 7.\n\n- `/api/v1/...` und `/api/1/...` werden beide als Version 1 gelesen; nach außen wird durchgängig `v1` verwendet.\n- Eine unbekannte Version (`/api/v99/...`) liefert `400`.\n- Ein fehlendes Versionssegment liefert `404` – ohne das Segment passt der Pfad schlicht auf kein Mapping.\n\n### Authentifizierung\nOpakes Session-Cookie (`FUBO_SESSION`, `HttpOnly`, `Secure`, `SameSite=Lax`, kein Ablaufdatum). Das Frontend kann den Token weder lesen noch prüfen und muss das auch nicht: Die Validierung passiert ausschließlich serverseitig in der Filterchain. Alle Aufrufe erfolgen mit `credentials: 'include'`.\n\n**Die zentrale PIN besteht aus vier Ziffern.** Das Eingabefeld im Frontend darf darauf ausgelegt werden. `POST /auth/pin/pruefen` schreibt der Eingabe trotzdem **kein** Format vor – ein abweichender Bestandswert aus der Erstkonfiguration muss eingebbar bleiben, und eine Mindestlänge im Vertrag wäre eine Auskunft über das Format der echten PIN. Verbindlich ist das Format nur beim *Setzen* über `POST /admin/pin/aendern`.\n\nDer Login ist zweistufig und wird serverseitig erzwungen:\n1. `PIN_VERIFIED` – zentrale PIN geprüft, Identität noch offen.\n2. `PROFILE_AUTHENTICATED` – erst hier existiert eine Rolle. Es führen drei Wege dorthin: Namensauswahl (`USER`), Gast-Login (`GAST`) und Admin-Login mit Passwort (`ADMIN`).\n\n**Das Adminprofil ist ein technisches Konto.** Es steht nicht in der Namensliste, nimmt an keinem Termin teil und wird nie in ein Team eingeteilt; seine Skillwerte stehen auf 0. Der Admin meldet sich deshalb über `POST /api/v1/auth/admin/anmelden` mit seinem Passwort an – die Namensauswahl lehnt das Adminprofil auch dann ab, wenn seine Id bekannt ist.\n\nBei jedem Stufenwechsel und bei jeder Erneuerung wird der Token rotiert (Schutz vor Session Fixation). Die `session.id` bleibt dabei erhalten.\n\n### Sitzungsdauer (Zwei-Timer-Modell)\n`gueltigBis` ist ein gleitendes Leerlauf-Fenster (Vorgabe 15 Minuten) und wandert bei jedem Aufruf nach hinten. `absolutGueltigBis` ist eine harte Obergrenze (Vorgabe 1 Stunde) und wird nie verschoben – auch nicht durch `/auth/session/erneuern`.\n\nHintergrundaufrufe (etwa das Pollen des Belegtstatus) sollen das Leerlauf-Fenster **nicht** verlängern und senden dazu `X-FuBo-Kein-Refresh: true`. Ohne diesen Header würde „15 Minuten Inaktivität\" den offenen Browser-Tab messen statt den Nutzer.\n\n### CORS\nFrontend und API liegen auf Subdomains derselben registrierbaren Domain (`app.<domain>` / `api.<domain>`). Der Server führt eine Allowlist mit `allowCredentials=true`; erlaubte Anfrageheader sind `Content-Type` und `X-FuBo-Kein-Refresh`, freigegebener Antwortheader ist `Retry-After`.\n\n### Datenschutz\nSkillbewertungen verlassen den Server nie in Richtung USER oder GAST (Anforderung A12). Sie erscheinen **ausschliesslich in Antworten unterhalb von `/admin/`** – heute in `GET /admin/user/lesen` – und erreichen `USER` und `GAST` nie; die Teamgenerierung läuft vollständig serverseitig.\n\nBis S2b enthielt kein Antwortobjekt dieser Beschreibung Skillwerte. Seit S3 gilt die genauere Fassung oben: Der Prüfpunkt ist nicht mehr „kommen Skillwerte vor\", sondern „kommen sie ausserhalb von `/admin/` vor\".\n\n### Nicht enthalten\n`GET /actuator/health` bleibt bewusst unversioniert und ist kein Teil der fachlichen API. Der Endpunkt dient dem Container-Healthcheck und wird von nginx nach außen abgeschottet.",
     "contact": {
       "name": "FuBo-Server",
       "url": "https://github.com/DenKim94/FuBo-Server"
@@ -856,7 +856,7 @@
         ],
         "operationId": "spielerAnlegen",
         "summary": "Spielerprofil anlegen",
-        "description": "Legt ein neues Profil mit der Rolle `USER` an und setzt es aktiv. Verlangt die Rolle `ADMIN`.\n\n**Skillwerte sind optional.** Fehlen sie ganz oder teilweise, gelten die Vorgaben der Stufe `MITTEL` aus `profil.gast_vorlage`. Das ist bewusst kein Nullwert: Ein Profil mit lauter Nullen bekäme in der Teamgenerierung (S5) ein Team ohne jede Stärke zugeteilt, ohne dass jemand den Grund sähe.\n\nDie Skillpflege bestehender Profile gehört nach S3; dieser Endpunkt schreibt sie nur beim Anlegen.",
+        "description": "Legt ein neues Profil mit der Rolle `USER` an und setzt es aktiv. Verlangt die Rolle `ADMIN`.\n\n**Skillwerte sind optional.** Fehlen sie ganz oder teilweise, gelten die Vorgaben der Stufe `MITTEL` aus `profil.gast_vorlage`. Das ist bewusst kein Nullwert: Ein Profil mit lauter Nullen bekäme in der Teamgenerierung (S5) ein Team ohne jede Stärke zugeteilt, ohne dass jemand den Grund sähe.\n\nDie Skillpflege bestehender Profile läuft über `POST /admin/user/bearbeiten` (S3); dieser Endpunkt schreibt sie nur beim Anlegen.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1074,6 +1074,263 @@
                   "status": 409,
                   "detail": "Das Adminprofil ist geschützt und kann weder entfernt noch gesperrt werden.",
                   "code": "PROFIL_GESCHUETZT"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/user/lesen": {
+      "get": {
+        "tags": [
+          "Spielerverwaltung"
+        ],
+        "operationId": "profileLesen",
+        "summary": "Profile mit Skillwerten lesen",
+        "description": "Liefert **alle** Profile des Bestands mit ihren Skillwerten. Verlangt die Rolle `ADMIN`.\n\n**Der erste Endpunkt dieser API, der Skillwerte ausliefert.** Bis S2b gab es keinen; A12 wird hier zum ersten Mal scharf: Skillwerte erreichen `USER` und `GAST` nie.\n\nDrei Unterschiede zur Namensliste `/auth/users/lesen`, und sie sind der ganze Zweck:\n1. **Gesperrte Profile sind enthalten** (`aktiv: false`) – ohne sie liesse sich eine versehentliche Sperre nicht zurücknehmen.\n2. **Das Adminprofil ist enthalten**, erkennbar an `rolle: ADMIN`. Eine Profilverwaltung zählt keine Mitspieler auf, sondern den Datenbestand.\n3. **Die Skillwerte sind dabei** – ohne sie liesse sich kein Bearbeitungsformular füllen.\n\nSortiert nach `rolle` absteigend, dann nach Name: Die Spielerprofile stehen vorn, das technische Konto am Ende.\n\n**Zum Zwischenspeicher:** Profildaten und Skillwerte werden serverseitig zwischengespeichert und bei jeder Änderung an einem Profil verworfen. Das Feld `belegt` ist davon ausgenommen und wird bei jedem Aufruf frisch ermittelt – es hängt an den laufenden Sitzungen und ändert sich ohne Zutun des Admins. Für den Client ändert das nichts; er sieht immer den aktuellen Stand.",
+        "responses": {
+          "200": {
+            "description": "Profilliste mit Skillwerten.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SpielerDetails"
+                  }
+                },
+                "example": [
+                  {
+                    "spielerId": 3,
+                    "name": "Beispielspieler 03",
+                    "rolle": "USER",
+                    "aktiv": true,
+                    "belegt": true,
+                    "skills": {
+                      "ANGRIFF": 4,
+                      "ABWEHR": 3,
+                      "TECHNIK": 5,
+                      "AUSDAUER": 4,
+                      "TORWART": 1
+                    }
+                  },
+                  {
+                    "spielerId": 7,
+                    "name": "Beispielspieler 07",
+                    "rolle": "USER",
+                    "aktiv": false,
+                    "belegt": false,
+                    "skills": {
+                      "ANGRIFF": 2,
+                      "ABWEHR": 5,
+                      "TECHNIK": 3,
+                      "AUSDAUER": 3
+                    }
+                  },
+                  {
+                    "spielerId": 12,
+                    "name": "fubo-admin",
+                    "rolle": "ADMIN",
+                    "aktiv": true,
+                    "belegt": true,
+                    "skills": {
+                      "ANGRIFF": 0,
+                      "ABWEHR": 0,
+                      "TECHNIK": 0,
+                      "AUSDAUER": 0,
+                      "TORWART": 0
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/user/bearbeiten": {
+      "post": {
+        "tags": [
+          "Spielerverwaltung"
+        ],
+        "operationId": "spielerBearbeiten",
+        "summary": "Profil bearbeiten (Name und Skillwerte)",
+        "description": "Ändert Name und/oder Skillwerte eines bestehenden Profils. Verlangt die Rolle `ADMIN`.\n\n**Ein Endpunkt für beides, nicht zwei.** Name und Skillwerte gehören zu derselben Zeile und zu demselben Formular; zwei Endpunkte hiessen zwei Transaktionen, und ein Formular, das beides ändert, könnte zur Hälfte scheitern.\n\n**Weglassen heisst „nicht ändern\"** – Einzelheiten am Schema. Eine leere Skill-Karte löscht nichts.\n\n**Das Adminprofil wird hier abgelehnt** (`409 PROFIL_GESCHUETZT`), vollständig: Sein Name ist zugleich der Anmeldename und wird über `/admin/name/aendern` geändert; seine Skillwerte stehen auf 0, weil es ein technisches Konto ist und nie in ein Team eingeteilt wird.\n\n**Vormerkung für S4 (A15):** Eine Skilländerung gilt als Teilnehmeränderung und muss die `teilnehmer_version` betroffener künftiger Termine hochzählen, damit bestehende Teameinteilungen als veraltet gelten. `spieltag` hat in S3 noch keinen Service; der Aufruf wird in S4 nachgezogen.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpielerBearbeitenRequest"
+              },
+              "examples": {
+                "nurName": {
+                  "summary": "Nur umbenennen – Skillwerte bleiben unberührt",
+                  "value": {
+                    "spielerId": 7,
+                    "name": "Beispielspieler 07a"
+                  }
+                },
+                "einzelnerSkillwert": {
+                  "summary": "Eine Kategorie setzen – die übrigen bleiben",
+                  "value": {
+                    "spielerId": 7,
+                    "skills": {
+                      "TORWART": 2
+                    }
+                  }
+                },
+                "beides": {
+                  "summary": "Name und mehrere Kategorien in einem Aufruf",
+                  "value": {
+                    "spielerId": 7,
+                    "name": "Beispielspieler 07b",
+                    "skills": {
+                      "ANGRIFF": 5,
+                      "TORWART": 0
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Übernommen. Kein Inhalt."
+          },
+          "400": {
+            "$ref": "#/components/responses/EingabeUngueltig"
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
+          },
+          "404": {
+            "description": "Kein Profil mit dieser Id (`INHALT_NICHT_GEFUNDEN`).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Zwei Fälle:\n\n- `NAME_BELEGT` – ein **anderes** Profil trägt diesen Namen, auch bei abweichender Gross-/Kleinschreibung. Der eigene Name zählt nicht als Kollision.\n- `PROFIL_GESCHUETZT` – das Adminprofil. Umbenannt wird es über `/admin/name/aendern`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/skills/lesen": {
+      "get": {
+        "tags": [
+          "Spielerverwaltung"
+        ],
+        "operationId": "skillKategorienLesen",
+        "summary": "Skillkategorien und ihre Wertebereiche lesen",
+        "description": "Liefert die **aktiven** Skillkategorien in ihrer Anzeigereihenfolge. Verlangt die Rolle `ADMIN`.\n\nDas Bearbeitungsformular braucht sie: Feldnamen, Beschriftungen, Grenzen der Eingabefelder und die Reihenfolge stehen nirgends sonst. Ohne diesen Endpunkt müsste der Client die Kategorien fest verdrahten – und eine neue Kategorie wäre trotz datengetriebenem Modell ein Frontend-Release.\n\n**Warum der Endpunkt Adminrechte verlangt und nicht offen ist:** Er verrät den Wertebereich und damit den Aufbau der Bewertung. Ein normaler Nutzer sieht nie Skills (A12); ihm den Rahmen dieser Skills zu zeigen wäre die halbe Auskunft.",
+        "responses": {
+          "200": {
+            "description": "Aktive Kategorien, nach `reihenfolge` sortiert.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SkillKategorieInfo"
+                  }
+                },
+                "example": [
+                  {
+                    "schluessel": "ANGRIFF",
+                    "bezeichnung": "Angriff",
+                    "gewicht": 1.0,
+                    "reihenfolge": 1,
+                    "minWert": 0,
+                    "maxWert": 6
+                  },
+                  {
+                    "schluessel": "TORWART",
+                    "bezeichnung": "Torwart",
+                    "gewicht": 0.3,
+                    "reihenfolge": 5,
+                    "minWert": 0,
+                    "maxWert": 3
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/name/aendern": {
+      "post": {
+        "tags": [
+          "Zugangsdaten"
+        ],
+        "operationId": "adminNameAendern",
+        "summary": "Anmeldenamen des Admins ändern",
+        "description": "Benennt das Adminprofil um und ändert damit den **Anmeldenamen** für `/auth/admin/anmelden`. Verlangt die Rolle `ADMIN`.\n\nEin eigener Endpunkt statt eines Sonderfalls in `/admin/user/bearbeiten`: Der Name des Adminprofils ist seit dem 29.08.2026 ein Anmeldemerkmal und keine Stammdatenpflege. Er liegt unter dem Tag „Zugangsdaten\", neben `/admin/passwort/aendern` und `/admin/pin/aendern`.\n\n**Die laufende Sitzung bleibt bestehen** – anders als bei der Passwortänderung, die das Cookie löscht. Der Name ist kein Geheimnis, dessen Bekanntwerden allein Zugang verschafft; ein Widerruf würfe den Admin unmittelbar nach der Umbenennung aus seiner eigenen Sitzung. Die Änderung greift beim **nächsten** Login.\n\n**Ein aktuelles Passwort wird nicht verlangt** – dasselbe Muster wie bei `/admin/pin/aendern`, das die zentrale PIN ohne erneute Passworteingabe setzt. Nur die Passwortänderung selbst fragt das alte Passwort ab.\n\n**Betriebshinweis:** Nach einer Umbenennung ist `ADMIN_NAME` in der `.env` veraltet. Für den laufenden Betrieb ist das folgenlos – der Start-Bootstrap liest den Wert nur, solange `profil.admin_konto` leer ist. Wird diese Zeile je neu aufgebaut, sucht er wieder unter `ADMIN_NAME`; deshalb gehört der Wert nachgezogen.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminNameAendernRequest"
+              },
+              "examples": {
+                "standard": {
+                  "value": {
+                    "neuerName": "fubo-admin"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Umbenannt. Kein Inhalt, **kein neues Cookie** – die Sitzung läuft weiter."
+          },
+          "400": {
+            "$ref": "#/components/responses/EingabeUngueltig"
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
+          },
+          "409": {
+            "description": "Ein anderes Profil trägt diesen Namen (`NAME_BELEGT`), auch bei abweichender Gross-/Kleinschreibung.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
                 }
               }
             }
@@ -1478,7 +1735,7 @@
             "additionalProperties": {
               "type": "integer"
             },
-            "description": "Skillwerte je Kategorieschlüssel, etwa `{\"ANGRIFF\": 4, \"TORWART\": 2}`. **Optional und auch teilweise erlaubt.**\n\nNicht genannte Kategorien bekommen die Vorgabe der Stufe `MITTEL` aus `profil.gast_vorlage` – dieselben Werte, mit denen ein Gast ohne Selbsteinschätzung in die Teamgenerierung eingeht. Fehlt das Feld ganz, gilt die Vorgabe für alle Kategorien.\n\nJede Kategorie hat ihren eigenen Wertebereich: 0 bis 6, für `TORWART` 0 bis 3. Ein unbekannter Schlüssel oder ein Wert ausserhalb des Bereichs liefert `400 EINGABE_UNGUELTIG` und nennt die betroffene Kategorie.\n\n**Die Skillwerte verlassen den Server nie wieder** (A12) – es gibt keinen Endpunkt, der sie ausliefert."
+            "description": "Skillwerte je Kategorieschlüssel, etwa `{\"ANGRIFF\": 4, \"TORWART\": 2}`. **Optional und auch teilweise erlaubt.**\n\nNicht genannte Kategorien bekommen die Vorgabe der Stufe `MITTEL` aus `profil.gast_vorlage` – dieselben Werte, mit denen ein Gast ohne Selbsteinschätzung in die Teamgenerierung eingeht. Fehlt das Feld ganz, gilt die Vorgabe für alle Kategorien.\n\nJede Kategorie hat ihren eigenen Wertebereich: 0 bis 6, für `TORWART` 0 bis 3. Ein unbekannter Schlüssel oder ein Wert ausserhalb des Bereichs liefert `400 EINGABE_UNGUELTIG` und nennt die betroffene Kategorie.\n\n**Die Skillwerte verlassen den Server nur in Richtung `ADMIN`** (A12): `GET /admin/user/lesen` liefert sie seit S3 aus, jeder Endpunkt für `USER` und `GAST` weiterhin nicht."
           }
         },
         "required": [
@@ -1532,6 +1789,136 @@
         "required": [
           "spielerId",
           "blockieren"
+        ]
+      },
+      "SpielerDetails": {
+        "type": "object",
+        "description": "Ein Profil aus Sicht des Admins – **mit Skillwerten**.\n\nDieses Schema erscheint ausschliesslich unterhalb von `/admin/` und erreicht `USER` und `GAST` nie (A12).",
+        "properties": {
+          "spielerId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Id des Profils; Eingabewert von `/admin/user/bearbeiten`."
+          },
+          "name": {
+            "type": "string",
+            "description": "Anzeigename."
+          },
+          "rolle": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Rolle"
+              }
+            ],
+            "description": "ADMIN oder USER. **Das Adminprofil steht in dieser Liste** – eine Profilverwaltung zählt keine Mitspieler auf, sondern den Datenbestand; ohne es fehlte eine Zeile ohne Erklärung. Der Client erkennt es an diesem Feld und blendet dafür „sperren\", „entfernen\" und die Skillfelder aus: Der Server lehnt jede Änderung am Adminprofil über `/admin/user/bearbeiten` mit `409 PROFIL_GESCHUETZT` ab. Umbenannt wird es über `/admin/name/aendern`."
+          },
+          "aktiv": {
+            "type": "boolean",
+            "description": "`false` bedeutet gesperrt. **Gesperrte Profile stehen in dieser Liste**, anders als in der Namensliste – sonst liesse sich eine versehentliche Sperre nicht zurücknehmen."
+          },
+          "belegt": {
+            "type": "boolean",
+            "description": "`true`, wenn auf dieses Profil gerade eine gültige Sitzung läuft. Aus den aktiven Sitzungen abgeleitet, nicht gespeichert (A6) – und **bei jedem Aufruf frisch ermittelt**, auch wenn die übrigen Felder aus einem serverseitigen Zwischenspeicher stammen."
+          },
+          "skills": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Wert je Kategorieschlüssel, etwa `{\"ANGRIFF\": 4, \"TORWART\": 2}`.\n\nEnthalten sind **nur Kategorien, zu denen eine Zeile existiert**, und nur aktive. Fehlt eine Kategorie, ist das Profil ungepflegt – das kommt bei Profilen aus einem Datenimport vor; über `/admin/user/anlegen` entstandene haben immer alle. Der Client erkennt die Lücke, indem er diese Karte gegen `/admin/skills/lesen` hält."
+          }
+        },
+        "required": [
+          "spielerId",
+          "name",
+          "rolle",
+          "aktiv",
+          "belegt",
+          "skills"
+        ]
+      },
+      "SpielerBearbeitenRequest": {
+        "type": "object",
+        "description": "Änderung an einem bestehenden Profil.\n\n**Weglassen heisst „nicht ändern\".** Was nicht im Anfragekörper steht, bleibt wie es ist. Ein Aufruf, der weder `name` noch `skills` nennt, liefert `400 EINGABE_UNGUELTIG` – er täte nichts, hinterliesse aber einen Protokolleintrag.",
+        "properties": {
+          "spielerId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Id des zu ändernden Profils. Unbekannt: `404`."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60,
+            "description": "Neuer Anzeigename. Randleerzeichen werden entfernt.\n\nFehlt das Feld oder ist es `null`, bleibt der Name. Eine **leere** Zeichenkette oder nur Leerzeichen liefern dagegen `400` – das ist eine Eingabe, kein Weglassen.\n\nDer eigene Datensatz zählt nicht als Kollision: Eine Korrektur der Schreibweise („pruefspieler a\" → „Pruefspieler A\") ist erlaubt, der Name eines **anderen** Profils liefert `409 NAME_BELEGT`."
+          },
+          "skills": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Zu setzende Werte je Kategorieschlüssel. **Auch eine Teilmenge ist erlaubt** – genannte Kategorien werden gesetzt, die übrigen bleiben unberührt.\n\n**Eine leere Karte (`{}`) löscht nichts.** Ein Löschen von Skillzeilen ist in dieser API nicht vorgesehen: Der Teamgenerator braucht vollständige Werte, und eine Kategorie verschwindet nur, wenn sie in `profil.skill_kategorie` abgeschaltet wird.\n\nWertebereiche und zulässige Schlüssel liefert `/admin/skills/lesen`; ein unbekannter Schlüssel oder ein Wert ausserhalb des Bereichs liefert `400` und nennt die betroffene Kategorie."
+          }
+        },
+        "required": [
+          "spielerId"
+        ]
+      },
+      "SkillKategorieInfo": {
+        "type": "object",
+        "description": "Eine aktive Skillkategorie samt ihrem Wertebereich.\n\nDie Kategorien sind **Daten, keine Spalten** – eine neue Kategorie ist eine Datenänderung, keine Schemamigration. Genau dieser Vorteil verfällt, wenn der Client sie fest verdrahtet.",
+        "properties": {
+          "schluessel": {
+            "type": "string",
+            "description": "Fachlicher Schlüssel, etwa `ANGRIFF`. Zugleich der Feldname in den `skills`-Karten von `/admin/user/lesen` und `/admin/user/bearbeiten`."
+          },
+          "bezeichnung": {
+            "type": "string",
+            "description": "Beschriftung für das Formular, in deutscher Schreibweise."
+          },
+          "gewicht": {
+            "type": "number",
+            "format": "double",
+            "description": "Gewicht in der Zielfunktion des Teamgenerators: `1.00` für die vier Feldkategorien, `0.30` für `TORWART`. Mitgeliefert, damit sich dem Admin erklären lässt, warum Torwart anders zählt – es ist kein Geheimnis, anders als die Skillwerte einzelner Spieler, die es gewichtet."
+          },
+          "reihenfolge": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Anzeigereihenfolge. Die Antwort ist bereits danach sortiert."
+          },
+          "minWert": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Kleinster zulässiger Wert; heute durchgängig 0."
+          },
+          "maxWert": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Grösster zulässiger Wert: **6, für `TORWART` 3.**"
+          }
+        },
+        "required": [
+          "schluessel",
+          "bezeichnung",
+          "gewicht",
+          "reihenfolge",
+          "minWert",
+          "maxWert"
+        ]
+      },
+      "AdminNameAendernRequest": {
+        "type": "object",
+        "description": "Neuer Anmeldename des Admins.\n\nDas Adminprofil wird **ausschliesslich** über diesen Endpunkt umbenannt, nicht über `/admin/user/bearbeiten`.",
+        "properties": {
+          "neuerName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60,
+            "description": "Der neue Name. Randleerzeichen werden entfernt – **das ist wesentlich**: `/auth/admin/anmelden` trimmt seine Eingabe ebenfalls, ein mit Leerzeichen gespeicherter Name liesse sich also nie eingeben.\n\nDie Gross-/Kleinschreibung wird übernommen und beim Anmelden zeichengenau geprüft. Ein Wechsel von „Admin\" auf „admin\" ist deshalb eine echte Änderung des Anmeldenamens, keine Kosmetik.\n\nDer Name eines anderen Profils liefert `409 NAME_BELEGT`."
+          }
+        },
+        "required": [
+          "neuerName"
         ]
       }
     }
