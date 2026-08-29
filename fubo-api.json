@@ -45,11 +45,15 @@
     },
     {
       "name": "Spielerverwaltung",
-      "description": "Anlegen, Entfernen und Sperren von Spielerprofilen durch den Admin (A13). Die Bearbeitung bestehender Profile folgt mit S3."
+      "description": "Anlegen, Entfernen, Sperren, Lesen und Bearbeiten von Spielerprofilen durch den Admin (A13). Die Profilliste ist die einzige Antwort dieser Beschreibung, die Skillwerte trägt (A12)."
     },
     {
       "name": "Sitzung",
       "description": "Auskunft, Erneuerung und Abmeldung der laufenden Sitzung (A14)."
+    },
+    {
+      "name": "Konfiguration",
+      "description": "Die anwendungsweite Admin-Konfiguration lesen und ändern (A10, A11, A14, A15, A17, A23) – genau ein Datensatz."
     }
   ],
   "security": [
@@ -1337,6 +1341,112 @@
           }
         }
       }
+    },
+    "/api/v1/admin/config/lesen": {
+      "get": {
+        "tags": [
+          "Konfiguration"
+        ],
+        "operationId": "konfigurationLesen",
+        "summary": "Admin-Konfiguration lesen",
+        "description": "Liefert die anwendungsweite Konfiguration. Verlangt die Rolle `ADMIN`.\n\n**Vor jedem Schreibzugriff aufzurufen:** `/admin/config/aendern` ist ein Voll-Update und verlangt die `version` aus dieser Antwort zurück.\n\nDie Werte werden bei jedem Zugriff frisch aus der Datenbank gelesen; es gibt keinen Zwischenspeicher, den eine Änderung verwerfen müsste.",
+        "responses": {
+          "200": {
+            "description": "Die zehn änderbaren Felder, dazu `geaendertAm` und `version`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Konfiguration"
+                },
+                "example": {
+                  "minTeilnehmer": 6,
+                  "maxTeilnehmer": 22,
+                  "anzGuests": 4,
+                  "algorithmType": "EXHAUSTIV",
+                  "anzTeamGenerator": 1,
+                  "sessionLeerlaufMinuten": 15,
+                  "sessionMaximalStunden": 1,
+                  "halleEmail": null,
+                  "halleAbsageVorlage": null,
+                  "halleVorlaufStunden": 48,
+                  "geaendertAm": "2026-08-29T17:04:12.317+02:00",
+                  "version": 3
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/config/aendern": {
+      "post": {
+        "tags": [
+          "Konfiguration"
+        ],
+        "operationId": "konfigurationAendern",
+        "summary": "Admin-Konfiguration ändern (Voll-Update)",
+        "description": "Schreibt die Konfiguration vollständig. Verlangt die Rolle `ADMIN`.\n\n**Ablauf:** `/admin/config/lesen` → Formular → alle zehn Felder samt `version` zurück. Weicht die `version` vom gespeicherten Stand ab, antwortet der Server `409 DATEN_VERALTET`, ohne etwas zu schreiben – zwei geöffnete Browser-Tabs überschreiben einander damit nicht lautlos.\n\n**Was eine Änderung sofort bewirkt:**\n\n| Feld | Wirkung auf laufende Sitzungen |\n|---|---|\n| `sessionLeerlaufMinuten` | sofort |\n| `sessionMaximalStunden` | **nicht rückwirkend** – bestehende Sitzungen behalten ihre alte Obergrenze |\n| `anzGuests` | sofort; eine Erhöhung legt fehlende Gastplätze mit an, eine Senkung löscht keine |\n| übrige Felder | betrifft Termine, Teamgenerator und Hallenmodus – heute noch ohne auswertenden Endpunkt |\n\nDer Vorgang wird im Audit-Log als `KONFIG_GEAENDERT` mit altem und neuem Wert je geändertem Feld vermerkt; `halleAbsageVorlage` nur als Vermerk, ohne den Text.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KonfigurationAendernRequest"
+              },
+              "example": {
+                "version": 3,
+                "minTeilnehmer": 6,
+                "maxTeilnehmer": 22,
+                "anzGuests": 6,
+                "algorithmType": "EXHAUSTIV",
+                "anzTeamGenerator": 1,
+                "sessionLeerlaufMinuten": 30,
+                "sessionMaximalStunden": 1,
+                "halleEmail": "halle@example.invalid",
+                "halleAbsageVorlage": null,
+                "halleVorlaufStunden": 48
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Übernommen. Kein Inhalt – der neue Stand kommt aus einem erneuten `/admin/config/lesen`."
+          },
+          "400": {
+            "$ref": "#/components/responses/EingabeUngueltig"
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
+          },
+          "409": {
+            "description": "`DATEN_VERALTET` – die Konfiguration wurde zwischenzeitlich von anderer Stelle geändert. Neu laden und erneut speichern; es wurde nichts geschrieben.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Conflict",
+                  "status": 409,
+                  "detail": "Die Daten wurden zwischenzeitlich geändert. Bitte neu laden und erneut speichern.",
+                  "code": "DATEN_VERALTET"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1498,6 +1608,7 @@
           "VERSAND_FEHLGESCHLAGEN",
           "PROFIL_GESCHUETZT",
           "PROFIL_IN_VERWENDUNG",
+          "DATEN_VERALTET",
           "INTERNER_FEHLER"
         ]
       },
@@ -1919,6 +2030,206 @@
         },
         "required": [
           "neuerName"
+        ]
+      },
+      "AlgorithmType": {
+        "type": "string",
+        "description": "Verfahren der Teamgenerierung (A15). Beide nutzen dieselbe Zielfunktion und dieselbe Datengrundlage und sind gegeneinander austauschbar.\n\n- `EXHAUSTIV` (Vorgabe): vollständige Enumeration, liefert das globale Optimum, bis 22 Teilnehmer beherrschbar.\n- `HEURISTIK`: seed-basierte lokale Suche, liefert je Seed eine andere, nah-optimale Lösung.",
+        "enum": [
+          "EXHAUSTIV",
+          "HEURISTIK"
+        ]
+      },
+      "Konfiguration": {
+        "type": "object",
+        "description": "Die anwendungsweite Admin-Konfiguration – genau ein Datensatz.\n\nDie zehn änderbaren Felder stehen hier in derselben Form, in der `/admin/config/aendern` sie zurückerwartet; `geaendertAm` und `version` kommen hinzu. `geaendertVon` bleibt draußen: Es gibt genau einen Admin, die Auskunft „geändert von 1\" wäre inhaltsleer.",
+        "properties": {
+          "minTeilnehmer": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Mindestteilnehmerzahl, unter der ein Termin nicht zustande kommt (A10). Vorgabe 6.",
+            "minimum": 1
+          },
+          "maxTeilnehmer": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Höchstteilnehmerzahl; darüber greift die Warteschlange (A11). Vorgabe 22. Darf nicht unter `minTeilnehmer` liegen – sonst `400 EINGABE_UNGUELTIG` mit beiden Zahlen in der Meldung.",
+            "minimum": 1
+          },
+          "anzGuests": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Obergrenze gleichzeitig angemeldeter Gäste (A17). Vorgabe 4.\n\n**Eine Erhöhung legt fehlende Gastplätze sofort mit an** – in derselben Transaktion wie die Änderung. Eine Senkung löscht keine: Bereits belegte Plätze oberhalb der neuen Grenze bleiben belegt, bis ihre Sitzung endet, und werden danach nicht mehr vergeben.",
+            "minimum": 0,
+            "maximum": 22
+          },
+          "algorithmType": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AlgorithmType"
+              }
+            ],
+            "description": "Gewähltes Verfahren der Teamgenerierung (A15). Vorgabe `EXHAUSTIV`."
+          },
+          "anzTeamGenerator": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Kontingent an Generierungsläufen je Nutzer und Spieltag (A15). Vorgabe 1.",
+            "minimum": 1
+          },
+          "sessionLeerlaufMinuten": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Gleitendes Leerlauf-Fenster in Minuten (A14). Vorgabe 15.\n\n**Wirkt sofort, auch auf bestehende Sitzungen**: Der Wert wird bei jeder Anfrage neu gelesen und die Ablaufzeit neu gesetzt.",
+            "minimum": 1,
+            "maximum": 1440
+          },
+          "sessionMaximalStunden": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Harte Obergrenze der Sitzungsdauer in Stunden (A14). Vorgabe 1.\n\n**Wirkt nicht rückwirkend.** Die absolute Grenze entsteht einmalig beim Anlegen der Sitzung und wandert nie – bestehende Sitzungen behalten ihre alte Obergrenze. Wer von einer Stunde auf acht stellt, wundert sich sonst, warum die eigene Sitzung trotzdem nach einer Stunde endet.",
+            "minimum": 1,
+            "maximum": 24
+          },
+          "halleEmail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "email",
+            "maxLength": 120,
+            "description": "Empfängeradresse des Hallenbetreibers für die Absage (A23) oder `null`."
+          },
+          "halleAbsageVorlage": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Vordefinierter Absagetext (A23) oder `null`."
+          },
+          "halleVorlaufStunden": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Vorlauf in Stunden, bis zu dem eine Absage zulässig ist (A23). Vorgabe 48.",
+            "minimum": 0
+          },
+          "geaendertAm": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Zeitpunkt der letzten Änderung. Wird bei jedem Speichern gesetzt, auch wenn sich kein Wert geändert hat."
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Stand des Datensatzes (Optimistic Locking, A5). `/admin/config/aendern` verlangt ihn zurück; weicht er ab, antwortet der Server `409 DATEN_VERALTET`. Nach jedem Speichern steigt er um genau 1."
+          }
+        },
+        "required": [
+          "minTeilnehmer",
+          "maxTeilnehmer",
+          "anzGuests",
+          "algorithmType",
+          "anzTeamGenerator",
+          "sessionLeerlaufMinuten",
+          "sessionMaximalStunden",
+          "halleEmail",
+          "halleAbsageVorlage",
+          "halleVorlaufStunden",
+          "geaendertAm",
+          "version"
+        ]
+      },
+      "KonfigurationAendernRequest": {
+        "type": "object",
+        "description": "Anfragekörper von `/admin/config/aendern` – **ein Voll-Update**.\n\nDer Körper enthält **alle zehn** änderbaren Felder; der Client lädt vorher `/admin/config/lesen` und schickt das veränderte Ganze zurück. Kein Feld ist optional, Weglassen ist keine Angabe.\n\n**Warum kein feldweises Update:** Zwei Felder sind `null`-fähig (`halleEmail`, `halleAbsageVorlage`). Feldweise wäre `null` nicht von „nicht angegeben\" zu unterscheiden – eine einmal gesetzte Hallenadresse liesse sich nie wieder entfernen, ohne dass der Vertrag eine Sonderregel erfindet. Beim Voll-Update ist `null` schlicht `null`. Dazu kommt: Es ist eine Zeile in einem Formular; es gibt keinen Anwendungsfall, in dem der Client nur ein Feld kennt.",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Stand, auf dem die Änderung aufsetzt – aus `/admin/config/lesen`. Weicht er vom gespeicherten ab, wurde zwischenzeitlich von anderer Stelle geschrieben und der Server antwortet `409 DATEN_VERALTET`, ohne etwas zu ändern."
+          },
+          "minTeilnehmer": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Mindestteilnehmerzahl, unter der ein Termin nicht zustande kommt (A10). Vorgabe 6.",
+            "minimum": 1
+          },
+          "maxTeilnehmer": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Höchstteilnehmerzahl; darüber greift die Warteschlange (A11). Vorgabe 22. Darf nicht unter `minTeilnehmer` liegen – sonst `400 EINGABE_UNGUELTIG` mit beiden Zahlen in der Meldung.",
+            "minimum": 1
+          },
+          "anzGuests": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Obergrenze gleichzeitig angemeldeter Gäste (A17). Vorgabe 4.\n\n**Eine Erhöhung legt fehlende Gastplätze sofort mit an** – in derselben Transaktion wie die Änderung. Eine Senkung löscht keine: Bereits belegte Plätze oberhalb der neuen Grenze bleiben belegt, bis ihre Sitzung endet, und werden danach nicht mehr vergeben.",
+            "minimum": 0,
+            "maximum": 22
+          },
+          "algorithmType": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AlgorithmType"
+              }
+            ],
+            "description": "Gewähltes Verfahren der Teamgenerierung (A15). Vorgabe `EXHAUSTIV`."
+          },
+          "anzTeamGenerator": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Kontingent an Generierungsläufen je Nutzer und Spieltag (A15). Vorgabe 1.",
+            "minimum": 1
+          },
+          "sessionLeerlaufMinuten": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Gleitendes Leerlauf-Fenster in Minuten (A14). Vorgabe 15.\n\n**Wirkt sofort, auch auf bestehende Sitzungen**: Der Wert wird bei jeder Anfrage neu gelesen und die Ablaufzeit neu gesetzt.",
+            "minimum": 1,
+            "maximum": 1440
+          },
+          "sessionMaximalStunden": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Harte Obergrenze der Sitzungsdauer in Stunden (A14). Vorgabe 1.\n\n**Wirkt nicht rückwirkend.** Die absolute Grenze entsteht einmalig beim Anlegen der Sitzung und wandert nie – bestehende Sitzungen behalten ihre alte Obergrenze. Wer von einer Stunde auf acht stellt, wundert sich sonst, warum die eigene Sitzung trotzdem nach einer Stunde endet.",
+            "minimum": 1,
+            "maximum": 24
+          },
+          "halleEmail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "email",
+            "maxLength": 120,
+            "description": "Empfängeradresse des Hallenbetreibers für die Absage (A23) oder `null`."
+          },
+          "halleAbsageVorlage": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Vordefinierter Absagetext (A23) oder `null`."
+          },
+          "halleVorlaufStunden": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Vorlauf in Stunden, bis zu dem eine Absage zulässig ist (A23). Vorgabe 48.",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "version",
+          "minTeilnehmer",
+          "maxTeilnehmer",
+          "anzGuests",
+          "algorithmType",
+          "anzTeamGenerator",
+          "sessionLeerlaufMinuten",
+          "sessionMaximalStunden",
+          "halleEmail",
+          "halleAbsageVorlage",
+          "halleVorlaufStunden"
         ]
       }
     }
