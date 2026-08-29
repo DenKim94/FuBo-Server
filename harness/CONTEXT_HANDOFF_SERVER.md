@@ -4,7 +4,7 @@
 > (Gesamtstand) um den serverseitigen Anteil. Systemprompt: `AGENT_SERVER.md`.
 > Gesamtspezifikation: `/PRJ_FuBo/harness/AGENT.md`.
 >
-> **Repository:** eigenständig mit Wurzel in `server/` (`FuBo-Server`, GitHub, privat).
+> **Repository:** eigenständig mit Wurzel in `server/` (`FuBo-Server`, GitHub, **öffentlich**).
 > **Kein Monorepo** – das Frontend liegt getrennt (`FuBo-Client`). `PRJ_FuBo/` und
 > `PRJ_FuBo/harness/` sind bewusst **nicht** versioniert. Gearbeitet wird auf `dev`.
 
@@ -15,14 +15,16 @@
 übersprungenen Tests; die Anwendung startet auf einer frischen Datenbank durch. Der Lauf
 braucht Docker (Testcontainers, `postgres:17`) und läuft ausschliesslich lokal.
 
-**Offen aus S3: die Pakete 5 bis 7** – Admin-Konfiguration lesen und ändern, Gastplätze
-mitpflegen (offener Punkt 18 aus S2), Bestandsaufnahme der Autorisierung. Der Fehlercode
+**Offen aus S3: die Pakete 5 bis 9** – Admin-Konfiguration lesen und ändern, Gastplätze
+mitpflegen (offener Punkt 18 aus S2), Bestandsaufnahme der Autorisierung, Vertrag zum Frontend,
+Tests. Der Fehlercode
 `DATEN_VERALTET` und der Tag „Konfiguration" gehören dorthin und fehlen deshalb noch im
 Vertrag; er steht bei **19 Endpunkten** und wächst dann auf 21.
 
-**Als Nächstes:** die manuelle Prüfliste (`harness/tmp/S2b_UMSETZUNG.md`, Abschnitt 12.1),
-danach S3 mit den Paketen 5 bis 7. Vor dem nächsten Bruno-Lauf `adminName` und
-`neuerAdminName` in den Umgebungen füllen – beim Anmeldenamen zählt die Schreibweise.
+**Als Nächstes: S3 mit den Paketen 5 bis 9.** Die manuelle Prüfliste
+(`harness/tmp/S2b_UMSETZUNG.md`, Abschnitt 12.1) ist am 29.08.2026 erfolgreich abgearbeitet.
+Vor dem nächsten Bruno-Lauf `adminName` und `neuerAdminName` in den Umgebungen füllen – beim
+Anmeldenamen zählt die Schreibweise.
 
 > **Zur Fassung:** Dieses Dokument ist am 29.08.2026 von 836 auf rund 450 Zeilen eingedampft
 > worden. Entscheidungen, die inzwischen **verbindliche Regeln** sind, stehen nur noch in
@@ -156,10 +158,11 @@ Alternativen in `S2b_UMSETZUNG.md`, Abschnitt 0.3.
 ### 6.1 Was steht
 
 **S0, S1, S2, S2b und S3 (Pakete 0 bis 4) sind abgeschlossen und verifiziert.** Offen aus S3
-sind die Pakete 5 bis 7 (Admin-Konfiguration, Gastplätze, Bestandsaufnahme der Autorisierung).
+sind die Pakete 5 bis 9 (Admin-Konfiguration, Gastplätze, Bestandsaufnahme der Autorisierung,
+Vertrag zum Frontend, Tests).
 
 ```
-server/                        Repo-Wurzel (remote: FuBo-Server, privat)
+server/                        Repo-Wurzel (remote: FuBo-Server, oeffentlich)
   fubo-api.json                Endpunktkontrakt, 19 Endpunkte (Abschnitt 4)
   compose.dev.yml              postgres:17
   .env / .env.example          DB-Zugang, FUBO_INITIAL_PIN, ADMIN_*, SMTP_*
