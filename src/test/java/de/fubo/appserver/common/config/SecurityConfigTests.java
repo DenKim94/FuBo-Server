@@ -276,13 +276,13 @@ class SecurityConfigTests {
     }
 
     /**
-     * Die vier Endpunkte aus S3 sind ohne Sitzung gesperrt - jeder einzeln geprueft.
+     * Die sechs Endpunkte aus S3 sind ohne Sitzung gesperrt - jeder einzeln geprueft.
      *
      * <p><b>Warum trotz {@code userDarfNichtInDenAdminbereich} noch einmal einzeln:</b> Jener
      * Fall prueft die Regel {@code /api/*&#47;admin/**} an einem Platzhalterpfad. Er bliebe
      * gruen, wenn jemand fuer einen der echten Endpunkte eine eigene, offenere Regel
      * <i>davor</i> setzte - Spring Security wertet die Matcher in ihrer Reihenfolge aus, und
-     * die erste passende gewinnt. Diese vier Pfade sind neu; sie sollen mit ihrem echten
+     * die erste passende gewinnt. Diese sechs Pfade sind neu; sie sollen mit ihrem echten
      * Namen in der Pruefung stehen.
      *
      * <p>{@code GET} und {@code POST} gemischt, wie im Vertrag: Die Regel selbst ist
@@ -297,11 +297,18 @@ class SecurityConfigTests {
         mockMvc.perform(get("/api/v1/admin/skills/lesen"))
                 .andExpect(status().isUnauthorized());
 
+        mockMvc.perform(get("/api/v1/admin/config/lesen"))
+                .andExpect(status().isUnauthorized());
+
         mockMvc.perform(post("/api/v1/admin/user/bearbeiten")
                         .contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isUnauthorized());
 
         mockMvc.perform(post("/api/v1/admin/name/aendern")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(post("/api/v1/admin/config/aendern")
                         .contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isUnauthorized());
     }
@@ -318,6 +325,10 @@ class SecurityConfigTests {
                 .andExpect(status().isForbidden());
 
         mockMvc.perform(get("/api/v1/admin/skills/lesen")
+                        .cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/v1/admin/config/lesen")
                         .cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))
                 .andExpect(status().isForbidden());
     }
