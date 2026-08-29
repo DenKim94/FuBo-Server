@@ -10,30 +10,28 @@
 
 ## Stand: 29.08.2026
 
-**Abgeschlossen und verifiziert: S0, S1, S2, S2b und S3 – vollständig.**
-`./mvnw clean verify` grün am 29.08.2026 – **244 Tests in 22 Klassen**, keine Fehler, keine
-Abbrüche, keine übersprungenen Tests; die Anwendung startet auf einer frischen Datenbank durch.
-Der Lauf braucht Docker (Testcontainers, `postgres:17`) und läuft ausschliesslich lokal.
+**Abgeschlossen und verifiziert: S0, S1, S2, S2b und S3 (Pakete 0 bis 4).**
+`./mvnw clean verify` grün – **227 Tests in 21 Klassen**, keine Fehler, keine Abbrüche, keine
+übersprungenen Tests; die Anwendung startet auf einer frischen Datenbank durch. Der Lauf
+braucht Docker (Testcontainers, `postgres:17`) und läuft ausschliesslich lokal.
 
-**S3 umfasst** die Profilverwaltung mit Skillwerten, die Skillkategorien, den Anmeldenamen sowie
-seit den Paketen 5 bis 8 die Admin-Konfiguration (lesen und ändern als Voll-Update mit
-Optimistic Locking), die mitgepflegten Gastplätze (offener Punkt 18 aus S2 damit erledigt) und die
-Bestandsaufnahme der Autorisierung. Der Vertrag steht bei **21 Endpunkten**, der Fehlercode
-`DATEN_VERALTET` und der Tag „Konfiguration" sind eingetragen.
+**Offen aus S3: die Pakete 5 bis 9** – Admin-Konfiguration lesen und ändern, Gastplätze
+mitpflegen (offener Punkt 18 aus S2), Bestandsaufnahme der Autorisierung, Vertrag zum Frontend,
+Tests. Der Fehlercode
+`DATEN_VERALTET` und der Tag „Konfiguration" gehören dorthin und fehlen deshalb noch im
+Vertrag; er steht bei **19 Endpunkten** und wächst dann auf 21.
 
-**Als Nächstes: S4 (Termine & Teilnahme).** Die manuelle Prüfliste aus `S3_UMSETZUNG.md`,
-Abschnitt 10.1, steht noch aus; die Bruno-Collection führt durch sie hindurch. Vor dem nächsten
-Bruno-Lauf `adminName` und `neuerAdminName` in den Umgebungen füllen – beim Anmeldenamen zählt die
-Schreibweise.
+**Als Nächstes: S3 mit den Paketen 5 bis 9.** Die manuelle Prüfliste
+(`harness/tmp/S2b_UMSETZUNG.md`, Abschnitt 12.1) ist am 29.08.2026 erfolgreich abgearbeitet.
+Vor dem nächsten Bruno-Lauf `adminName` und `neuerAdminName` in den Umgebungen füllen – beim
+Anmeldenamen zählt die Schreibweise.
 
 > **Zur Fassung:** Dieses Dokument ist am 29.08.2026 von 836 auf rund 450 Zeilen eingedampft
 > worden. Entscheidungen, die inzwischen **verbindliche Regeln** sind, stehen nur noch in
 > `AGENT_SERVER.md` und werden hier nicht wiederholt; die Schritt-für-Schritt-Erzählung der
 > abgeschlossenen Meilensteine lebt in `harness/archive/` und in den `S<n>_UMSETZUNG.md`
 > weiter. Zuletzt archiviert:
-> `CONTEXT_HANDOFF_SERVER_2026-08-29_v10_S3-Pakete0-4-verifiziert.md`. **Das grosse Eindampfen
-> der S3-Abschnitte steht noch aus** – der Meilenstein ist seit dem grünen Lauf abgeschlossen,
-> die Straffung ist damit fällig, aber ein eigener Schritt.
+> `CONTEXT_HANDOFF_SERVER_2026-08-29_v9_S3-Pakete0-4.md`.
 
 ---
 
@@ -80,10 +78,11 @@ abgebildet, der Client-Track zieht danach nach.
 Datei lässt sich ohne Zusatzwerkzeug maschinell prüfen, und die üblichen
 TypeScript-Generatoren des Client-Tracks lesen sie unverändert.
 
-**Umfang:** ausschliesslich das, was tatsächlich umgesetzt ist – **21 Endpunkte**: die acht
+**Umfang:** ausschliesslich das, was tatsächlich umgesetzt ist – **19 Endpunkte**: die acht
 Auth- und Sitzungsendpunkte aus S2, die sieben aus S2b (Zugangsdatenpflege und
-Spielerverwaltung) und die sechs aus S3 (Abschnitt 6.1). Spekulative Endpunkte wären ein Vertrag
-über etwas, das es nicht gibt; S4 bis S7 tragen ihre Endpunkte jeweils bei Fertigstellung nach.
+Spielerverwaltung) und seit dem 29.08.2026 die vier aus den S3-Paketen 2 bis 4
+(Abschnitt 6.1). Spekulative Endpunkte wären ein Vertrag über etwas, das es nicht gibt;
+S3 bis S6 tragen ihre Endpunkte jeweils bei Fertigstellung nach.
 
 Inhaltliche Kernpunkte (unverändert, Herleitung in `AGENT_SERVER.md`, Abschnitt „Schnittstelle zum
 Frontend"): REST/JSON, getrennte Origins mit CORS-Allowlist (`allowCredentials`),
@@ -94,21 +93,6 @@ Neu im Vertrag seit dem 22.08.2026:
 - **`X-FuBo-Kein-Refresh: true`** als Anfrageheader für Hintergrundaufrufe.
 - **`Retry-After`** und das Feld `wartesekunden` beim `429` des PIN-Endpunkts.
 - **`absolutGueltigBis`** in der Sitzungsauskunft, zusätzlich zu `gueltigBis`.
-
-Ergänzt am 29.08.2026 mit den S3-Paketen 5 bis 8:
-- **Zwei Endpunkte** `GET /admin/config/lesen` und `POST /admin/config/aendern`, ein Tag
-  „Konfiguration", drei Schemas (`Konfiguration`, `KonfigurationAendernRequest`,
-  `AlgorithmType`).
-- **Ein Fehlercode `DATEN_VERALTET` (`409`)** – erster neuer Code seit S2b. Bewusst allgemein
-  benannt und nicht `KONFIG_VERALTET`: Termine (S4) und Ergebnisse (S6) tragen dieselbe
-  `version`-Spalte und werden ihn wiederverwenden. **Für den Client-Track heisst das:** Ein
-  unbekannter Code ist wie ein allgemeiner Fehler zu behandeln, aber dieser hier verdient eine
-  eigene Behandlung – „neu laden und erneut speichern", nicht „Eingabe falsch".
-- **`/admin/config/aendern` ist ein Voll-Update.** Der Client liest, ändert einzelne Werte und
-  schickt alle zehn Felder samt `version` zurück. `AlgorithmType` ist ein eigenes Schema
-  geworden, obwohl die Anleitung nur zwei neue nannte – beide Konfigurationsschemas verweisen
-  darauf, und der Generator des Client-Tracks bekommt so einen Aufzählungstyp statt zweier
-  loser Zeichenkettenfelder.
 
 Geändert am 29.08.2026:
 - **`AdminLoginRequest` hat ein zweites Pflichtfeld `anmeldename`** (max. 60 Zeichen,
@@ -142,7 +126,7 @@ Mid-Level-Entwickler, KI-gestützt, ca. 6,5 h/Woche.
 | S1 | Datenmodell: 3 Schemas, alle Tabellen/Constraints, Flyway-Migrationen, Seed (Kategorien, `gast_vorlage`, anonymisierte Beispielprofile), lokale Datenversorgung, Testcontainers-Grundgerüst – **abgeschlossen**                                                                                                                 | 15 |
 | S2 | Auth & Session: Security-Filterchain, PIN-Login + Brute-Force-Schutz, `stage`-Erzwingung, opaker Token/HttpOnly, Zwei-Timer-Modell, Namensliste/-belegung, Gast-Login, Admin-Login, Bootstrap, Sitzungsendpunkte, Online-Status, API-Vertrag – **abgeschlossen und verifiziert (148 Tests)**, Anleitung `harness/tmp/S2_UMSETZUNG.md` | 23 |
 | S2b | Zugangsdatenpflege und Spielerverwaltung: Passwort-Reset per E-Mail (5-stellige PIN, Rate-Limit, Sitzungswiderruf), Passwortänderung im angemeldeten Zustand, Änderung der zentralen PIN, Anlegen/Entfernen/Sperren von Spielerprofilen, Aufräumjob – **abgeschlossen und verifiziert (29.08.2026)**. Anleitung `harness/tmp/S2b_UMSETZUNG.md` | 10 |
-| S3 | Profile & Skills API: Admin-CRUD, Rollen/Autorisierung, `configs` (Import der Referenzdaten entfällt – siehe Abschnitt 7.3) – **abgeschlossen und verifiziert (29.08.2026, 244 Tests)**. Anleitung `harness/tmp/S3_UMSETZUNG.md`                                                        | 11 |
+| S3 | Profile & Skills API: Admin-CRUD, Rollen/Autorisierung, `configs` (Import der Referenzdaten entfällt – siehe Abschnitt 7.3)                                                                                                                                                                                                     | 11 |
 | S4 | Termine & Teilnahme API: Einzel/Serie, Teilnahme, `teilnehmer_version`, Min/Max + Warteschlange, Gast-Flow/`gast_slot`                                                                                                                                                                                                          | 16 |
 | S5 | Teamgenerator: `EXHAUSTIV` + `HEURISTIK`, Zielfunktion inkl. Torwart-Gewicht, Kontingent/Seed/Snapshot, Auswechselspieler, Tests                                                                                                                                                                                                | 18 |
 | S6 | Ergebnis & Audit API: „erster Eintrag gilt", Admin-Korrektur, `audit_log`                                                                                                                                                                                                                                                       | 8 |
@@ -173,13 +157,13 @@ Alternativen in `S2b_UMSETZUNG.md`, Abschnitt 0.3.
 
 ### 6.1 Was steht
 
-**S0, S1, S2, S2b und S3 sind abgeschlossen und verifiziert.** Mit den S3-Paketen 5 bis 8 kamen
-zuletzt die Admin-Konfiguration, die mitgepflegten Gastplätze, die Bestandsaufnahme der
-Autorisierung und der Vertrag dazu.
+**S0, S1, S2, S2b und S3 (Pakete 0 bis 4) sind abgeschlossen und verifiziert.** Offen aus S3
+sind die Pakete 5 bis 9 (Admin-Konfiguration, Gastplätze, Bestandsaufnahme der Autorisierung,
+Vertrag zum Frontend, Tests).
 
 ```
 server/                        Repo-Wurzel (remote: FuBo-Server, oeffentlich)
-  fubo-api.json                Endpunktkontrakt, 21 Endpunkte (Abschnitt 4)
+  fubo-api.json                Endpunktkontrakt, 19 Endpunkte (Abschnitt 4)
   compose.dev.yml              postgres:17
   .env / .env.example          DB-Zugang, FUBO_INITIAL_PIN, ADMIN_*, SMTP_*
   scripts/                     seed-lokal.sh + anonymisierter 30er-Datensatz
@@ -205,7 +189,7 @@ Actuator auf `health` beschränkt. Die Demodaten-Location steht **nur** in
 **Datenmodell: 18 Tabellen in drei Schemas, `V001`–`V008`. Seit S2 kam keine Migration mehr
 dazu** – weder S2b noch S3 brauchten eine.
 
-**Die 21 Endpunkte** (massgeblich bleibt `fubo-api.json`):
+**Die 19 Endpunkte** (massgeblich bleibt `fubo-api.json`):
 
 | Methode | Pfad unter `/api/v1` | Zweck |
 |---|---|---|
@@ -228,14 +212,10 @@ dazu** – weder S2b noch S3 brauchten eine.
 | `POST` | `/admin/user/blockieren` | Sperren und freigeben |
 | `GET` | `/admin/user/lesen` | Alle Profile **mit** Skillwerten |
 | `GET` | `/admin/skills/lesen` | Skillkategorien und Wertebereiche |
-| `GET` | `/admin/config/lesen` | Admin-Konfiguration samt `version` |
-| `POST` | `/admin/config/aendern` | Voll-Update; `409 DATEN_VERALTET` bei veralteter `version` |
 
-Die ersten acht stammen aus S2, die folgenden fünf aus S2b, die letzten acht aus S2b und S3.
+Die ersten acht stammen aus S2, die folgenden fünf aus S2b, die letzten sechs aus S2b und S3.
 Alles unterhalb von `/api/*/admin/**` verlangt `ROLE_ADMIN`; die Reset-Endpunkte und die drei
-Login-Wege sind ausschliesslich in `PIN_VERIFIED` erreichbar. **S3 hat der Filterchain nichts
-hinzugefügt** – jeder neue Endpunkt liegt unter `/admin/` und erbt die Regel; Paket 7 war
-Prüfarbeit, keine Bauarbeit.
+Login-Wege sind ausschliesslich in `PIN_VERIFIED` erreichbar.
 
 ### 6.2 Festlegungen mit Datum
 
@@ -259,9 +239,6 @@ sind, sondern Weggabelungen mit Datum:
 | 29.08. | Übersichtsabfrage in zwei geteilt (Abweichung von der Anleitung) | der Belegtstatus darf nicht gecacht werden |
 | 29.08. | Adminprofil-Umbenennung über `/admin/name/aendern` statt `bearbeiten` | Weggabelung C der S3-Anleitung damit überholt |
 | 29.08. | Namensänderung widerruft **keine** Sitzung | Vorgabe des Haupt-Entwicklers |
-| 29.08. | Konfiguration als **Voll-Update** mit `version` (Weggabelungen D und E) | `null` bliebe feldweise ununterscheidbar von „nicht angegeben"; ohne Version überschreibt der zuletzt gespeicherte Tab lautlos |
-| 29.08. | `anzGuests` höchstens 22, `sessionLeerlaufMinuten` höchstens 1440, `sessionMaximalStunden` höchstens 24 | Riegel gegen Tippfehler; seit S3 legt eine Erhöhung wirklich Gastplätze an, und die beiden Sitzungsfelder sind sicherheitsrelevant |
-| 29.08. | `ConfigService#aktualisieren` nimmt das DTO entgegen, nicht elf Einzelwerte | sieben `short`-Argumente in Folge: zwei vertauschte kompilieren fehlerfrei und schreiben still das Falsche |
 
 **Zwei Abweichungen aus S1, die im Datenmodell sichtbar sind:** `min_teilnehmer = 6`,
 `anz_team_generator = 1`, `session_maximal_stunden = 1` (statt 8/2/8), und `session.stage`
@@ -337,13 +314,10 @@ löschen, solange Termine daran hängen; nicht mehr benötigte Termine gehen üb
 
 ### 6.4 Verifikation
 
-**`./mvnw clean verify` grün am 29.08.2026 – 244 Tests in 22 Klassen**, keine Fehler, keine
-Abbrüche, keine übersprungenen Tests. Der Lauf schliesst S3 vollständig ab. Die Anwendung startet
-auf einer frischen Datenbank durch. Zahlen aus `target/surefire-reports/`, nicht fortgeschrieben.
-
-Neu gegenüber dem Lauf mit 227 Fällen: 15 in `KonfigurationControllerTests` und zwei in
-`ConfigServiceTests`. `SecurityConfigTests` blieb bei 26 – die beiden neuen Pfade sind in die
-bestehenden gebündelten Fälle gewandert, nicht in eigene Methoden.
+**`./mvnw clean verify` grün am 29.08.2026 – 227 Tests in 21 Klassen**, keine Fehler, keine
+Abbrüche, keine übersprungenen Tests. Der Lauf schliesst die S2b-Schritte 8 bis 11, den
+Nachtrag zum Anmeldenamen und die S3-Pakete 0 bis 4 gemeinsam ab. Die Anwendung startet auf
+einer frischen Datenbank durch.
 
 ```bash
 docker info > /dev/null                                    # muss durchlaufen
@@ -353,29 +327,23 @@ docker compose -f compose.dev.yml --env-file .env up -d
 
 | Testklasse | Fälle | | Testklasse | Fälle |
 |---|---:|---|---|---:|
-| `SpielerControllerTests` | 34 | | `BruteForceServiceTests` | 10 |
-| `SecurityConfigTests` | 26 | | `AdminBootstrapTests` | 9 |
-| `SessionServiceTests` | 18 | | `SessionCookieFactoryTests` | 9 |
-| `PasswortResetControllerTests` | 15 | | `GastControllerTests` | 8 |
-| `KonfigurationControllerTests` | 15 | | `MigrationTests` | 7 |
-| `SessionAuthFilterTests` | 14 | | `AuditServiceTests` | 6 |
-| `ZugangsdatenControllerTests` | 12 | | `ApiVersionConfigTests` | 5 |
-| `AdminControllerTests` | 11 | | `MailConfigTests` | 5 |
-| `NamenControllerTests` | 10 | | `SkillKategorieControllerTests` | 4 |
-| `AuthControllerTests` | 10 | | `ConfigServiceTests` | 4 |
-| `SessionControllerTests` | 10 | | `GastServiceTransaktionTests` | 2 |
-| | | | **Summe** | **244** |
+| `SpielerControllerTests` | 34 | | `AdminControllerTests` | 11 |
+| `SecurityConfigTests` | 26 | | `NamenControllerTests` | 10 |
+| `SessionServiceTests` | 18 | | `AuthControllerTests` | 10 |
+| `PasswortResetControllerTests` | 15 | | `SessionControllerTests` | 10 |
+| `SessionAuthFilterTests` | 14 | | `AdminBootstrapTests` | 9 |
+| `ZugangsdatenControllerTests` | 12 | | `SessionCookieFactoryTests` | 9 |
+| `BruteForceServiceTests` | 10 | | `GastControllerTests` | 8 |
+| `MigrationTests` | 7 | | `AuditServiceTests` | 6 |
+| `ApiVersionConfigTests` | 5 | | `MailConfigTests` | 5 |
+| `SkillKategorieControllerTests` | 4 | | `ConfigServiceTests` | 2 |
+| `GastServiceTransaktionTests` | 2 | | **Summe** | **227** |
 
 **Erwartungswerte vorab: `grep -c '^\s*@Test\s*$'` je Klasse für die Fälle,
 `find src/test -name '*Tests.java' | wc -l` für die Klassen.** Die Fallzahl traf am 22.08.
-(148), 23.08. (184) und am 29.08.2026 zweimal (227 und 244) exakt; die Klassenzahl war einmal
-falsch, weil sie fortgeschrieben statt nachgezählt wurde. **Nach dem Lauf beide Zahlen aus
-`target/surefire-reports/` übernehmen**, nicht nur die auffällige. Kürzester Weg:
-
-```bash
-awk -F'[:,]' '/^Tests run:/ {t+=$2; k++} END {print k" Klassen, "t" Faelle"}' \
-    target/surefire-reports/*.txt
-```
+(148), 23.08. (184) und 29.08.2026 (227) exakt; die Klassenzahl war einmal falsch, weil sie
+fortgeschrieben statt nachgezählt wurde. **Nach dem Lauf beide Zahlen aus
+`target/surefire-reports/` übernehmen**, nicht nur die auffällige.
 
 **Scheitert ein Lauf, zuerst die Surefire-Berichte lesen, nicht die Maven-Zusammenfassung.**
 Bei einem Kontextfehler meldet Spring Test jeden betroffenen Fall einzeln, aber nur der *erste*
@@ -400,24 +368,20 @@ sie ab.
    identisch sein.~~ - **Erledigt: Erfolgreich geprüft**
 2. **Client-Track über die Vertragsänderung informieren** (Abschnitt 4a). Das Anmeldeformular
    des Admins braucht ein zweites Pflichtfeld, sonst liefert der Endpunkt `400`.
-3. **Manuelle Prüfliste zu S3 abarbeiten** (`harness/tmp/S3_UMSETZUNG.md`, Abschnitt 10.1). Der
-   Testlauf deckt sie nicht ab: Er läuft in einer Transaktion, die zurückgerollt wird, und sagt
-   deshalb nichts darüber, ob `sessionLeerlaufMinuten` im laufenden Betrieb wirklich sofort
-   greift und `sessionMaximalStunden` wirklich nicht rückwirkend. Die Bruno-Collection führt
-   durch die Liste; der Ordner `admin/config` ist dafür angelegt.
-4. **S3 endgültig abschliessen:** die S3-Abschnitte dieses Handoffs eindampfen und die
-   Vorfassung archivieren – wie bei S2 am 23.08.2026 (rund 400 auf 95 Zeilen). Erhalten bleiben
-   Endpunkttabelle, Entscheidungen mit Datum und Fallstricke.
-5. **Danach S4** (Termine & Teilnahme). **Pflichtpunkt von dort:** Eine Skilländerung ist eine
+3. **S3 fortsetzen mit den Paketen 5 bis 9** (`harness/tmp/S3_UMSETZUNG.md`, Abschnitte 5
+   bis 9): Admin-Konfiguration lesen und ändern samt neuem Fehlercode `DATEN_VERALTET`,
+   Gastplätze mitpflegen, Bestandsaufnahme der Autorisierung. **Zwei Punkte, die dabei nicht
+   untergehen dürfen:** Der Vertrag wächst um zwei Endpunkte auf 21, und
+   `KonfigurationControllerTests` braucht `@Transactional` – die Klasse ändert eine
+   anwendungsweit gültige, einzeilige Tabelle und liefe sonst anderen Klassen in die Quere,
+   etwa `GastControllerTests`, das sich auf `anz_guests = 4` verlässt.
+4. **Danach S4** (Termine & Teilnahme). **Pflichtpunkt von dort:** Eine Skilländerung ist eine
    Teilnehmeränderung (A15) und muss die `teilnehmer_version` betroffener künftiger Termine
    hochzählen – in S3 mangels `spieltag`-Service nicht umsetzbar.
 
 **Offene Punkte, die keine Aufgabe für heute sind:**
 
-- ~~**Punkt 18 (S3/S5):** Weitere Gastplätze anlegen, wenn `anz_guests` über vier steigt.~~
-  **Erledigt mit S3, Paket 6:** `GastSlotRepository#plaetzeSicherstellen` legt fehlende Zeilen
-  in derselben Transaktion wie die Konfigurationsänderung an. Das Senken bleibt eine reine
-  Grenze – gelöscht wird nie.
+- **Punkt 18 (S3/S5):** Weitere Gastplätze anlegen, wenn `anz_guests` über vier steigt.
 - **Punkt 20 (S5):** Wie behandelt der Teamgenerator Profile ohne gepflegte Skillwerte? Durch
   S2b und S3 kleiner geworden – über `/admin/user/anlegen` entstandene Profile haben immer
   vollständige Werte, ungepflegt bleiben nur Profile aus einem Datenimport, und

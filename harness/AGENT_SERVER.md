@@ -155,6 +155,16 @@ Identifikation über den hinterlegten Namen. Rollen: ADMIN, USER, GAST.
   **`fk_gast_slot_session` hat kein `ON DELETE`:** Wer Sitzungen löscht, gibt vorher die Plätze
   frei – in derselben Transaktion, sonst scheitert der ganze Vorgang an der
   Fremdschlüsselverletzung.
+  - **Die Grenze allein trägt nur nach unten** (ab S3). Nach oben fehlten schlicht die Zeilen:
+    `V007` legt vier an, eine Einstellung auf 6 blieb wirkungslos, und der fünfte Gast bekam
+    `409 KEIN_GAST_SLOT_FREI`, während das Formular Erfolg gemeldet hatte. Fehlende Plätze legt
+    deshalb `GastSlotRepository#plaetzeSicherstellen` an – `generate_series` mit
+    `ON CONFLICT DO NOTHING`, **in derselben Transaktion wie die Konfigurationsänderung**.
+    Scheitert das Anlegen, darf auch `anz_guests` nicht steigen.
+  - **Gelöscht wird nie.** Beim Senken bleiben belegte Plätze oberhalb der neuen Grenze belegt,
+    bis ihre Sitzung endet; ein Zwangsabmelden mitten in einer Rückmeldung wäre
+    unverhältnismässig. Der Vorgang gehört ins Log, sonst rätselt der Betrieb, warum die
+    Zählung vorübergehend nicht aufgeht.
 - **Audit-Log** (ab S2):
   1. **Ausbreitung immer `REQUIRED`, nie `REQUIRES_NEW`.** Ein Eintrag belegt eine *vollzogene*
      Änderung; scheitert sie, verschwindet er mit ihr. **Zähler sind etwas anderes** – sie messen
@@ -224,6 +234,36 @@ Identifikation über den hinterlegten Namen. Rollen: ADMIN, USER, GAST.
      löscht nichts – der Teamgenerator braucht vollständige Werte. Ein Aufruf ohne jede Angabe
      wird abgelehnt; er täte nichts, hinterliesse aber einen Protokolleintrag. Der **eigene**
      Name zählt nicht als Namenskollision, sonst scheiterte jede Korrektur der Schreibweise.
+- **Admin-Konfiguration** (ab S3):
+  1. **Sie wird vollständig geschrieben, nicht feldweise.** Der Client liest, ändert im Formular
+     und schickt alle zehn Felder samt `version` zurück. Grund sind die beiden `null`-fähigen
+     Felder: Feldweise wäre `null` nicht von „nicht angegeben" zu unterscheiden, und eine einmal
+     gesetzte Hallenadresse liesse sich nie wieder entfernen. **Das ist kein Widerspruch zu
+     „Weglassen heisst nicht ändern" bei den Profilen:** Dort gibt es viele Zeilen, ein Formular
+     je Zeile und mit den Skillwerten eine Teilmenge, die man einzeln setzen will. Hier ist es
+     eine Zeile in einem Formular.
+  2. **Eine nach aussen gereichte `version` wird an zwei Stellen geprüft.** Der Vergleich im
+     Dienst liefert die verständliche Meldung (`409 DATEN_VERALTET`); der Handler für
+     `ObjectOptimisticLockingFailureException` deckt das Fenster zwischen Vergleich und Commit,
+     in dem eine zweite Transaktion schreiben kann. **Nur der Handler allein genügt nicht** – er
+     kennt den Grund, aber nicht den Anwendungsfall –, **und der Vergleich allein auch nicht.**
+     Der Fehlercode ist bewusst allgemein benannt: Termine (S4) und Ergebnisse (S6) tragen
+     dieselbe Spalte und benutzen ihn wieder.
+  3. **Obergrenzen sicherheitsrelevanter Werte stehen als `@Max` am DTO**, nicht nur als
+     CHECK-Constraint. `session_leerlauf_minuten` und `session_maximal_stunden` sind
+     `SMALLINT`; ohne Obergrenze wäre ein Leerlauf-Fenster von rund 20 Tagen eine gültige
+     Eingabe. Dasselbe gilt für `anz_guests`, seit eine Erhöhung wirklich Zeilen anlegt: „40"
+     statt „4" erzeugte 40 Plätze, die niemand wieder löscht.
+  4. **Das Audit-Detail trägt hier alten *und* neuen Wert**, anders als bei den Skillwerten. Es
+     sind höchstens zehn Werte, sie gelten anwendungsweit, und „seit wann steht das
+     Leerlauf-Fenster auf 60 Minuten" ist ohne den alten Wert nicht zu beantworten. Ausgenommen
+     bleibt die Absagevorlage – ein mehrzeiliger Text in jedem Eintrag bläht die Tabelle auf,
+     ohne etwas zu belegen; dort genügt der Vermerk.
+  5. **Ein Dienst nimmt das DTO entgegen, sobald die Alternative eine lange Reihe gleichartiger
+     Argumente wäre.** `ConfigService#aktualisieren` bekommt den Record, nicht elf Einzelwerte:
+     Bei sieben `short`-Argumenten in Folge kompilieren zwei vertauschte fehlerfrei und
+     schreiben still das Falsche – genau die Verwechslung, gegen die `ConfigServiceTests`
+     überhaupt existiert. Der Regelfall bleibt die Übergabe von Einzelwerten.
 - **Externe Zugänge werden über `fubo.*` gebunden und beim Start geprüft** (ab S2b). Der
   SMTP-Zugang steht unter `fubo.mail.*`, die `JavaMailSender`-Bean entsteht in `MailConfig`.
   Grund: Spring Boots `Binder` reicht einen unauflösbaren Platzhalter **wörtlich** durch – über
