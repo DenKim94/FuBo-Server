@@ -35,9 +35,7 @@
 > `AdminLoginRequest`, `AdminService`, `AdminController`, `AdminBootstrap`, `SpielerRepository`,
 > `Fehlercode`, `AdminControllerTests`, `AdminBootstrapTests`, `fubo-api.json`, beide
 > `README.md` und die Bruno-Collection. Der Vergleich ist **zeichengenau**; der Bootstrap
-> sichert das ab. **Der Testlauf steht noch aus:
-> erwartet werden jetzt 190 Tests in 19 Klassen** (184 + 5 in `AdminControllerTests`,
-> + 1 in `AdminBootstrapTests`).
+> sichert das ab. **Verifiziert** (siehe unten).
 >
 > **S3, Pakete 0 bis 4 (29.08.2026):** `GET /admin/user/lesen` (erste Antwort **mit
 > Skillwerten**), `POST /admin/user/bearbeiten`, `GET /admin/skills/lesen` und der zusätzlich
@@ -49,10 +47,15 @@
 > Autorisierung. Der Fehlercode `DATEN_VERALTET` und der Tag „Konfiguration" gehören dorthin
 > und fehlen deshalb noch im Vertrag.
 >
-> Als Nächstes: **`./mvnw clean verify`** – deckt die S2b-Schritte 8 bis 11, den Nachtrag
-> **und** die S3-Pakete 0 bis 4 ab. **Erwartet: 227 Tests in 22 Klassen.** Die manuelle
-> Prüfliste steht in `harness/tmp/S2b_UMSETZUNG.md`, Abschnitt 12.1; die Bruno-Collection
-> deckt sie ab und ist um vier Requests gewachsen.
+> **Verifiziert am 29.08.2026: `./mvnw clean verify` grün – 227 Tests in 21 Klassen**, keine
+> Fehler, keine Abbrüche, keine übersprungenen Tests. Der Lauf schliesst damit auch die
+> S2b-Schritte 8 bis 11 ab, deren Verifikation seit dem 23.08.2026 offen war. Aufstellung je
+> Klasse in Abschnitt 6.6.
+>
+> Als Nächstes: **die manuelle Prüfliste** (`harness/tmp/S2b_UMSETZUNG.md`, Abschnitt 12.1)
+> und danach **S3, Pakete 5 bis 7**. Die Bruno-Collection ist um vier Requests gewachsen und
+> deckt alle 19 Endpunkte ab; `adminName` und `neuerAdminName` sind dort vor dem nächsten Lauf
+> zu füllen.
 >
 > (Vorfassungen archiviert unter `harness/archive/`, zuletzt
 > `CONTEXT_HANDOFF_SERVER_2026-08-29_v8_Anmeldename.md`. **Die Abschnitte zu S2 sind seit v7
@@ -150,7 +153,7 @@ Mid-Level-Entwickler, KI-gestützt, ca. 6,5 h/Woche.
 | S0 | Backend-Setup: Spring Boot, Maven, Modulstruktur, `.gitignore`, Docker/Compose-Eintrag – **abgeschlossen**                                                                                                                                                                                                                      | 8 |
 | S1 | Datenmodell: 3 Schemas, alle Tabellen/Constraints, Flyway-Migrationen, Seed (Kategorien, `gast_vorlage`, anonymisierte Beispielprofile), lokale Datenversorgung, Testcontainers-Grundgerüst – **abgeschlossen**                                                                                                                 | 15 |
 | S2 | Auth & Session: Security-Filterchain, PIN-Login + Brute-Force-Schutz, `stage`-Erzwingung, opaker Token/HttpOnly, Zwei-Timer-Modell, Namensliste/-belegung, Gast-Login, Admin-Login, Bootstrap, Sitzungsendpunkte, Online-Status, API-Vertrag – **abgeschlossen und verifiziert (148 Tests)**, Anleitung `harness/tmp/S2_UMSETZUNG.md` | 23 |
-| S2b | Zugangsdatenpflege und Spielerverwaltung: Passwort-Reset per E-Mail (5-stellige PIN, Rate-Limit, Sitzungswiderruf), Passwortänderung im angemeldeten Zustand, Änderung der zentralen PIN, Anlegen/Entfernen/Sperren von Spielerprofilen, Aufräumjob – **abgeschlossen**, Verifikation der Schritte 8 bis 11 offen. Anleitung `harness/tmp/S2b_UMSETZUNG.md` | 10 |
+| S2b | Zugangsdatenpflege und Spielerverwaltung: Passwort-Reset per E-Mail (5-stellige PIN, Rate-Limit, Sitzungswiderruf), Passwortänderung im angemeldeten Zustand, Änderung der zentralen PIN, Anlegen/Entfernen/Sperren von Spielerprofilen, Aufräumjob – **abgeschlossen und verifiziert (29.08.2026)**. Anleitung `harness/tmp/S2b_UMSETZUNG.md` | 10 |
 | S3 | Profile & Skills API: Admin-CRUD, Rollen/Autorisierung, `configs` (Import der Referenzdaten entfällt – siehe Abschnitt 7.3)                                                                                                                                                                                                     | 11 |
 | S4 | Termine & Teilnahme API: Einzel/Serie, Teilnahme, `teilnehmer_version`, Min/Max + Warteschlange, Gast-Flow/`gast_slot`                                                                                                                                                                                                          | 16 |
 | S5 | Teamgenerator: `EXHAUSTIV` + `HEURISTIK`, Zielfunktion inkl. Torwart-Gewicht, Kontingent/Seed/Snapshot, Auswechselspieler, Tests                                                                                                                                                                                                | 18 |
@@ -457,10 +460,18 @@ die gewünschte Staffelung, keine Panne.
 Klassen**, keine Fehler, keine Abbrüche, keine übersprungenen Tests. Die Anwendung startet auf
 einer frischen Datenbank durch.
 
-**Für die S2b-Schritte 8 bis 11, den Nachtrag vom 29.08.2026 und die S3-Pakete 0 bis 4 steht
-der grüne Lauf noch aus. Erwartet: 227 Tests in 22 Klassen** – 184 aus S2b, sechs aus dem
-Nachtrag (Abschnitt 6.13) und 30 aus S3 (Abschnitt 6.14). Der erste Lauf am 23.08.2026 brachte fünf Fehler –
-**alle drei Ursachen lagen im neuen Code und sind behoben:**
+**Die S2b-Schritte 8 bis 11, der Nachtrag vom 29.08.2026 und die S3-Pakete 0 bis 4:
+`./mvnw clean verify` grün am 29.08.2026 – 227 Tests in 21 Klassen**, keine Fehler, keine
+Abbrüche, keine übersprungenen Tests. Damit ist auch die seit dem 23.08.2026 offene
+Verifikation von S2b geschlossen.
+
+**Zur Zahl der Klassen:** Erwartet waren „22", es sind **21**. Der Fehler stand nur in der
+Dokumentation: Die 227 Fälle wurden über `grep -c '@Test'` ermittelt und exakt getroffen, die
+Klassenzahl dagegen fortgeschrieben statt nachgezählt. Merkregel: Beide Zahlen aus dem Lauf
+übernehmen – `ls target/surefire-reports/*.txt | wc -l` liefert die Klassen.
+
+Der erste Lauf am 23.08.2026 brachte fünf Fehler – **alle drei Ursachen lagen im neuen Code
+und sind behoben:**
 
 1. **Zwei Tabellennamen in `SpielerRepository#istReferenziert` waren falsch** und führten zu
    `500 relation "spieltag.termin_serie" does not exist`. Sie waren aus den *Constraint-Namen*
@@ -502,7 +513,7 @@ Nachtrag (Abschnitt 6.13) und 30 aus S3 (Abschnitt 6.14). Der erste Lauf am 23.0
 | `SpielerControllerTests` | 34 | 16 + 18 (S3) |
 | `SkillKategorieControllerTests` | 4 | neu (S3) |
 | `MailConfigTests` | 5 | neu (Absenderformat) |
-| **Summe** | **227** | |
+| **Summe** | **227** | **Istwert aus dem Lauf vom 29.08.2026** |
 
 ```bash
 docker info > /dev/null                                    # muss durchlaufen
@@ -750,16 +761,17 @@ Service noch Entity; der Aufruf ist in S4 als **Pflichtpunkt** aufzunehmen. Der 
 im JavaDoc von `SpielerVerwaltungService#bearbeiten`, in der Endpunktbeschreibung des Vertrags
 und hier – dreifach, weil ein Punkt, der in keiner Liste steht, durch das Raster fällt.
 
-**Tests: 190 → 221 in 21 Klassen** (`SkillKategorieControllerTests` ist neu):
+**Tests: 190 → 227 in 21 Klassen, verifiziert am 29.08.2026** (`SkillKategorieControllerTests` und `MailConfigTests` sind neu):
 `SpielerControllerTests` 16 → 34, `ZugangsdatenControllerTests` 6 → 12,
 `SecurityConfigTests` 24 → 26, `AuditServiceTests` 5 → 6,
 `PasswortResetControllerTests` 14 → 15, `SkillKategorieControllerTests` 4.
 
 ## 7. Nächste Schritte
 
-1. **`./mvnw clean verify` laufen lassen** – für die S2b-Schritte 8 bis 11, den Nachtrag vom
-   29.08.2026 **und** die S3-Pakete 0 bis 4. Erwartet: 227 Tests in 22 Klassen (Aufstellung in
-   Abschnitt 6.6). - **Bestätigt**
+1. **`./mvnw clean verify` – erledigt und grün am 29.08.2026**, 227 Tests in 21 Klassen. Die
+   Zahlen in Abschnitt 6.6 stammen aus `server/target/surefire-reports/*.txt`, nicht aus einer
+   Schätzung. Für den nächsten Lauf unverändert: vorher `docker info` prüfen – am 23.08.2026
+   scheiterte ein ganzer Lauf allein daran.
 2. **`adminName` in den Bruno-Umgebungen füllen** (steht überall auf `BITTE_EINTRAGEN`) –
    **zeichengenau wie `ADMIN_NAME` in der `.env`**, sonst scheitert jeder Admin-Request
    mit `401`.
