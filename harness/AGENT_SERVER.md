@@ -492,3 +492,4 @@ Weitere verbindliche Punkte:
   ein einmal committeter Name bliebe dauerhaft in der Git-Historie.
 - Zugehörige Dokumente: `/PRJ_FuBo/harness/AGENT.md` (Gesamtspezifikation), `CONTEXT_HANDOFF_SERVER.md` (Stand/Meilensteine
   Backend), `/PRJ_FuBo/harness/assets/Deployment/`.
+- Nach Abschluss eines Arbeitspakets sind die Dokumentationen in dieser Datei und in `CONTEXT_HANDOFF_SERVER.md` zu aktualisieren und ggf. auf die wesentlichen Punkte zusammen zu fassen.
