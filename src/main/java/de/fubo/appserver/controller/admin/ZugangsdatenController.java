@@ -5,6 +5,7 @@ import de.fubo.appserver.common.error.FachlicherFehler;
 import de.fubo.appserver.common.error.Fehlercode;
 import de.fubo.appserver.common.security.SessionCookieFactory;
 import de.fubo.appserver.domain.audit.AuditAktion;
+import de.fubo.appserver.dto.admin.AdminNameAendernRequest;
 import de.fubo.appserver.dto.admin.PasswortAendernRequest;
 import de.fubo.appserver.dto.admin.PinAendernRequest;
 import de.fubo.appserver.service.audit.AuditService;
@@ -127,5 +128,44 @@ public class ZugangsdatenController {
         return ResponseEntity.noContent()
                 .header(HttpHeaders.SET_COOKIE, sessionCookieFactory.loeschen().toString())
                 .build();
+    }
+
+    /**
+     * Aendert den Anmeldenamen des Admins (S3, Vorgabe des Haupt-Entwicklers vom 29.08.2026).
+     *
+     * <h2>Warum der Endpunkt hier steht und nicht bei der Spielerverwaltung</h2>
+     * Technisch wird der Name des Adminprofils geschrieben - fachlich ist es der
+     * <b>Anmeldename</b> fuer {@code /auth/admin/anmelden} und damit ein Anmeldemerkmal.
+     * Er gehoert neben Passwort und zentrale PIN. {@code /admin/user/bearbeiten} lehnt das
+     * Adminprofil deshalb vollstaendig ab.
+     *
+     * <h2>Die Sitzung bleibt bestehen - anders als bei den beiden Endpunkten darueber</h2>
+     * Kein Sitzungswiderruf, <b>kein geloeschtes Cookie</b>. Der Name ist kein Geheimnis,
+     * dessen Bekanntwerden allein Zugang verschafft; ein Widerruf wuerfe den Admin unmittelbar
+     * nach seiner eigenen Umbenennung aus der Sitzung. Es genuegt, dass die Aenderung beim
+     * naechsten Login greift.
+     *
+     * <p><b>Kein altes Passwort noetig</b> - dasselbe Muster wie bei
+     * {@link #zentralePinAendern}. Es wird nichts geraten, sondern gesetzt; die Berechtigung
+     * dazu hat die Filterchain bereits festgestellt.
+     *
+     * <p><b>Betriebshinweis:</b> Nach der Aenderung ist {@code ADMIN_NAME} in der {@code .env}
+     * veraltet. Fuer den laufenden Betrieb folgenlos - der Start-Bootstrap liest den Wert nur,
+     * solange kein Admin-Konto existiert -, aber nach einem Neuaufbau von
+     * {@code profil.admin_konto} braecht der Start ab. Der Dienst schreibt deshalb alten und
+     * neuen Namen ins Log und ins Protokoll.
+     *
+     * @param anfrage neuer Anmeldename
+     * @param request fuer die Ermittlung der Client-IP
+     * @return {@code 204} ohne Inhalt; <b>ohne</b> Cookie-Aenderung
+     */
+    @PostMapping(value = "/name/aendern", version = ApiVersionConfig.VERSION)
+    public ResponseEntity<Void> adminNameAendern(@Valid @RequestBody AdminNameAendernRequest anfrage,
+                                                 HttpServletRequest request) {
+
+        zugangsdatenService.adminNameAendern(
+                anfrage.bereinigterName(), ClientIpErmittler.ermitteln(request));
+
+        return ResponseEntity.noContent().build();
     }
 }

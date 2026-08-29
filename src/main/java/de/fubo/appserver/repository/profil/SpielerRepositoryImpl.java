@@ -1,9 +1,16 @@
 package de.fubo.appserver.repository.profil;
 
+import de.fubo.appserver.domain.auth.Rolle;
 import de.fubo.appserver.domain.profil.NamensEintrag;
+import de.fubo.appserver.domain.profil.Profileintrag;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * JDBC-Implementierung des handgeschriebenen Repository-Teils.
@@ -57,10 +64,83 @@ class SpielerRepositoryImpl implements SpielerRepositoryCustom {
              ORDER BY s.name
             """;
 
-    private final JdbcClient jdbc;
+    /**
+     * Alle Profile mit ihren Skillwerten - die Datengrundlage der Adminuebersicht (S3,
+     * Abschnitt 2.3).
+     *
+     * <p><b>Kein {@code WHERE s.aktiv} und kein {@code rolle <> 'ADMIN'}.</b> Das ist der
+     * Unterschied zur Namensliste und der ganze Zweck des Endpunkts: Gesperrte Profile muessen
+     * sich wiederfinden lassen, sonst liesse sich eine versehentliche Sperre nicht
+     * zuruecknehmen; und eine Profilverwaltung zaehlt keine Mitspieler auf, sondern den
+     * Datenbestand. Die Architekturregel verlangt den Adminfilter fuer Abfragen, die
+     * <i>Mitspieler</i> aufzaehlen - Namensliste, Teilnehmerliste, Datengrundlage des
+     * Teamgenerators. Diese hier gehoert nicht dazu.
+     *
+     * <p><b>{@code jsonb_object_agg} statt eines {@code JOIN} auf oberster Ebene.</b> Ein
+     * {@code JOIN} lieferte je Skillzeile eine Ergebniszeile, das Profil erschiene fuenffach
+     * und muesste in Java wieder zusammengefasst werden. Ein zweiter Aufruf je Profil waere
+     * ein N+1-Problem. Die Aggregation in der Datenbank liefert je Profil genau eine Zeile.
+     *
+     * <p><b>Der {@code JOIN} auf {@code k.aktiv}</b> filtert abgeschaltete Kategorien heraus.
+     * Eine deaktivierte Kategorie soll weder im Formular erscheinen noch in die Zielfunktion
+     * des Teamgenerators eingehen; die Skillzeile bleibt in der Datenbank erhalten, falls die
+     * Kategorie wieder aktiviert wird.
+     *
+     * <p><b>{@code COALESCE(..., '{}')}</b> ist noetig, weil {@code jsonb_object_agg} ueber
+     * einer leeren Menge {@code NULL} liefert, nicht das leere Objekt - ein Profil ganz ohne
+     * Skillzeilen braechte sonst einen Nullwert bis in die Antwort.
+     *
+     * <p><b>{@code ORDER BY s.rolle DESC}</b> stellt das Adminprofil ans Ende: {@code 'USER'}
+     * steht alphabetisch nach {@code 'ADMIN'}, absteigend sortiert stehen die Spielerprofile
+     * also vorn und das technische Konto hinten, wo es hingehoert.
+     */
+    private static final String SQL_PROFILSTAMMDATEN = """
+            SELECT s.id,
+                   s.name,
+                   s.rolle,
+                   s.aktiv,
+                   COALESCE(
+                       (SELECT jsonb_object_agg(sk.kategorie, sk.wert)
+                          FROM profil.spieler_skill sk
+                          JOIN profil.skill_kategorie k ON k.schluessel = sk.kategorie
+                         WHERE sk.spieler_id = s.id
+                           AND k.aktiv),
+                       '{}'::jsonb) AS skills
+              FROM profil.spieler s
+             ORDER BY s.rolle DESC, s.name
+            """;
 
-    SpielerRepositoryImpl(JdbcClient jdbc) {
+    /**
+     * Die Ids der Profile mit laufender Sitzung (A6).
+     *
+     * <p>Dieselben drei Bedingungen wie in der Sitzungspruefung und in
+     * {@link #SQL_NAMENSLISTE} - {@code now()} ist dabei die Datenbankuhr, dieselbe, gegen die
+     * auch die Sitzung geprueft wird. Eine abweichende JVM-Uhr kann den Belegtstatus damit
+     * nicht verfaelschen.
+     *
+     * <p>{@code spieler_id IS NOT NULL} schliesst Gast- und {@code PIN_VERIFIED}-Sitzungen
+     * aus: Beide haben kein Profil, und {@code DISTINCT} ueber einer Spalte voller Nullwerte
+     * lieferte einen Eintrag, der zu keiner Profil-Id passt.
+     */
+    private static final String SQL_BELEGTE_IDS = """
+            SELECT DISTINCT se.spieler_id
+              FROM profil.session se
+             WHERE se.spieler_id IS NOT NULL
+               AND se.widerrufen_am IS NULL
+               AND se.gueltig_bis > now()
+               AND se.absolut_gueltig_bis > now()
+            """;
+
+    /** Zieltyp fuer das Auslesen der aggregierten Skillwerte. */
+    private static final TypeReference<Map<String, Integer>> SKILL_TYP = new TypeReference<>() {
+    };
+
+    private final JdbcClient jdbc;
+    private final ObjectMapper objectMapper;
+
+    SpielerRepositoryImpl(JdbcClient jdbc, ObjectMapper objectMapper) {
         this.jdbc = jdbc;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -71,5 +151,47 @@ class SpielerRepositoryImpl implements SpielerRepositoryCustom {
                         rs.getString("name"),
                         rs.getBoolean("belegt")))
                 .list();
+    }
+
+    @Override
+    public List<Profileintrag> findeProfilstammdaten() {
+        return jdbc.sql(SQL_PROFILSTAMMDATEN)
+                .query((rs, zeile) -> new Profileintrag(
+                        rs.getLong("id"),
+                        rs.getString("name"),
+                        Rolle.valueOf(rs.getString("rolle")),
+                        rs.getBoolean("aktiv"),
+                        skillsLesen(rs.getString("skills"))))
+                .list();
+    }
+
+    @Override
+    public Set<Long> findeBelegteProfilIds() {
+        return new LinkedHashSet<>(jdbc.sql(SQL_BELEGTE_IDS).query(Long.class).list());
+    }
+
+    /**
+     * Uebersetzt das aggregierte {@code jsonb} in eine Karte.
+     *
+     * <p><b>Ueber den vorhandenen Jackson-{@code ObjectMapper}, nicht ueber eine
+     * JPA-Typabbildung:</b> Die Abfrage laeuft wie {@link #findeNamensliste()} ueber
+     * {@code JdbcClient}, es gibt keine Entity fuer dieses Ergebnis, und eine eigene
+     * Typabbildung braeuchte genau diesen Mapper noch einmal.
+     *
+     * <p>Ein Fehler hier ist kein fachlicher Fall, sondern ein Bruch zwischen Abfrage und
+     * Zieltyp - also eine {@code IllegalStateException} und kein {@code FachlicherFehler}.
+     * Die Meldung nennt den unlesbaren Wert nicht: Er enthaelt Skillwerte, und die gehoeren
+     * nicht ins Log.
+     */
+    private Map<String, Integer> skillsLesen(String json) {
+        if (json == null || json.isBlank()) {
+            return Map.of();
+        }
+        try {
+            return objectMapper.readValue(json, SKILL_TYP);
+        } catch (Exception e) {
+            throw new IllegalStateException(
+                    "Die aggregierten Skillwerte liessen sich nicht lesen.", e);
+        }
     }
 }

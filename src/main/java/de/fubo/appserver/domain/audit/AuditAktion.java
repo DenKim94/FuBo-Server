@@ -84,5 +84,28 @@ public enum AuditAktion {
     PROFIL_BLOCKIERT,
 
     /** Der Admin hat ein gesperrtes Spielerprofil wieder freigegeben (S2b Abschnitt 8). */
-    PROFIL_FREIGEGEBEN
+    PROFIL_FREIGEGEBEN,
+
+    /**
+     * Der Admin hat Name oder Skillwerte eines Profils geaendert (S3, Abschnitt 3.6).
+     *
+     * <p>Die Details nennen den alten und den neuen Namen sowie die <i>gesetzten</i>
+     * Skillwerte - nicht die vorherigen. Der Eintrag beantwortet "wer hat wann was geaendert",
+     * nicht "wie war es vorher"; eine vollstaendige Aenderungshistorie waere eine eigene
+     * Entscheidung mit eigenem Datenmodell, und die Loeschfrist von 90 Tagen machte sie
+     * ohnehin lueckenhaft.
+     */
+    PROFIL_GEAENDERT,
+
+    /**
+     * Der Admin hat seinen eigenen Anmeldenamen geaendert (S3, {@code /admin/name/aendern}).
+     *
+     * <p><b>Ein eigener Wert und nicht {@link #PROFIL_GEAENDERT}</b>, obwohl technisch
+     * dieselbe Spalte geschrieben wird: Der Name des Adminprofils ist seit dem 29.08.2026
+     * zugleich der Anmeldename und damit ein Anmeldemerkmal. Er gehoert in dieselbe Reihe wie
+     * {@link #PASSWORT_GEAENDERT} und {@link #PIN_GEAENDERT} - wer das Protokoll nach
+     * Aenderungen an den Zugangsdaten durchsieht, soll ihn dort finden und nicht zwischen
+     * Stammdatenpflege.
+     */
+    ADMIN_NAME_GEAENDERT
 }
