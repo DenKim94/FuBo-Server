@@ -319,6 +319,23 @@ class SecurityConfigTests {
         mockMvc.perform(post("/api/v1/admin/gast/freigeben")
                         .contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isUnauthorized());
+
+        // S4, Pakete 3 und 4
+        mockMvc.perform(post("/api/v1/admin/termin/anlegen")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(post("/api/v1/admin/termin/aendern")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(post("/api/v1/admin/termin/absagen")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(post("/api/v1/admin/serie/anlegen")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isUnauthorized());
     }
 
     /**
@@ -348,6 +365,22 @@ class SecurityConfigTests {
                         .contentType(MediaType.APPLICATION_JSON).content("{\"alle\": true}")
                         .cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))
                 .andExpect(status().isForbidden());
+
+        // S4, Pakete 3 und 4: Ein Spieler darf Termine lesen, aber nicht verwalten.
+        mockMvc.perform(post("/api/v1/admin/termin/anlegen")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}")
+                        .cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/v1/admin/termin/absagen")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}")
+                        .cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/v1/admin/serie/anlegen")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}")
+                        .cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -356,6 +389,16 @@ class SecurityConfigTests {
                 .andExpect(status().isOk());
 
         mockMvc.perform(get("/api/v1/beliebig").cookie(new Cookie(COOKIE, gastSitzung())))
+                .andExpect(status().isOk());
+
+        // S4, Paket 2: Der Terminbereich liegt nicht unter /admin/ und ist damit ab
+        // PROFILE_AUTHENTICATED erreichbar - auch fuer Gaeste (Weggabelung F). Der Fall
+        // steht hier mit dem echten Pfad und nicht nur am Platzhalter oben, weil eine
+        // spaeter davorgesetzte, engere Regel sonst unbemerkt bliebe.
+        mockMvc.perform(get("/api/v1/termine/lesen").cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/termine/lesen").cookie(new Cookie(COOKIE, gastSitzung())))
                 .andExpect(status().isOk());
     }
 
