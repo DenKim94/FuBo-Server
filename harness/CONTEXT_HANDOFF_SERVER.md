@@ -11,9 +11,11 @@
 ## Stand: 30.08.2026
 
 **Abgeschlossen und verifiziert: S0, S1, S2, S2b und S3 – vollständig.**
-`./mvnw clean verify` grün am 29.08.2026 – **244 Tests in 22 Klassen**, keine Fehler, keine
+`./mvnw clean verify` grün am 30.08.2026 – **247 Tests in 22 Klassen**, keine Fehler, keine
 Abbrüche, keine übersprungenen Tests; die Anwendung startet auf einer frischen Datenbank durch.
-Der Lauf braucht Docker (Testcontainers, `postgres:17`) und läuft ausschliesslich lokal.
+Der Lauf braucht Docker (Testcontainers, `postgres:17`) und läuft ausschliesslich lokal. Er
+schliesst die Anforderungsänderung am Anlegen-Endpunkt vom selben Tag mit ein (Abschnitt 6.2);
+der S3-Abschluss selbst stand am 29.08.2026 bei 244 Fällen.
 
 **S3 umfasst** die Profilverwaltung mit Skillwerten, die Skillkategorien, den Anmeldenamen sowie
 seit den Paketen 5 bis 8 die Admin-Konfiguration (lesen und ändern als Voll-Update mit
@@ -90,6 +92,7 @@ in den `S<n>_UMSETZUNG.md` weiter:
 | `anmeldename` in `AdminLoginRequest` | **brechend** (29.08.2026): Ein Körper mit nur `passwort` liefert `400`. Einzelheiten in 4a |
 | `DATEN_VERALTET` (`409`) | erster neuer Fehlercode seit S2b. Heisst „neu laden und erneut speichern", nicht „Eingabe falsch". Ab S4 auch für Termine, ab S6 für Ergebnisse |
 | `/admin/config/aendern` | **Voll-Update**: vorher `lesen`, dann alle zehn Felder samt `version` zurückschicken |
+| `skills` in `SpielerAnlegenRequest` | **brechend** (30.08.2026): Pflichtfeld, vollständig. Ein Körper mit nur `name` liefert `400`. Das Anlegeformular baut seine Felder aus `/admin/skills/lesen`. `bearbeiten` bleibt unverändert |
 
 ## 4a. Offene Übergabe an den Client-Track
 
@@ -236,6 +239,8 @@ sind, sondern Weggabelungen mit Datum:
 | 29.08. | Konfiguration als **Voll-Update** mit `version` (Weggabelungen D und E) | `null` bliebe feldweise ununterscheidbar von „nicht angegeben"; ohne Version überschreibt der zuletzt gespeicherte Tab lautlos |
 | 29.08. | `anzGuests` höchstens 22, `sessionLeerlaufMinuten` höchstens 1440, `sessionMaximalStunden` höchstens 24 | Riegel gegen Tippfehler; seit S3 legt eine Erhöhung wirklich Gastplätze an, und die beiden Sitzungsfelder sind sicherheitsrelevant |
 | 29.08. | `ConfigService#aktualisieren` nimmt das DTO entgegen, nicht elf Einzelwerte | sieben `short`-Argumente in Folge: zwei vertauschte kompilieren fehlerfrei und schreiben still das Falsche |
+| 30.08. | Skillwerte beim **Anlegen** sind Pflicht und vollständig; die `MITTEL`-Vorgabe entfällt | eine Vorgabe ist eine Behauptung über einen Spieler, die niemand aufgestellt hat – sie fiel nicht auf und ging trotzdem in die Teameinteilung ein |
+| 30.08. | `bearbeiten` bleibt bei der Teilmenge | ein bestehendes Profil hat schon vollständige Werte; einen einzelnen zu korrigieren soll nicht heissen, alle fünf zu senden |
 
 **Zwei Abweichungen aus S1, die im Datenmodell sichtbar sind:** `min_teilnehmer = 6`,
 `anz_team_generator = 1`, `session_maximal_stunden = 1` (statt 8/2/8), und `session.stage`
@@ -314,10 +319,13 @@ löschen, solange Termine daran hängen; nicht mehr benötigte Termine gehen üb
 
 ### 6.4 Verifikation
 
-**`./mvnw clean verify` grün am 29.08.2026 – 244 Tests in 22 Klassen**, keine Fehler, keine
-Abbrüche, keine übersprungenen Tests. Der Lauf schliesst S3 vollständig ab; die Anwendung
-startet auf einer frischen Datenbank durch. Er braucht Docker (Testcontainers, `postgres:17`)
-und läuft ausschliesslich lokal.
+**`./mvnw clean verify` grün am 30.08.2026 – 247 Tests in 22 Klassen**, keine Fehler, keine
+Abbrüche, keine übersprungenen Tests. Die Anwendung startet auf einer frischen Datenbank durch.
+Er braucht Docker (Testcontainers, `postgres:17`) und läuft ausschliesslich lokal.
+
+Der Lauf vom 29.08.2026 schloss S3 mit **244** Fällen ab; die drei zusätzlichen stammen aus der
+Anforderungsänderung am Anlegen-Endpunkt (6.2). In `SpielerControllerTests` sind dabei zwei
+Fälle entfallen und fünf hinzugekommen: 34 → 37.
 
 ```bash
 docker info > /dev/null                                    # muss durchlaufen
@@ -326,7 +334,8 @@ docker compose -f compose.dev.yml --env-file .env up -d
 ```
 
 **Verlauf:** 148 Tests in 16 Klassen (22.08.), 184 (23.08.), 227 in 21 Klassen und 244 in
-22 Klassen (beide 29.08.2026). **Der vorab gezählte Erwartungswert traf jedes Mal exakt** –
+22 Klassen (beide 29.08.), 247 (30.08.2026). **Der vorab gezählte Erwartungswert traf jedes Mal
+exakt** –
 `grep -c '^\s*@Test\s*$'` je Klasse. Nach dem Lauf gilt die Zahl aus den Berichten, nicht die
 fortgeschriebene; die Klassenzahl war einmal falsch, weil sie geschätzt statt gezählt wurde:
 
@@ -375,9 +384,12 @@ zu S2b in `S2b_UMSETZUNG.md`, Abschnitt 12.1. Die Bruno-Collection führt durch 
 
 - **Punkt 20 (S5):** Wie behandelt der Teamgenerator Profile ohne gepflegte Skillwerte? Die
   Bewertung des Haupt-Entwicklers steht: unvollständige Werte sollen eine Fehlermeldung erzeugen.
-  Durch S2b und S3 kleiner geworden – über `/admin/user/anlegen` entstandene Profile haben immer
-  vollständige Werte, ungepflegt bleiben nur Profile aus einem Datenimport, und
-  `/admin/user/lesen` macht die Lücke sichtbar.
+  **Seit dem 30.08.2026 gilt das an der Eingangstür** – `/admin/user/anlegen` lehnt eine
+  unvollständige Angabe ab, statt sie mit Vorgabewerten aufzufüllen. Damit bleibt nur noch eine
+  Quelle für Lücken: Profile aus einem Datenimport, den kein Endpunkt kontrolliert.
+  `/admin/user/lesen` macht sie sichtbar (kürzere Skillkarte), `bearbeiten` füllt sie.
+  **Für S5 bleibt die Frage, was der Generator mit einer solchen Lücke tut** – die Eingangsprüfung
+  ersetzt sie nicht, weil sie den Bestand nicht rückwirkend heilt.
 - **`AGENT.md` nennt für `terminserie.ort` und `termin.ort` 120 Zeichen, `V005` legt 160 an.**
   Code schlägt Anleitung, Migrationen sind unveränderlich. Beim Abschluss von S4 ins
   Änderungsprotokoll aufnehmen.

@@ -219,9 +219,23 @@ Identifikation über den hinterlegten Namen. Rollen: ADMIN, USER, GAST.
      ist.** Das Format gilt dem *Setzen*; `/auth/pin/pruefen` schreibt keines vor, damit ein
      abweichender Bestandswert eingebbar bleibt.
 - **Spielerverwaltung durch den Admin** (ab S2b):
-  1. **Ein neues Profil bekommt vollständige Skillwerte, nie Nullen** – die Vorgaben der Stufe
-     `MITTEL` aus `profil.gast_vorlage`. Nullen sind dem Adminprofil vorbehalten, das nie
-     eingeteilt wird; ein Spielerprofil mit lauter Nullen bekäme ein Team ohne jede Stärke.
+  1. **Ein neues Profil entsteht nur mit vollständigen Skillwerten** – der Admin gibt sie an,
+     einen Wert je **aktiver** Kategorie. Fehlt das Feld, ist es leer oder unvollständig,
+     antwortet der Endpunkt `400 EINGABE_UNGUELTIG` mit „Unvollständige Eingabe" und den
+     fehlenden Schlüsseln (30.08.2026).
+     - **Bis dahin galten Vorgabewerte** aus der Stufe `MITTEL` von `profil.gast_vorlage`. Der
+       Grund für die Umkehr: Eine Vorgabe ist eine Behauptung über einen Spieler, die niemand
+       aufgestellt hat. Sie fiel im Betrieb nicht auf, ging aber unverändert in die
+       Teameinteilung ein – dem Ergebnis sah niemand an, dass die Grundlage geraten war. Nullen
+       wären noch schlechter und bleiben dem Adminprofil vorbehalten, das nie eingeteilt wird.
+     - **Gemessen wird an den aktiven Kategorien, nie an einer festen Zahl.** Eine abgeschaltete
+       Kategorie fällt aus der Pflicht; sonst liesse sich nach dem Abschalten kein Profil mehr
+       anlegen.
+     - **Die Prüfreihenfolge ist Teil der Zusicherung:** erst der Name (`409 NAME_BELEGT`), dann
+       Schlüssel und Wertebereich, zuletzt die Vollständigkeit. Umgekehrt bekäme ein Tippfehler
+       im Schlüssel die Meldung „unvollständig", und die eigentliche Ursache bliebe unerwähnt.
+     - **`bearbeiten` ist davon ausgenommen** (siehe Punkt 5): Dort bleibt eine Teilmenge
+       erlaubt, weil ein bestehendes Profil bereits vollständige Werte hat.
   2. **Skillwerte werden gegen `profil.skill_kategorie` geprüft, bevor sie geschrieben werden.**
      Der Trigger `pruefe_skill_wertebereich` bleibt die letzte Instanz, brächte aber einen `500`
      statt einer Meldung mit Kategorie und Bereich. **Die Kategorien kommen aus der Datenbank, nie aus einer Liste im
