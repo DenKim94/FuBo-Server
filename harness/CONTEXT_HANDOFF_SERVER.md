@@ -10,12 +10,21 @@
 
 ## Stand: 30.08.2026
 
-**Abgeschlossen und verifiziert: S0, S1, S2, S2b und S3 – vollständig.**
-`./mvnw clean verify` grün am 30.08.2026 – **260 Tests in 23 Klassen**, keine Fehler, keine
+**Abgeschlossen und verifiziert: S0, S1, S2, S2b und S3 – vollständig, einschliesslich der
+manuellen Prüflisten.**
+`./mvnw clean verify` grün am 30.08.2026 – **264 Tests in 23 Klassen**, keine Fehler, keine
 Abbrüche, keine übersprungenen Tests; die Anwendung startet auf einer frischen Datenbank durch.
 Der Lauf braucht Docker (Testcontainers, `postgres:17`) und läuft ausschliesslich lokal. Er
-schliesst die Anforderungsänderung am Anlegen-Endpunkt und die Gastverwaltung vom selben Tag mit
-ein (Abschnitt 6.2); der S3-Abschluss selbst stand am 29.08.2026 bei 244 Fällen.
+schliesst die vier Nachträge desselben Tages mit ein (Abschnitt 6.2); der S3-Abschluss selbst
+stand am 29.08.2026 bei 244 Fällen.
+
+**Die manuellen Prüflisten sind durch** (30.08.2026): die zu S3 (`S3_UMSETZUNG.md`,
+Abschnitt 10.1) und die drei Punkte zur Gastverwaltung, die der Testlauf bauartbedingt nicht
+abdecken kann – verwaister Platz nach Sitzungsablauf, Freigabe eines aktiven Gastes, Senken von
+`anzGuests`. Damit steht auf der Serverseite nichts Offenes mehr aus S0 bis S3.
+
+**S4 ist startklar.** Die sechs Weggabelungen aus `S4_UMSETZUNG.md`, Abschnitt 0.4, sind am
+30.08.2026 entschieden – durchgängig entlang der Empfehlung (Abschnitt 6.2).
 
 **S3 umfasst** die Profilverwaltung mit Skillwerten, die Skillkategorien, den Anmeldenamen sowie
 seit den Paketen 5 bis 8 die Admin-Konfiguration (lesen und ändern als Voll-Update mit
@@ -44,10 +53,9 @@ Anlass war ein Betriebsfall: Alle vier Gastplätze waren belegt, ohne dass noch 
 angemeldet gewesen wäre (Abschnitt 6.2).
 
 **Als Nächstes: S4 (Termine & Teilnahme).** Die Umsetzungsanleitung liegt seit dem 30.08.2026 als
-`harness/tmp/S4_UMSETZUNG.md` vor – **sechs Weggabelungen sind dort vor der ersten Zeile Code zu
-entscheiden.** Parallel läuft beim Haupt-Entwickler die manuelle Prüfliste zu S3
-(`S3_UMSETZUNG.md`, Abschnitt 10.1); ihr Ergebnis wird hier nachgetragen. Vor dem nächsten
-Bruno-Lauf `adminName` und `neuerAdminName` in den Umgebungen füllen – beim Anmeldenamen zählt die
+`harness/tmp/S4_UMSETZUNG.md` vor; die sechs Weggabelungen aus Abschnitt 0.4 sind entschieden und
+in 6.2 festgehalten. **Die Umsetzung kann unmittelbar beginnen.** Vor dem nächsten Bruno-Lauf
+`adminName` und `neuerAdminName` in den Umgebungen füllen – beim Anmeldenamen zählt die
 Schreibweise.
 
 > **Zur Fassung:** Dieses Dokument ist am 29.08.2026 von 836 auf rund 450 Zeilen eingedampft
@@ -282,6 +290,20 @@ sind, sondern Weggabelungen mit Datum:
 | 30.08. | Vorgabetext der Absagevorlage in `V010`, **nicht** in `halleAbsageVorlageBereinigt()` | im Schreibpfad wäre er eine Regel bei jedem Speichern – der Admin könnte die Vorlage nie wieder leeren, und genau das begründet das Voll-Update |
 | 30.08. | Die Vorlage nennt Datum, Uhrzeit und Ort **nicht** | Platzhalter brauchten eine Ersetzung samt Syntax im Vertrag; bis S7 sie hat, stünden die Klammern wörtlich in der Mail. Die Angaben gehören in Betreff und Datenblock |
 
+**Die sechs Weggabelungen für S4** sind am 30.08.2026 entschieden – durchgängig entlang der
+Empfehlung aus `S4_UMSETZUNG.md`, Abschnitt 0.4. Sie stehen hier, weil sie den Vertrag oder das
+Verhalten der Warteschlange binden und sich nachträglich nur mit einer Vertragsänderung
+korrigieren lassen:
+
+| # | Entscheidung | Grund |
+|---|---|---|
+| A | Eine Serie **überspringt** kollidierende Termine und meldet sie namentlich, statt ganz zu scheitern | `uq_termin_zeit UNIQUE (datum, uhrzeit)` ist *global* – bei einer Zwölf-Wochen-Serie genügt ein einziger bestehender Einzeltermin. Den Admin den Konflikt vorher selbst finden zu lassen, wäre Arbeit, die der Server erledigen kann |
+| B | Wer absagt und später wieder zusagt, rutscht **ans Ende** der Warteschlange | `gemeldet_am` wird bei jeder Zusage neu gesetzt. Sonst hielte eine Absage den Platz – und das Kontingent wäre über eine Absage-Zusage-Schleife umgehbar |
+| C | Zu- und Absage bis **Terminbeginn**, und nur solange der Termin `GEPLANT` ist | zwei unabhängige Riegel: die Uhrzeit und der Status. Ein abgesagter Termin nimmt keine Rückmeldungen mehr, auch nicht vor seinem Beginn |
+| D | Die Teilnehmerübersicht ist **eine** Liste mit `wartet: true/false` | zwei getrennte Listen zwängen den Client, die Warteschlangenreihenfolge selbst wiederherzustellen; die Liste kommt bereits sortiert |
+| E | Der Admin trägt **keine** fremden Teilnahmen ein – Ausnahme: die Skill-Stufe eines Gastes (A17) | eine Rückmeldung ist eine Aussage über die eigene Verfügbarkeit; sie stellvertretend zu setzen erzeugt Daten, die niemand zugesagt hat |
+| F | Gäste dürfen Termine **sehen und zusagen** | sonst wäre der Gast-Login aus A8 ohne Zweck |
+
 **Zwei Abweichungen aus S1, die im Datenmodell sichtbar sind:** `min_teilnehmer = 6`,
 `anz_team_generator = 1`, `session_maximal_stunden = 1` (statt 8/2/8), und `session.stage`
 heisst in der zweiten Stufe `PROFILE_AUTHENTICATED`, weil auch Gäste sie erreichen.
@@ -377,10 +399,9 @@ löschen, solange Termine daran hängen; nicht mehr benötigte Termine gehen üb
 
 ### 6.4 Verifikation
 
-**`./mvnw clean verify` grün am 30.08.2026 – 260 Tests in 23 Klassen**, keine Fehler, keine
-Abbrüche, keine übersprungenen Tests. **Ausstehend: der Lauf zu `auswechselModus` (A20b) und zum
-Vorgabetext (A23) – erwartet 264 in denselben 23 Klassen**; committet wird erst danach. Die Anwendung startet auf einer frischen Datenbank durch.
-Er braucht Docker (Testcontainers, `postgres:17`) und läuft ausschliesslich lokal.
+**`./mvnw clean verify` grün am 30.08.2026 – 264 Tests in 23 Klassen**, keine Fehler, keine
+Abbrüche, keine übersprungenen Tests. Die Anwendung startet auf einer frischen Datenbank durch.
+Der Lauf braucht Docker (Testcontainers, `postgres:17`) und läuft ausschliesslich lokal.
 
 Der Lauf vom 29.08.2026 schloss S3 mit **244** Fällen ab; die drei zusätzlichen stammen aus der
 Anforderungsänderung am Anlegen-Endpunkt (6.2). In `SpielerControllerTests` sind dabei zwei
@@ -392,6 +413,26 @@ Ein zweiter Lauf am selben Tag brachte die Gastverwaltung auf **260**: 12 Fälle
 obwohl die beiden neuen Pfade dort geprüft werden: Sie sind Zusicherungen *innerhalb* der
 bestehenden Bündelfälle für `401` und `403`, keine eigenen Methoden. Wer die Fallzahl als Mass
 für die Abdeckung liest, unterschätzt diese Klasse deshalb systematisch.
+
+Der dritte Lauf brachte **264**: drei Fälle für `auswechselModus` (A20b) – unbekannter Wert,
+fehlender Wert, `V009`-Migration – und einer für die Absagevorlage (A23), der prüft, dass sie
+sich trotz Vorgabetext wieder leeren lässt.
+
+**Die manuellen Prüflisten sind am 30.08.2026 erfolgreich abgearbeitet worden:** die zu S3
+(`S3_UMSETZUNG.md`, Abschnitt 10.1), die zu S2b (`S2b_UMSETZUNG.md`, Abschnitt 12.1) und die
+drei Punkte zur Gastverwaltung. Sie bleiben in den Anleitungen stehen – nicht als offene
+Aufgabe, sondern als Vorlage: Was sie prüfen, kann kein Testlauf abdecken, weil er in einer
+zurückgerollten Transaktion läuft und keine Sitzung wirklich ablaufen lassen kann. Nach jeder
+Änderung an Sitzungen, Gastplätzen oder Konfiguration sind sie wieder die richtige Gegenprobe.
+
+Die drei Punkte zur Gastverwaltung stehen in keiner Anleitung und deshalb hier – die
+Bruno-Requests dazu liegen unter `admin/gast/`:
+
+| Prüfpunkt | Erwartung |
+|---|---|
+| Als Gast anmelden, `sessionLeerlaufMinuten` auf 1 setzen, warten, dann `/admin/gast/lesen` | `belegt: true` mit `sitzungGueltig: false` – der Zustand, der den nächsten Gast aussperrt |
+| Über `baseUrlOhneCookie` einen zweiten Gast anmelden, dessen Platz freigeben, dann mit seinem Cookie `/auth/session/lesen` | `401`, nicht `200` – die Freigabe widerruft die Sitzung |
+| `anzGuests` von 4 auf 2 senken, bei vier belegten Plätzen | Plätze 3 und 4 mit `wirksam: false` und weiterhin `belegt: true`; gelöscht wird nichts |
 
 ```bash
 docker info > /dev/null                                    # muss durchlaufen
@@ -427,12 +468,9 @@ zu S2b in `S2b_UMSETZUNG.md`, Abschnitt 12.1. Die Bruno-Collection führt durch 
 
 ## 7. Nächste Schritte
 
-1. **S4 beginnen** (`harness/tmp/S4_UMSETZUNG.md`). **Zuerst die sechs Weggabelungen aus
-   Abschnitt 0.4 entscheiden** – jede berührt den Vertrag oder das Verhalten der Warteschlange und
-   lässt sich nachträglich nur mit einer Vertragsänderung korrigieren. Die folgenreichste ist A:
-   `uq_termin_zeit UNIQUE (datum, uhrzeit)` ist eine *globale* Bedingung, und bei einer
-   Zwölf-Wochen-Serie genügt ein einziger bestehender Einzeltermin, um das Anlegen scheitern zu
-   lassen.
+1. **S4 umsetzen** (`harness/tmp/S4_UMSETZUNG.md`). Die sechs Weggabelungen sind entschieden
+   (6.2), die Anleitung ist damit vollständig – acht Endpunkte, zwei neue Fehlercodes
+   (`TERMIN_BELEGT`, `TERMIN_GESCHLOSSEN`), Vertrag von 23 auf 31 Endpunkte, geschätzt 17 h.
    **Drei Punkte, die dabei nicht untergehen dürfen:**
    - **Der Pflichtpunkt aus S3:** Eine Skilländerung ist eine Teilnehmeränderung (A15) und muss
      die `teilnehmer_version` betroffener künftiger Termine hochzählen. Der vorbereitete `UPDATE`
@@ -440,26 +478,10 @@ zu S2b in `S2b_UMSETZUNG.md`, Abschnitt 12.1. Die Bruno-Collection führt durch 
    - **Keine Migration nötig** – `V005` legt alles an; `V010` bleibt die letzte.
    - **`uq_termin_zeit` ist global und trifft auch die Tests.** Zwei Testklassen, die beide
      „morgen um 20:00" anlegen, kollidieren; jede braucht ihren eigenen Zeitraum.
-2. **Manuelle Prüfliste zu S3** (`S3_UMSETZUNG.md`, Abschnitt 10.1) – läuft beim
-   Haupt-Entwickler. Der Testlauf deckt sie nicht ab: Er läuft in einer zurückgerollten
-   Transaktion und sagt nichts darüber, ob `sessionLeerlaufMinuten` im laufenden Betrieb wirklich
-   sofort greift und `sessionMaximalStunden` wirklich nicht rückwirkend.
-3. **Client-Track über die Vertragsänderung informieren** (Abschnitt 4a). Das Anmeldeformular
-   des Admins braucht ein zweites Pflichtfeld, sonst liefert der Endpunkt `400`.
-4. **Manuelle Prüfung der Gastverwaltung.** Der Testlauf ist durch (260 Fälle, 6.4); die
-   Bruno-Requests liegen unter
-   `admin/gast/`; „Gastplaetze lesen" setzt `belegteSlots` und `verwaisteSlots`, aus denen
-   „Gastplaetze freigeben" seinen Körper bauen kann.
-   **Drei Punkte, die nur von Hand zu prüfen sind** – der Testlauf läuft in einer
-   zurückgerollten Transaktion und kann keine Sitzung wirklich ablaufen lassen:
-   - **Verwaister Platz.** Als Gast anmelden, `sessionLeerlaufMinuten` auf 1 setzen, warten,
-     dann `/admin/gast/lesen`: Der Platz muss `belegt: true` mit `sitzungGueltig: false` zeigen.
-     Das ist der Zustand, der den nächsten Gast aussperrt.
-   - **Freigabe wirft heraus.** Mit `baseUrlOhneCookie` einen zweiten Gast anmelden, dessen
-     Platz freigeben, dann mit seinem Cookie `/auth/session/lesen`: `401`, nicht `200`.
-   - **`anzGuests` senken.** Von 4 auf 2 bei vier belegten Plätzen: Die Plätze 3 und 4 müssen
-     mit `wirksam: false` und weiterhin `belegt: true` erscheinen. Gelöscht wird nichts.
-
+2. **Client-Track über die drei brechenden Vertragsänderungen informieren** (Abschnitt 4 und
+   4a). Alle drei betreffen Formulare, alle drei liefern sonst `400`: `anmeldename` im
+   Admin-Login, vollständige `skills` beim Anlegen eines Profils, `auswechselModus` im
+   Voll-Update der Konfiguration.
 **Offene Punkte, die keine Aufgabe für heute sind:**
 
 - **Punkt 20 (S5):** Wie behandelt der Teamgenerator Profile ohne gepflegte Skillwerte? Die
