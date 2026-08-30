@@ -83,6 +83,32 @@ Identifikation über den hinterlegten Namen. Rollen: ADMIN, USER, GAST.
 - (A16) Ergebnisse wirken nicht auf die Skills zurück; sie werden in Version 1 nur erfasst.
 - (A21) Ergebniseintrag: der erste Eintrag gilt (technisch über Unique auf `termin_id`), nur der Admin
   korrigiert; beides wird im Audit-Log protokolliert.
+  - **Ergänzung durch Entwickler:** Die Anzahl der Siege, Niederlagen und Unentschieden wird nach
+    Eingabe des Ergebnisses für jeden beteiligten Spieler mitgezählt; eine Korrektur durch den
+    Admin korrigiert auch den Zähler. Dafür trägt `profil.spieler` seit `V011` die Spalten
+    `anz_siege`, `anz_niederlagen` und `anz_unentschieden`. Gewinnt Team A, steigt bei dessen
+    Spielern `anz_siege` um 1 und bei denen von Team B `anz_niederlagen`.
+  - **Die Zähler werden neu berechnet, nicht fortgeschrieben** (Entscheidung vom 30.08.2026).
+    Bei jedem Eintrag und jeder Korrektur werden die drei Werte der betroffenen Spieler aus
+    `spieltag.ergebnis` und `spieltag.team_zuteilung` neu ermittelt. `+1` beim Eintragen und
+    `-1` beim Korrigieren wäre kürzer, setzte aber voraus, dass die Teameinteilung dazwischen
+    unverändert bleibt; tut sie es nicht, trifft die Rücknahme andere Spieler als der
+    ursprüngliche Eintrag. **Der Fehler fiele nie auf**, weil der Zähler die einzige Quelle
+    wäre, gegen die er sich prüfen liesse. Mit der Neuberechnung ist die Korrektur der
+    Normalfall und kein Sonderfall.
+  - **Massgeblich ist die aktuelle Teameinteilung** – die `team_generierung` des Termins mit
+    `abgeloest_am IS NULL`. Ein Ergebnis ohne Teameinteilung hat keine „beteiligten Spieler"
+    und ist deshalb abzulehnen, nicht still ohne Zählerwirkung zu speichern.
+  - **Gäste haben keine Bilanz.** Ein Gast hat keine Zeile in `profil.spieler`; in
+    `spieltag.teilnahme` steht nur sein `gast_name`. Ein Zähler an `gast_slot` schiede aus, weil
+    der Platz wiederverwendet wird und die Ergebnisse verschiedener Personen summierte. Das
+    Ergebnis des Termins ist davon unberührt – nur die Bilanz kennt den Gast nicht.
+  - **Der Auswechselspieler zählt mit.** Er steht in `team_zuteilung` mit einem Team und hat
+    gespielt; ihn auszunehmen wäre eine zweite Regel ohne Anlass.
+  - **`deutlich` verändert den Zähler nicht.** Die Spalte beschreibt die Höhe des Sieges, nicht
+    seinen Ausgang – ein deutlicher Sieg ist ein Sieg und zählt einmal.
+  - **A16 bleibt unberührt:** Die Bilanz ist eine Statistik, kein Skillwert. Sie fliesst nicht in
+    die Teamgenerierung ein und wirkt nicht auf `profil.spieler_skill` zurück.
 - (A23) Hallenmodus: Absage des Termins an die hinterlegte E-Mail des Hallenbetreibers über einen
   vordefinierten Text; nur zulässig bis mindestens 48 Stunden vor dem Termin, sonst serverseitig
   deaktiviert.

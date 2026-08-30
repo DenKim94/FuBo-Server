@@ -26,6 +26,13 @@ abdecken kann – verwaister Platz nach Sitzungsablauf, Freigabe eines aktiven G
 **S4 ist startklar.** Die sechs Weggabelungen aus `S4_UMSETZUNG.md`, Abschnitt 0.4, sind am
 30.08.2026 entschieden – durchgängig entlang der Empfehlung (Abschnitt 6.2).
 
+**Vorbereitet für S6 (30.08.2026): die Bilanz je Spieler.** `profil.spieler` trägt seit `V011`
+`anz_siege`, `anz_niederlagen` und `anz_unentschieden` (A21, Ergänzung des Haupt-Entwicklers).
+**Gefüllt werden sie erst mit der Ergebniserfassung in S6**; bis dahin stehen überall Nullen,
+weil es keinen Endpunkt gibt, der ein Ergebnis entgegennimmt. Der Vertrag bleibt unberührt – ein
+Antwortfeld nachzuziehen ist additiv und damit nicht brechend, anders als bei `auswechselModus`
+gibt es also keinen Grund, es vorzuziehen.
+
 **S3 umfasst** die Profilverwaltung mit Skillwerten, die Skillkategorien, den Anmeldenamen sowie
 seit den Paketen 5 bis 8 die Admin-Konfiguration (lesen und ändern als Voll-Update mit
 Optimistic Locking), die mitgepflegten Gastplätze (offener Punkt 18 aus S2 damit erledigt) und die
@@ -192,7 +199,7 @@ server/                        Repo-Wurzel (remote: FuBo-Server, oeffentlich)
   compose.dev.yml              postgres:17
   .env / .env.example          DB-Zugang, FUBO_INITIAL_PIN, ADMIN_*, SMTP_*
   scripts/                     seed-lokal.sh + anonymisierter 30er-Datensatz
-  src/main/resources/db/       migration/ V001-V010, demodata/ (nur dev und test)
+  src/main/resources/db/       migration/ V001-V011, demodata/ (nur dev und test)
   src/main/java/de/fubo/appserver/
     common/  config error security
     controller/ auth admin        service/ auth profil audit mail config
@@ -211,10 +218,11 @@ configs`, `flyway.validate-migration-naming=true`, `server.forward-headers-strat
 Actuator auf `health` beschränkt. Die Demodaten-Location steht **nur** in
 `src/test/resources/application.yml`.
 
-**Datenmodell: 18 Tabellen in drei Schemas, `V001`–`V010`.** S2b und S3 kamen ohne Migration
-aus; `V009` ist die erste seit S2. Beide neuen ändern nur `configs.app_config` und legen keine
-Tabelle an: `V009` die Spalte `auswechsel_modus` (A20b), `V010` den Vorgabetext für
-`halle_absage_vorlage` (A23), beide vom 30.08.2026.
+**Datenmodell: 18 Tabellen in drei Schemas, `V001`–`V011`.** S2b und S3 kamen ohne Migration
+aus; `V009` ist die erste seit S2. Alle drei neuen ergänzen nur Spalten und legen keine Tabelle
+an: `V009` `auswechsel_modus` in `configs.app_config` (A20b), `V010` den Vorgabetext für
+`halle_absage_vorlage` (A23), `V011` die drei Bilanz-Zähler in `profil.spieler` (A21) – alle vom
+30.08.2026.
 
 **Die 23 Endpunkte** (massgeblich bleibt `fubo-api.json`):
 
@@ -289,6 +297,9 @@ sind, sondern Weggabelungen mit Datum:
 | 30.08. | „Schwächster" nach dem Skill-Snapshot des Laufs, nicht nach dem aktuellen Profilstand | sonst wechselte der Auswechselspieler einer gespeicherten Einteilung rückwirkend, sobald ein Skillwert korrigiert wird |
 | 30.08. | Vorgabetext der Absagevorlage in `V010`, **nicht** in `halleAbsageVorlageBereinigt()` | im Schreibpfad wäre er eine Regel bei jedem Speichern – der Admin könnte die Vorlage nie wieder leeren, und genau das begründet das Voll-Update |
 | 30.08. | Die Vorlage nennt Datum, Uhrzeit und Ort **nicht** | Platzhalter brauchten eine Ersetzung samt Syntax im Vertrag; bis S7 sie hat, stünden die Klammern wörtlich in der Mail. Die Angaben gehören in Betreff und Datenblock |
+| 30.08. | Bilanz-Zähler **neu berechnen** statt fortschreiben (A21) | `+1`/`-1` setzt voraus, dass die Teameinteilung zwischen Eintrag und Korrektur unverändert bleibt; tut sie es nicht, trifft die Rücknahme andere Spieler – und es gibt keine zweite Quelle, an der das auffiele |
+| 30.08. | Die drei Zähler stehen auf `profil.spieler`, nicht in einer eigenen Tabelle | drei Zahlen mit demselben Lebenszyklus wie das Profil; eine Tabelle mit 1:1-Beziehung wäre Ballast |
+| 30.08. | Gastteilnahmen bekommen **keine** Bilanz | ein Gast hat keine Profilzeile, und ein Zähler an `gast_slot` summierte die Ergebnisse verschiedener Personen – der Platz wird wiederverwendet |
 
 **Die sechs Weggabelungen für S4** sind am 30.08.2026 entschieden – durchgängig entlang der
 Empfehlung aus `S4_UMSETZUNG.md`, Abschnitt 0.4. Sie stehen hier, weil sie den Vertrag oder das
@@ -475,7 +486,7 @@ zu S2b in `S2b_UMSETZUNG.md`, Abschnitt 12.1. Die Bruno-Collection führt durch 
    - **Der Pflichtpunkt aus S3:** Eine Skilländerung ist eine Teilnehmeränderung (A15) und muss
      die `teilnehmer_version` betroffener künftiger Termine hochzählen. Der vorbereitete `UPDATE`
      steht in `S3_UMSETZUNG.md`, Abschnitt 3.5, die Umsetzung in `S4_UMSETZUNG.md`, Abschnitt 8.
-   - **Keine Migration nötig** – `V005` legt alles an; `V010` bleibt die letzte.
+   - **Keine Migration nötig** – `V005` legt alles an; `V011` bleibt die letzte.
    - **`uq_termin_zeit` ist global und trifft auch die Tests.** Zwei Testklassen, die beide
      „morgen um 20:00" anlegen, kollidieren; jede braucht ihren eigenen Zeitraum.
 2. **Client-Track über die drei brechenden Vertragsänderungen informieren** (Abschnitt 4 und
