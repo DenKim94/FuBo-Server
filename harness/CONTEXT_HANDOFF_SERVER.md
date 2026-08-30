@@ -280,6 +280,11 @@ löschen, solange Termine daran hängen; nicht mehr benötigte Termine gehen üb
   `spring.config.import`.
 - **In der `.env` nie Anführungszeichen** – sie wird als Java-Properties-Datei gelesen und
   übernimmt sie in den Wert. Kostete am 29.08.2026 einen `550`-Fehler beim Mailversand.
+- **Und kein Skript darf sie `source`n** (30.08.2026). `seed-lokal.sh` tat es und scheiterte an
+  `SMTP_ABSENDER` in der Form `Anzeigename <adresse@domain>`:
+  `.env: line 29: syntax error near unexpected token 'newline'` – die Shell liest das `<` als
+  Umleitung. Behoben, indem das Skript nur noch die drei Schlüssel liest, die es braucht, und
+  Docker Compose `--env-file .env` bekommt. Regel und Begründung stehen in `AGENT_SERVER.md`.
 - **`target/classes` vergisst nichts.** Nach dem Umbenennen oder Löschen einer Ressource immer
   `./mvnw clean` – das gilt auch nach jeder Änderung an `application.yml`.
 
@@ -431,7 +436,8 @@ sie ab.
 - **Deployment (S8):** Entwurf mit Dockerfile, Compose-Ergänzung, nginx-Block, Backup und
   Rollout liegt in `harness/tmp/S8_DEPLOYMENT.md`.
 
-**Profildaten** (Vorgehen steht): Reale Daten liegen ausserhalb von `PRJ_FuBo/`, Pfad in
+**Profildaten** (Vorgehen steht): Reale Daten liegen ausserhalb des **Server-Repositories** –
+derzeit in `PRJ_FuBo/db_prod_data/`, also in dem unversionierten Teil des Projektordners. Pfad in
 `FUBO_LOCAL_SEED`, Einspielen über `scripts/seed-lokal.sh`. Der anonymisierte 30er-Satz liegt
 in `scripts/data/`, der 12er-Demosatz läuft automatisch in Dev und Test.
 

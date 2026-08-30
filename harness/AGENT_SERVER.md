@@ -273,6 +273,17 @@ Identifikation über den hinterlegten Namen. Rollen: ADMIN, USER, GAST.
   syntaktisch falscher Absender sich erst beim ersten echten Versand zeigt.
   **In der `.env` nie Anführungszeichen:** Sie wird als Java-Properties-Datei gelesen und
   übernimmt sie wörtlich in den Wert.
+  - **Die `.env` wird gelesen, nie ausgeführt** (30.08.2026). Kein Skript darf sie `source`n.
+    Sie hat keine Shell-Syntax: Anwendung und Docker Compose nehmen alles nach dem ersten `=`
+    wörtlich, die Shell nicht. `SMTP_ABSENDER` in der erlaubten Form
+    `Anzeigename <adresse@domain>` liess `seed-lokal.sh` am `<` scheitern, und
+    Anführungszeichen sind hier keine Lösung – sie wären für den Properties-Reader Teil des
+    Werts. **Der laute Fall ist der harmlosere:** Ein Passwort mit `$` oder einem Backtick
+    würde beim Sourcen still expandiert, und der Authentifizierungsfehler danach führt
+    niemanden zur `.env`. Ein Skript liest deshalb nur die Schlüssel, die es braucht, mit
+    einem Einzeiler ohne Interpretation; Docker Compose bekommt `--env-file .env` und parst
+    selbst. **Preis, den man kennen muss:** Ein gelesener Wert ist reiner Text – eine
+    führende Tilde löst die Shell dann nicht mehr auf, das Skript muss es selbst tun.
 - **Brute-Force-Schutz** am PIN-Endpunkt; echte Client-IP aus `X-Forwarded-For`, daher
   `server.forward-headers-strategy=NATIVE`.
 - **Ergänzend:** zentrale Fehlerbehandlung (`@RestControllerAdvice`) mit einheitlichem
