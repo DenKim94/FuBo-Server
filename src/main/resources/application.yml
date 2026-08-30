@@ -48,6 +48,17 @@ management:
       show-details: never
 
 fubo:
+  # Zeitzone, in der die Anwendung Datums- und Uhrzeitangaben ohne Zeitzone auslegt -
+  # allen voran termin.datum und termin.uhrzeit (DATE und TIME, beide ohne Zeitzone).
+  # Ohne diesen Wert liefe die Pruefung "Termin in der Vergangenheit" gegen die Zeitzone
+  # des Rechners, und die ist in einem Container per Voreinstellung UTC. In Mitteleuropa
+  # waeren im Sommer zwei Stunden Unterschied - ein Termin, der schon vorbei ist, liesse
+  # sich dann noch anlegen. Der Fehler faellt nicht auf, weil er nur zwei Stunden am Tag
+  # betrifft.
+  #
+  # Zeitpunkte in der Datenbank (TIMESTAMPTZ) sind davon nicht betroffen: Sie tragen ihre
+  # Zeitzone selbst.
+  zeitzone: Europe/Berlin
   session:
     cookie-name: FUBO_SESSION
     cookie-secure: true

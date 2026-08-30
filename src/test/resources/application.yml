@@ -13,6 +13,10 @@ spring:
     locations: classpath:db/migration, classpath:db/demodata
 
 fubo:
+  # Ausdruecklich gesetzt und nicht dem Vorgabewert ueberlassen: Die Terminpruefungen aus S4
+  # rechnen in dieser Zone, und ein Testlauf soll auf jedem Rechner dasselbe Ergebnis liefern -
+  # in einem CI-Container steht die Systemzeit auf UTC.
+  zeitzone: Europe/Berlin
   session:
     # Feste Testwerte statt ${FUBO_...}: Der Testlauf darf nicht davon abhaengen, ob
     # lokal eine .env existiert - sonst ist er auf dem Entwicklungsrechner gruen und
