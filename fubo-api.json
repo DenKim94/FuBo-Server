@@ -54,6 +54,10 @@
     {
       "name": "Konfiguration",
       "description": "Die anwendungsweite Admin-Konfiguration lesen und ändern (A10, A11, A14, A15, A17, A23) – genau ein Datensatz."
+    },
+    {
+      "name": "Gastverwaltung",
+      "description": "Die Gastplätze aus Sicht des Admins: Zustand ansehen und belegte Plätze freigeben (A17)."
     }
   ],
   "security": [
@@ -1483,6 +1487,120 @@
           }
         }
       }
+    },
+    "/api/v1/admin/gast/lesen": {
+      "get": {
+        "tags": [
+          "Gastverwaltung"
+        ],
+        "operationId": "gastplaetzeLesen",
+        "summary": "Gastplätze und ihren Zustand lesen",
+        "description": "Liefert alle Zeilen aus `profil.gast_slot`, nach Nummer sortiert. Verlangt die Rolle `ADMIN`.\n\n**Auch die unwirksamen Plätze sind enthalten** (`wirksam: false`) – Zeilen jenseits der aktuellen `anzGuests`. Sie entstehen, wenn der Admin die Zahl senkt; gelöscht wird nie.\n\n**Wofür der Endpunkt gedacht ist:** Er beantwortet die Frage „warum bekommt der nächste Gast keinen Platz“. Die Antwort ist oft ein belegter Platz ohne lebende Sitzung (`belegt: true`, `sitzungGueltig: false`), denn eine ablaufende Gastsitzung gibt ihren Platz nicht selbst frei – das tut erst der nächtliche Aufräumlauf oder `/admin/gast/freigeben`.",
+        "responses": {
+          "200": {
+            "description": "Alle Plätze, nach `nummer` sortiert.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/GastPlatzInfo"
+                  }
+                },
+                "example": [
+                  {
+                    "nummer": 1,
+                    "anzeigeName": "Gast 1",
+                    "wirksam": true,
+                    "belegt": true,
+                    "belegtSeit": "2026-08-30T18:12:04.881+02:00",
+                    "gastName": "Testgast 1",
+                    "gastStufe": "MITTEL",
+                    "sitzungGueltig": true
+                  },
+                  {
+                    "nummer": 2,
+                    "anzeigeName": "Gast 2",
+                    "wirksam": true,
+                    "belegt": true,
+                    "belegtSeit": "2026-08-30T16:40:11.204+02:00",
+                    "gastName": "Testgast 2",
+                    "gastStufe": "STARK",
+                    "sitzungGueltig": false
+                  },
+                  {
+                    "nummer": 3,
+                    "anzeigeName": "Gast 3",
+                    "wirksam": true,
+                    "belegt": false,
+                    "belegtSeit": null,
+                    "gastName": null,
+                    "gastStufe": null,
+                    "sitzungGueltig": null
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/gast/freigeben": {
+      "post": {
+        "tags": [
+          "Gastverwaltung"
+        ],
+        "operationId": "gastplaetzeFreigeben",
+        "summary": "Belegte Gastplätze freigeben",
+        "description": "Gibt einzelne oder alle belegten Gastplätze frei. Verlangt die Rolle `ADMIN`.\n\n**Der Vorgang meldet den Gast ab, er räumt nicht nur eine Tabelle auf.** Zu jedem freigegebenen Platz wird die zugehörige Sitzung widerrufen – in derselben Transaktion und in dieser Reihenfolge, weil `gast_slot.session_id` auf die Sitzung zeigt. Ohne den Widerruf bliebe ein Gast mit gültigem Token angemeldet, hätte aber keinen Platz mehr; genau diesen Zustand hält `SessionService#abmelden` seit S2 auseinander, und dieser Endpunkt bricht die Regel nicht.\n\n**Für den Admin heisst das:** Ein Gast, der noch aktiv ist, fliegt sofort raus. Wer nur verwaiste Plätze aufräumen will, prüft vorher `/admin/gast/lesen` auf `sitzungGueltig: false`.\n\nEin bereits freier Platz wird übersprungen; der Aufruf ist damit wiederholbar.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GastFreigebenRequest"
+              },
+              "examples": {
+                "einzelne": {
+                  "summary": "Zwei bestimmte Plätze",
+                  "value": {
+                    "slotIds": [
+                      2,
+                      4
+                    ]
+                  }
+                },
+                "alle": {
+                  "summary": "Alle belegten Plätze",
+                  "value": {
+                    "alle": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Übernommen. Kein Inhalt – der neue Zustand kommt aus einem erneuten `/admin/gast/lesen`."
+          },
+          "400": {
+            "$ref": "#/components/responses/EingabeUngueltig"
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2268,6 +2386,93 @@
           "halleAbsageVorlage",
           "halleVorlaufStunden"
         ]
+      },
+      "GastPlatzInfo": {
+        "type": "object",
+        "description": "Ein Gastplatz aus `profil.gast_slot` samt Zustand.\n\n**Der Anker ist der Platz, nicht die Sitzung.** Nur so werden „verwaiste“ Plätze sichtbar: `belegt: true` bei `sitzungGueltig: false` – der Platz ist besetzt, die zugehörige Sitzung aber abgelaufen oder widerrufen. Dieser Zustand entsteht im Betrieb regelmässig, weil eine ablaufende Gastsitzung ihren Platz **nicht** von selbst freigibt; das erledigt erst der nächtliche Aufräumlauf. Genau diese Plätze sind die Kandidaten für `/admin/gast/freigeben`.",
+        "properties": {
+          "nummer": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Platznummer (`gast_slot.id`), beginnend bei 1. Zugleich der Wert für `slotIds` in `/admin/gast/freigeben`."
+          },
+          "anzeigeName": {
+            "type": "string",
+            "description": "Vorschlagsname des Platzes, etwa `Gast 3`. Er stammt aus dem Seed und wird vom Gast beim Anmelden überschrieben – er ist **nicht** der Name des angemeldeten Gastes, dafür steht `gastName`."
+          },
+          "wirksam": {
+            "type": "boolean",
+            "description": "`false`, wenn die Nummer über der aktuellen `anzGuests` liegt. Solche Plätze werden nicht mehr vergeben, bleiben aber bestehen – gelöscht wird nie. Ein bereits belegter unwirksamer Platz bleibt besetzt, bis seine Sitzung endet."
+          },
+          "belegt": {
+            "type": "boolean",
+            "description": "Zustand der Zeile in `gast_slot`."
+          },
+          "belegtSeit": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Zeitpunkt der Belegung; `null`, wenn der Platz frei ist."
+          },
+          "gastName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Name des Gastes aus der Sitzung; `null`, wenn der Platz frei ist."
+          },
+          "gastStufe": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/GastStufe"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Selbsteinschätzung des Gastes; `null`, wenn der Platz frei ist."
+          },
+          "sitzungGueltig": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Ob die Sitzung des Gastes noch läuft – nicht widerrufen und beide Ablaufzeitpunkte in der Zukunft. `null`, wenn der Platz frei ist. **`false` bei `belegt: true` heisst: Der Platz lässt sich gefahrlos freigeben**, es sitzt niemand mehr dahinter."
+          }
+        },
+        "required": [
+          "nummer",
+          "anzeigeName",
+          "wirksam",
+          "belegt"
+        ]
+      },
+      "GastFreigebenRequest": {
+        "type": "object",
+        "description": "Anfragekörper von `/admin/gast/freigeben`. **Genau eines der beiden Felder ist zu setzen**, nie beide und nie keines.\n\nEin leerer Körper wird mit `400` abgelehnt, statt „alle“ zu bedeuten – ein Sammelabbruch soll kein Versehen sein können. Dieselbe Haltung wie bei `/admin/user/bearbeiten`, das einen Aufruf ohne jede Angabe ebenfalls ablehnt.",
+        "properties": {
+          "slotIds": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "minItems": 1,
+            "description": "Platznummern aus `/admin/gast/lesen`. Ein bereits freier Platz wird übersprungen, nicht bemängelt – der Aufruf ist wiederholbar. Eine Nummer, die es nicht gibt, liefert `400`."
+          },
+          "alle": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "`true` gibt **alle** belegten Plätze frei. Nur `true` ist zulässig; `false` ist keine Angabe und liefert `400`."
+          }
+        }
       }
     }
   }
