@@ -12,6 +12,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -122,6 +123,44 @@ class AuditServiceTests {
         assertThat(zeile.get("typ"))
                 .as("Ein Text hiesse hier 'string' - dann war die Karte nur stringifiziert")
                 .isEqualTo("object");
+    }
+
+    /**
+     * Dieselbe Falle wie oben, eine Ebene weiter: Eine <b>Liste</b> in den Zusatzangaben.
+     *
+     * <p>Der Serialisierer kannte urspruenglich nur Karten, Zahlen, Wahrheitswerte und Text.
+     * Alles andere landete ueber {@code toString()} als Zeichenkette - eine Liste also als
+     * {@code "[{nummer=1}]"}. Das sieht wieder aus wie JSON und ist wieder keines: Die
+     * Auswertung ueber {@code details->'plaetze'->0->>'nummer'} liefe ins Leere, und die
+     * Gastfreigabe protokolliert genau eine solche Liste.
+     *
+     * <p>Geprueft wird deshalb dreierlei: der Typ des Arrays, der Typ des ersten Elements und
+     * ein herausgelesener Wert daraus. Der Typ allein genuegte nicht - ein Array aus lauter
+     * Zeichenketten meldete ebenfalls {@code array}.
+     */
+    @Test
+    void listeLandetAlsArrayUndNichtAlsText() {
+        auditService.protokolliere(AKTEUR, AuditAktion.GAST_ABGEMELDET,
+                Map.of("anzahl", 2,
+                        "plaetze", List.of(
+                                Map.of("nummer", 1, "warAktiv", true),
+                                Map.of("nummer", 3, "warAktiv", false))));
+
+        Map<String, Object> zeile = jdbc.queryForMap("""
+                SELECT jsonb_typeof(details->'plaetze') AS typ,
+                       jsonb_typeof(details->'plaetze'->0) AS typ_erstes,
+                       details->'plaetze'->1->>'nummer' AS zweite_nummer,
+                       jsonb_array_length(details->'plaetze') AS laenge
+                  FROM profil.audit_log
+                 WHERE akteur_bezeichnung = ?
+                """, AKTEUR);
+
+        assertThat(zeile.get("typ"))
+                .as("Ein Text hiesse hier 'string' - dann war die Liste nur stringifiziert")
+                .isEqualTo("array");
+        assertThat(zeile.get("typ_erstes")).isEqualTo("object");
+        assertThat(zeile.get("zweite_nummer")).isEqualTo("3");
+        assertThat(zeile.get("laenge")).isEqualTo(2);
     }
 
     // ------------------------------------------------------------ Transaktionskopplung
