@@ -11,17 +11,24 @@
 ## Stand: 30.08.2026
 
 **Abgeschlossen und verifiziert: S0, S1, S2, S2b und S3 – vollständig.**
-`./mvnw clean verify` grün am 30.08.2026 – **247 Tests in 22 Klassen**, keine Fehler, keine
+`./mvnw clean verify` grün am 30.08.2026 – **260 Tests in 23 Klassen**, keine Fehler, keine
 Abbrüche, keine übersprungenen Tests; die Anwendung startet auf einer frischen Datenbank durch.
 Der Lauf braucht Docker (Testcontainers, `postgres:17`) und läuft ausschliesslich lokal. Er
-schliesst die Anforderungsänderung am Anlegen-Endpunkt vom selben Tag mit ein (Abschnitt 6.2);
-der S3-Abschluss selbst stand am 29.08.2026 bei 244 Fällen.
+schliesst die Anforderungsänderung am Anlegen-Endpunkt und die Gastverwaltung vom selben Tag mit
+ein (Abschnitt 6.2); der S3-Abschluss selbst stand am 29.08.2026 bei 244 Fällen.
 
 **S3 umfasst** die Profilverwaltung mit Skillwerten, die Skillkategorien, den Anmeldenamen sowie
 seit den Paketen 5 bis 8 die Admin-Konfiguration (lesen und ändern als Voll-Update mit
 Optimistic Locking), die mitgepflegten Gastplätze (offener Punkt 18 aus S2 damit erledigt) und die
-Bestandsaufnahme der Autorisierung. Der Vertrag steht bei **21 Endpunkten**, der Fehlercode
-`DATEN_VERALTET` und der Tag „Konfiguration" sind eingetragen.
+Bestandsaufnahme der Autorisierung. Der Fehlercode `DATEN_VERALTET` und der Tag „Konfiguration"
+sind eingetragen.
+
+**Nachtrag vom 30.08.2026 – Gastverwaltung.** Auf Vorgabe des Haupt-Entwicklers sind zwei
+Adminendpunkte dazugekommen: `GET /admin/gast/lesen` und `POST /admin/gast/freigeben`. Der
+Vertrag steht damit bei **23 Endpunkten**, der Tag „Gastverwaltung" und die Aktion
+`GAST_ABGEMELDET` sind eingetragen. **Verifiziert am 30.08.2026 – 260 Fälle in 23 Klassen.**
+Anlass war ein Betriebsfall: Alle vier Gastplätze waren belegt, ohne dass noch ein Gast
+angemeldet gewesen wäre (Abschnitt 6.2).
 
 **Als Nächstes: S4 (Termine & Teilnahme).** Die Umsetzungsanleitung liegt seit dem 30.08.2026 als
 `harness/tmp/S4_UMSETZUNG.md` vor – **sechs Weggabelungen sind dort vor der ersten Zeile Code zu
@@ -73,9 +80,10 @@ Wurzel des Server-Repositories und damit mitversioniert (Festlegung des Haupt-En
 22.08.2026; Ablageort, Format und die beiden Regeln dazu sind in `AGENT_SERVER.md` begründet).
 **Bei Abweichungen ist die Datei maßgeblich, nicht dieses Dokument.**
 
-**Umfang: 21 Endpunkte** – acht aus S2 (Auth und Sitzung), sieben aus S2b (Zugangsdatenpflege
-und Spielerverwaltung), sechs aus S3 (Endpunkttabelle in Abschnitt 6.1). Aufgenommen wird nur,
-was umgesetzt ist; S4 bis S7 tragen ihre Endpunkte bei Fertigstellung nach.
+**Umfang: 23 Endpunkte** – acht aus S2 (Auth und Sitzung), sieben aus S2b (Zugangsdatenpflege
+und Spielerverwaltung), sechs aus S3 und zwei aus dem Nachtrag zur Gastverwaltung vom
+30.08.2026 (Endpunkttabelle in Abschnitt 6.1). Aufgenommen wird nur, was umgesetzt ist; S4 bis
+S7 tragen ihre Endpunkte bei Fertigstellung nach.
 
 Inhaltliche Kernpunkte (Herleitung in `AGENT_SERVER.md`): REST/JSON, getrennte Origins mit
 CORS-Allowlist (`allowCredentials`), HttpOnly-Session-Cookie, `401`/`403`-Semantik, DTOs ohne
@@ -93,6 +101,8 @@ in den `S<n>_UMSETZUNG.md` weiter:
 | `DATEN_VERALTET` (`409`) | erster neuer Fehlercode seit S2b. Heisst „neu laden und erneut speichern", nicht „Eingabe falsch". Ab S4 auch für Termine, ab S6 für Ergebnisse |
 | `/admin/config/aendern` | **Voll-Update**: vorher `lesen`, dann alle zehn Felder samt `version` zurückschicken |
 | `skills` in `SpielerAnlegenRequest` | **brechend** (30.08.2026): Pflichtfeld, vollständig. Ein Körper mit nur `name` liefert `400`. Das Anlegeformular baut seine Felder aus `/admin/skills/lesen`. `bearbeiten` bleibt unverändert |
+| `sitzungGueltig` in `GastPlatzInfo` | **dreiwertig** (30.08.2026): `true` lebende Sitzung, `false` verwaister Platz, `null` freier Platz. Ein `if (sitzungGueltig)` behandelt den freien wie den verwaisten – der Unterschied ist gerade der Punkt |
+| `/admin/gast/freigeben` | genau eines von `slotIds` und `alle`. Leerer Körper `400`, nicht „alle". Der Aufruf **meldet aktive Gäste ab**; die Oberfläche fragt vor dem Sammelabbruch nach |
 
 ## 4a. Offene Übergabe an den Client-Track
 
@@ -156,7 +166,7 @@ Autorisierung und der Vertrag dazu.
 
 ```
 server/                        Repo-Wurzel (remote: FuBo-Server, oeffentlich)
-  fubo-api.json                Endpunktkontrakt, 21 Endpunkte (Abschnitt 4)
+  fubo-api.json                Endpunktkontrakt, 23 Endpunkte (Abschnitt 4)
   compose.dev.yml              postgres:17
   .env / .env.example          DB-Zugang, FUBO_INITIAL_PIN, ADMIN_*, SMTP_*
   scripts/                     seed-lokal.sh + anonymisierter 30er-Datensatz
@@ -182,7 +192,7 @@ Actuator auf `health` beschränkt. Die Demodaten-Location steht **nur** in
 **Datenmodell: 18 Tabellen in drei Schemas, `V001`–`V008`. Seit S2 kam keine Migration mehr
 dazu** – weder S2b noch S3 brauchten eine.
 
-**Die 21 Endpunkte** (massgeblich bleibt `fubo-api.json`):
+**Die 23 Endpunkte** (massgeblich bleibt `fubo-api.json`):
 
 | Methode | Pfad unter `/api/v1` | Zweck |
 |---|---|---|
@@ -207,12 +217,18 @@ dazu** – weder S2b noch S3 brauchten eine.
 | `GET` | `/admin/skills/lesen` | Skillkategorien und Wertebereiche |
 | `GET` | `/admin/config/lesen` | Admin-Konfiguration samt `version` |
 | `POST` | `/admin/config/aendern` | Voll-Update; `409 DATEN_VERALTET` bei veralteter `version` |
+| `GET` | `/admin/gast/lesen` | Alle Gastplätze samt Zustand der Sitzung dahinter |
+| `POST` | `/admin/gast/freigeben` | Plätze räumen **und** die Gäste abmelden; `204` |
 
-Die ersten acht stammen aus S2, die folgenden fünf aus S2b, die letzten acht aus S2b und S3.
-Alles unterhalb von `/api/*/admin/**` verlangt `ROLE_ADMIN`; die Reset-Endpunkte und die drei
-Login-Wege sind ausschliesslich in `PIN_VERIFIED` erreichbar. **S3 hat der Filterchain nichts
+Die ersten acht stammen aus S2, die folgenden fünf aus S2b, die nächsten acht aus S2b und S3,
+die letzten beiden aus dem Nachtrag vom 30.08.2026. Alles unterhalb von `/api/*/admin/**`
+verlangt `ROLE_ADMIN`; die Reset-Endpunkte und die drei Login-Wege sind ausschliesslich in
+`PIN_VERIFIED` erreichbar. **Weder S3 noch der Nachtrag haben der Filterchain etwas
 hinzugefügt** – jeder neue Endpunkt liegt unter `/admin/` und erbt die Regel; Paket 7 war
-Prüfarbeit, keine Bauarbeit.
+Prüfarbeit, keine Bauarbeit. Die neuen Pfade stehen trotzdem namentlich in
+`SecurityConfigTests`: Die Platzhalterprüfung bliebe grün, wenn jemand für einen echten
+Endpunkt eine offenere Regel **davor** setzte – Spring Security wertet die Matcher der Reihe
+nach aus, und die erste passende gewinnt.
 
 ### 6.2 Festlegungen mit Datum
 
@@ -241,6 +257,9 @@ sind, sondern Weggabelungen mit Datum:
 | 29.08. | `ConfigService#aktualisieren` nimmt das DTO entgegen, nicht elf Einzelwerte | sieben `short`-Argumente in Folge: zwei vertauschte kompilieren fehlerfrei und schreiben still das Falsche |
 | 30.08. | Skillwerte beim **Anlegen** sind Pflicht und vollständig; die `MITTEL`-Vorgabe entfällt | eine Vorgabe ist eine Behauptung über einen Spieler, die niemand aufgestellt hat – sie fiel nicht auf und ging trotzdem in die Teameinteilung ein |
 | 30.08. | `bearbeiten` bleibt bei der Teilmenge | ein bestehendes Profil hat schon vollständige Werte; einen einzelnen zu korrigieren soll nicht heissen, alle fünf zu senden |
+| 30.08. | Die Gastübersicht hängt an den **Plätzen**, nicht an den Sitzungen | eine Sitzungsliste zeigte den verwaisten Platz nie an – genau den, der den nächsten Gast aussperrt |
+| 30.08. | Freigeben **widerruft** die Sitzung, es räumt nicht nur die Zeile | ein Platz ohne Sitzung wäre neu vergeben, während der alte Gast weiterarbeitet |
+| 30.08. | Adressierung über `slotIds` **oder** `alle: true`; leerer Körper `400` | ein Sammelabbruch soll kein Versehen sein können – er wirft im Zweifel vier angemeldete Gäste heraus |
 
 **Zwei Abweichungen aus S1, die im Datenmodell sichtbar sind:** `min_teilnehmer = 6`,
 `anz_team_generator = 1`, `session_maximal_stunden = 1` (statt 8/2/8), und `session.stage`
@@ -319,13 +338,20 @@ löschen, solange Termine daran hängen; nicht mehr benötigte Termine gehen üb
 
 ### 6.4 Verifikation
 
-**`./mvnw clean verify` grün am 30.08.2026 – 247 Tests in 22 Klassen**, keine Fehler, keine
+**`./mvnw clean verify` grün am 30.08.2026 – 260 Tests in 23 Klassen**, keine Fehler, keine
 Abbrüche, keine übersprungenen Tests. Die Anwendung startet auf einer frischen Datenbank durch.
 Er braucht Docker (Testcontainers, `postgres:17`) und läuft ausschliesslich lokal.
 
 Der Lauf vom 29.08.2026 schloss S3 mit **244** Fällen ab; die drei zusätzlichen stammen aus der
 Anforderungsänderung am Anlegen-Endpunkt (6.2). In `SpielerControllerTests` sind dabei zwei
 Fälle entfallen und fünf hinzugekommen: 34 → 37.
+
+Ein zweiter Lauf am selben Tag brachte die Gastverwaltung auf **260**: 12 Fälle in der neuen
+`GastVerwaltungControllerTests` und einer in `AuditServiceTests` (6 → 7) für den
+`Collection`-Zweig des Serialisierers. **`SecurityConfigTests` bleibt bei seiner Fallzahl**,
+obwohl die beiden neuen Pfade dort geprüft werden: Sie sind Zusicherungen *innerhalb* der
+bestehenden Bündelfälle für `401` und `403`, keine eigenen Methoden. Wer die Fallzahl als Mass
+für die Abdeckung liest, unterschätzt diese Klasse deshalb systematisch.
 
 ```bash
 docker info > /dev/null                                    # muss durchlaufen
@@ -334,7 +360,7 @@ docker compose -f compose.dev.yml --env-file .env up -d
 ```
 
 **Verlauf:** 148 Tests in 16 Klassen (22.08.), 184 (23.08.), 227 in 21 Klassen und 244 in
-22 Klassen (beide 29.08.), 247 (30.08.2026). **Der vorab gezählte Erwartungswert traf jedes Mal
+22 Klassen (beide 29.08.), 247 und 260 in 23 Klassen (beide 30.08.2026). **Der vorab gezählte Erwartungswert traf jedes Mal
 exakt** –
 `grep -c '^\s*@Test\s*$'` je Klasse. Nach dem Lauf gilt die Zahl aus den Berichten, nicht die
 fortgeschriebene; die Klassenzahl war einmal falsch, weil sie geschätzt statt gezählt wurde:
@@ -379,6 +405,19 @@ zu S2b in `S2b_UMSETZUNG.md`, Abschnitt 12.1. Die Bruno-Collection führt durch 
    sofort greift und `sessionMaximalStunden` wirklich nicht rückwirkend.
 3. **Client-Track über die Vertragsänderung informieren** (Abschnitt 4a). Das Anmeldeformular
    des Admins braucht ein zweites Pflichtfeld, sonst liefert der Endpunkt `400`.
+4. **Manuelle Prüfung der Gastverwaltung.** Der Testlauf ist durch (260 Fälle, 6.4); die
+   Bruno-Requests liegen unter
+   `admin/gast/`; „Gastplaetze lesen" setzt `belegteSlots` und `verwaisteSlots`, aus denen
+   „Gastplaetze freigeben" seinen Körper bauen kann.
+   **Drei Punkte, die nur von Hand zu prüfen sind** – der Testlauf läuft in einer
+   zurückgerollten Transaktion und kann keine Sitzung wirklich ablaufen lassen:
+   - **Verwaister Platz.** Als Gast anmelden, `sessionLeerlaufMinuten` auf 1 setzen, warten,
+     dann `/admin/gast/lesen`: Der Platz muss `belegt: true` mit `sitzungGueltig: false` zeigen.
+     Das ist der Zustand, der den nächsten Gast aussperrt.
+   - **Freigabe wirft heraus.** Mit `baseUrlOhneCookie` einen zweiten Gast anmelden, dessen
+     Platz freigeben, dann mit seinem Cookie `/auth/session/lesen`: `401`, nicht `200`.
+   - **`anzGuests` senken.** Von 4 auf 2 bei vier belegten Plätzen: Die Plätze 3 und 4 müssen
+     mit `wirksam: false` und weiterhin `belegt: true` erscheinen. Gelöscht wird nichts.
 
 **Offene Punkte, die keine Aufgabe für heute sind:**
 

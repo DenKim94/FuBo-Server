@@ -63,7 +63,8 @@ Identifikation über den hinterlegten Namen. Rollen: ADMIN, USER, GAST.
 - (A20a) Teamgrößen dürfen sich um höchstens eins unterscheiden; Ausgleich über die Teamstärke
   (Optimierung auf Summen), das Team in Unterzahl erhält tendenziell die stärkeren Spieler; kein
   Torwart-Zwang.
-- (A20b) Optionaler manueller Auswechselspieler; Default ist der schwächste Spieler des Überzahl-Teams.
+- (A20b) Spielmodus mit Auswechselspieler: Der Auswechselspieler ist entweder der schwächste Spieler aus dem Überzahl-Team oder der zuletzt angemeldete Spieler
+  (Default: Schwächster Spieler aus dem Überzahl-Team). Der Auswechselspieler wird im Userdashboard in der jeweiligen Teamübersicht angezeigt. Der jeweilige Modus (Schwächster Spieler im Überzahl-Team oder der zuletzt angemeldete Spieler) muss in den Konfigurationseinstellungen des Admins einstellbar sein (Default: Schwächster Spieler aus dem Überzahl-Team).
 - Zwei austauschbare Algorithmen (`configs.algorithm_type`: `EXHAUSTIV`, `HEURISTIK`) mit identischer
   Zielfunktion und Datengrundlage (Details unten und in `/PRJ_FuBo/harness/AGENT.md`, Abschnitt Teamgenerator).
 
