@@ -2195,9 +2195,17 @@
           "HEURISTIK"
         ]
       },
+      "AuswechselModus": {
+        "type": "string",
+        "description": "Wer bei ungerader Teilnehmerzahl als Auswechselspieler geführt wird (A20b).\n\n- `SCHWAECHSTER_UEBERZAHL` (Vorgabe): der schwächste Spieler des größeren Teams, gemessen an der Gesamtstärke aus dem Skill-Snapshot des Laufs.\n- `ZULETZT_ANGEMELDET`: der Teilnehmer mit der spätesten Zusage.\n\nDie Wahl ändert **nicht** die Einteilung, sondern nur, wer innerhalb des größeren Teams als Auswechselspieler ausgewiesen wird; A20a bleibt unberührt. Ausgewertet wird das Feld erst ab S5 – heute lässt es sich setzen und lesen, hat aber noch keinen Abnehmer.",
+        "enum": [
+          "SCHWAECHSTER_UEBERZAHL",
+          "ZULETZT_ANGEMELDET"
+        ]
+      },
       "Konfiguration": {
         "type": "object",
-        "description": "Die anwendungsweite Admin-Konfiguration – genau ein Datensatz.\n\nDie zehn änderbaren Felder stehen hier in derselben Form, in der `/admin/config/aendern` sie zurückerwartet; `geaendertAm` und `version` kommen hinzu. `geaendertVon` bleibt draußen: Es gibt genau einen Admin, die Auskunft „geändert von 1\" wäre inhaltsleer.",
+        "description": "Die anwendungsweite Admin-Konfiguration – genau ein Datensatz.\n\nDie elf änderbaren Felder stehen hier in derselben Form, in der `/admin/config/aendern` sie zurückerwartet; `geaendertAm` und `version` kommen hinzu. `geaendertVon` bleibt draußen: Es gibt genau einen Admin, die Auskunft „geändert von 1\" wäre inhaltsleer.",
         "properties": {
           "minTeilnehmer": {
             "type": "integer",
@@ -2225,6 +2233,14 @@
               }
             ],
             "description": "Gewähltes Verfahren der Teamgenerierung (A15). Vorgabe `EXHAUSTIV`."
+          },
+          "auswechselModus": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AuswechselModus"
+              }
+            ],
+            "description": "Auswahl des Auswechselspielers bei ungerader Teilnehmerzahl (A20b). Vorgabe `SCHWAECHSTER_UEBERZAHL`."
           },
           "anzTeamGenerator": {
             "type": "integer",
@@ -2284,6 +2300,7 @@
           "maxTeilnehmer",
           "anzGuests",
           "algorithmType",
+          "auswechselModus",
           "anzTeamGenerator",
           "sessionLeerlaufMinuten",
           "sessionMaximalStunden",
@@ -2296,7 +2313,7 @@
       },
       "KonfigurationAendernRequest": {
         "type": "object",
-        "description": "Anfragekörper von `/admin/config/aendern` – **ein Voll-Update**.\n\nDer Körper enthält **alle zehn** änderbaren Felder; der Client lädt vorher `/admin/config/lesen` und schickt das veränderte Ganze zurück. Kein Feld ist optional, Weglassen ist keine Angabe.\n\n**Warum kein feldweises Update:** Zwei Felder sind `null`-fähig (`halleEmail`, `halleAbsageVorlage`). Feldweise wäre `null` nicht von „nicht angegeben\" zu unterscheiden – eine einmal gesetzte Hallenadresse liesse sich nie wieder entfernen, ohne dass der Vertrag eine Sonderregel erfindet. Beim Voll-Update ist `null` schlicht `null`. Dazu kommt: Es ist eine Zeile in einem Formular; es gibt keinen Anwendungsfall, in dem der Client nur ein Feld kennt.",
+        "description": "Anfragekörper von `/admin/config/aendern` – **ein Voll-Update**.\n\nDer Körper enthält **alle elf** änderbaren Felder; der Client lädt vorher `/admin/config/lesen` und schickt das veränderte Ganze zurück. Kein Feld ist optional, Weglassen ist keine Angabe.\n\n**Warum kein feldweises Update:** Zwei Felder sind `null`-fähig (`halleEmail`, `halleAbsageVorlage`). Feldweise wäre `null` nicht von „nicht angegeben\" zu unterscheiden – eine einmal gesetzte Hallenadresse liesse sich nie wieder entfernen, ohne dass der Vertrag eine Sonderregel erfindet. Beim Voll-Update ist `null` schlicht `null`. Dazu kommt: Es ist eine Zeile in einem Formular; es gibt keinen Anwendungsfall, in dem der Client nur ein Feld kennt.",
         "properties": {
           "version": {
             "type": "integer",
@@ -2329,6 +2346,14 @@
               }
             ],
             "description": "Gewähltes Verfahren der Teamgenerierung (A15). Vorgabe `EXHAUSTIV`."
+          },
+          "auswechselModus": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AuswechselModus"
+              }
+            ],
+            "description": "Auswahl des Auswechselspielers bei ungerader Teilnehmerzahl (A20b). Vorgabe `SCHWAECHSTER_UEBERZAHL`."
           },
           "anzTeamGenerator": {
             "type": "integer",
@@ -2379,6 +2404,7 @@
           "maxTeilnehmer",
           "anzGuests",
           "algorithmType",
+          "auswechselModus",
           "anzTeamGenerator",
           "sessionLeerlaufMinuten",
           "sessionMaximalStunden",
