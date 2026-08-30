@@ -860,7 +860,7 @@
         ],
         "operationId": "spielerAnlegen",
         "summary": "Spielerprofil anlegen",
-        "description": "Legt ein neues Profil mit der Rolle `USER` an und setzt es aktiv. Verlangt die Rolle `ADMIN`.\n\n**Skillwerte sind optional.** Fehlen sie ganz oder teilweise, gelten die Vorgaben der Stufe `MITTEL` aus `profil.gast_vorlage`. Das ist bewusst kein Nullwert: Ein Profil mit lauter Nullen bekäme in der Teamgenerierung (S5) ein Team ohne jede Stärke zugeteilt, ohne dass jemand den Grund sähe.\n\nDie Skillpflege bestehender Profile läuft über `POST /admin/user/bearbeiten` (S3); dieser Endpunkt schreibt sie nur beim Anlegen.",
+        "description": "Legt ein neues Profil mit der Rolle `USER` an und setzt es aktiv. Verlangt die Rolle `ADMIN`.\n\n**Die Skillwerte sind Pflicht und müssen vollständig sein** – ein Wert je aktiver Kategorie. Fehlen sie ganz, sind sie leer oder unvollständig, antwortet der Server `400 EINGABE_UNGUELTIG` mit „Unvollständige Eingabe.“ und den fehlenden Schlüsseln.\n\n**Das ist eine Änderung vom 30.08.2026.** Bis dahin waren die Werte optional, und nicht genannte Kategorien bekamen die Vorgabe der Stufe `MITTEL`. Der Grund für die Umkehr: Eine Vorgabe ist eine Behauptung über einen Spieler, die niemand aufgestellt hat. Sie fiel im Betrieb nicht auf, ging aber unverändert in die Teameinteilung ein. Lieber eine Ablehnung beim Anlegen als ein Profil, dessen Stärke geraten ist.\n\n**Für den Client-Track ist das eine brechende Änderung:** Ein Anfragekörper mit nur `name` liefert jetzt `400`. Das Anlegeformular baut seine Felder aus `GET /admin/skills/lesen` und schickt alle Kategorien zurück; als Vorbelegung eignet sich der mittlere Wert des jeweiligen Bereichs, aber er ist dann eine sichtbare Eingabe und keine unsichtbare Annahme.\n\n**`POST /admin/user/bearbeiten` bleibt unverändert:** Dort ist eine Teilmenge weiterhin erlaubt, und Weglassen heisst „nicht ändern“. Kein Widerspruch – ein bestehendes Profil hat bereits vollständige Werte, und einen einzelnen davon zu korrigieren soll nicht bedeuten, alle fünf erneut zu senden.",
         "requestBody": {
           "required": true,
           "content": {
@@ -869,19 +869,26 @@
                 "$ref": "#/components/schemas/SpielerAnlegenRequest"
               },
               "examples": {
-                "nurName": {
-                  "summary": "Ohne Skillwerte – alle Kategorien auf die Vorgabe MITTEL",
+                "vollstaendig": {
+                  "summary": "Alle aktiven Kategorien – der einzige zulässige Fall",
                   "value": {
-                    "name": "Beispielspieler 31"
+                    "name": "Beispielspieler 31",
+                    "skills": {
+                      "ANGRIFF": 5,
+                      "VERTEIDIGUNG": 3,
+                      "SPIELSTAERKE": 4,
+                      "LAUFSTAERKE": 3,
+                      "TORWART": 2
+                    }
                   }
                 },
-                "mitSkills": {
-                  "summary": "Teilweise gesetzt – der Rest bleibt auf der Vorgabe",
+                "unvollstaendig": {
+                  "summary": "Wird abgelehnt – es fehlen drei Kategorien (400)",
                   "value": {
                     "name": "Beispielspieler 32",
                     "skills": {
-                      "ANGRIFF": 5,
-                      "TORWART": 2
+                      "ANGRIFF": 4,
+                      "SPIELSTAERKE": 2
                     }
                   }
                 }
@@ -905,7 +912,36 @@
             }
           },
           "400": {
-            "$ref": "#/components/responses/EingabeUngueltig"
+            "description": "Der Anfragekörper ist ungültig. Neben den Feldfehlern der Bean Validation sind das drei fachliche Fälle, alle mit `EINGABE_UNGUELTIG`: unvollständige Skillwerte, ein unbekannter Kategorieschlüssel oder ein Wert ausserhalb des Wertebereichs. Die Meldung nennt jeweils die betroffenen Kategorien.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                },
+                "examples": {
+                  "unvollstaendig": {
+                    "summary": "Nicht alle aktiven Kategorien angegeben",
+                    "value": {
+                      "type": "about:blank",
+                      "title": "Bad Request",
+                      "status": 400,
+                      "detail": "Unvollständige Eingabe. Es fehlen die Skillwerte für: LAUFSTAERKE, TORWART, VERTEIDIGUNG.",
+                      "code": "EINGABE_UNGUELTIG"
+                    }
+                  },
+                  "unbekannteKategorie": {
+                    "summary": "Tippfehler im Schlüssel – wird vor der Vollständigkeit geprüft",
+                    "value": {
+                      "type": "about:blank",
+                      "title": "Bad Request",
+                      "status": 400,
+                      "detail": "Unbekannte Skillkategorie 'KOPFBALL'. Zulässig sind: ANGRIFF, VERTEIDIGUNG, SPIELSTAERKE, LAUFSTAERKE, TORWART.",
+                      "code": "EINGABE_UNGUELTIG"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/SitzungUngueltig"
@@ -1846,11 +1882,12 @@
             "additionalProperties": {
               "type": "integer"
             },
-            "description": "Skillwerte je Kategorieschlüssel, etwa `{\"ANGRIFF\": 4, \"TORWART\": 2}`. **Optional und auch teilweise erlaubt.**\n\nNicht genannte Kategorien bekommen die Vorgabe der Stufe `MITTEL` aus `profil.gast_vorlage` – dieselben Werte, mit denen ein Gast ohne Selbsteinschätzung in die Teamgenerierung eingeht. Fehlt das Feld ganz, gilt die Vorgabe für alle Kategorien.\n\nJede Kategorie hat ihren eigenen Wertebereich: 0 bis 6, für `TORWART` 0 bis 3. Ein unbekannter Schlüssel oder ein Wert ausserhalb des Bereichs liefert `400 EINGABE_UNGUELTIG` und nennt die betroffene Kategorie.\n\n**Die Skillwerte verlassen den Server nur in Richtung `ADMIN`** (A12): `GET /admin/user/lesen` liefert sie seit S3 aus, jeder Endpunkt für `USER` und `GAST` weiterhin nicht."
+            "description": "Skillwerte je Kategorieschlüssel. **Pflichtangabe, und zwar vollständig** – ein Wert für **jede aktive Kategorie** aus `GET /admin/skills/lesen`.\n\nFehlt das Feld, ist es leer oder nennt es nur einen Teil der Kategorien, antwortet der Server `400 EINGABE_UNGUELTIG` mit der Meldung „Unvollständige Eingabe.“ und den fehlenden Schlüsseln. **Es gibt keine Vorgabewerte mehr** (Änderung vom 30.08.2026): Ein Profil, dessen Werte niemand bewusst gesetzt hat, geht sonst mit erfundenen Stärken in die Teamgenerierung ein – und niemand sieht dem Ergebnis an, dass die Grundlage geraten war.\n\n**Der Client baut das Formular aus `GET /admin/skills/lesen`** und schickt alle dort genannten Kategorien zurück. Damit bleibt die Regel auch dann richtig, wenn eine Kategorie hinzukommt oder abgeschaltet wird – geprüft wird gegen die **aktiven** Kategorien, nicht gegen eine feste Zahl.\n\nJede Kategorie hat ihren eigenen Wertebereich: 0 bis 6, für `TORWART` 0 bis 3. Ein unbekannter Schlüssel oder ein Wert ausserhalb des Bereichs liefert ebenfalls `400 EINGABE_UNGUELTIG` und nennt die betroffene Kategorie; **diese Prüfung läuft zuerst**, damit ein Tippfehler nicht als „unvollständig“ gemeldet wird. Kleinschreibung ist zulässig.\n\n**Die Skillwerte verlassen den Server nur in Richtung `ADMIN`** (A12): `GET /admin/user/lesen` liefert sie seit S3 aus, jeder Endpunkt für `USER` und `GAST` weiterhin nicht."
           }
         },
         "required": [
-          "name"
+          "name",
+          "skills"
         ]
       },
       "SpielerAngelegt": {
