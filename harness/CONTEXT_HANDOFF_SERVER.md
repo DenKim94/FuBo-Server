@@ -334,7 +334,25 @@ löschen, solange Termine daran hängen; nicht mehr benötigte Termine gehen üb
   Betrieb die IP-Sperre vor dem Vorgangszähler. Das ist die gewünschte Staffelung.
 - **Git über die Ordnerfreigabe hinterlässt Sperrdateien.** Nach jedem schreibenden Befehl
   `find .git \( -name 'tmp_obj_*' -o -name '*.lock' \) -delete`, sonst blockiert `HEAD.lock`
-  den nächsten Commit.
+  den nächsten Commit. **Ohne Löschrecht auf dem Ordner geht das nicht** (30.08.2026): Git
+  legt `index.lock` an und kann sie nicht mehr entfernen – jeder weitere Befehl scheitert an
+  der Datei, die der vorige hinterlassen hat. Umbenennen hilft nur einmal, weil der nächste
+  Befehl sofort eine neue anlegt. Der Ausweg ist die Löschfreigabe für den Projektordner; sie
+  gilt je Sitzung.
+
+**Bruno**
+
+- **Ein `pre-request`-Skript kann den sichtbaren Körper überschreiben** (30.08.2026). Bei
+  „Konfiguration aendern" tat es das: Es baute den Körper vollständig aus `konfigJson` und trug
+  seine eigene Änderung ein. Ein oben eingetipptes `halleEmail` erreichte den Server nie und
+  kam beim Lesen als `null` zurück – das sah nach einem Fehler der Anwendung aus, obwohl der
+  Wert Bruno nicht verlassen hatte. **Kommt ein Feld unverändert zurück, zuerst das Skript
+  lesen.** Seit dem 30.08.2026 gewinnt der Körper, und das Skript ergänzt nur die Version und
+  fehlende Felder.
+- **Der Cookie-Speicher gilt je Host.** Vier Gastanmeldungen gegen `localhost` überschreiben
+  einander; drei Sitzungstoken sind danach unerreichbar und wegen des gespeicherten SHA-256
+  auch nicht zu rekonstruieren. Dieselbe Falle in einer curl-Schleife mit `-c` (Jar
+  *schreiben*) statt `-b` (Jar *senden*). Der Ausweg ist `/admin/gast/freigeben`.
 
 ### 6.4 Verifikation
 
