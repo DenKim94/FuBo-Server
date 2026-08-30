@@ -23,6 +23,19 @@ Optimistic Locking), die mitgepflegten Gastplätze (offener Punkt 18 aus S2 dami
 Bestandsaufnahme der Autorisierung. Der Fehlercode `DATEN_VERALTET` und der Tag „Konfiguration"
 sind eingetragen.
 
+**Nachtrag vom 30.08.2026 – Vorgabetext für die Absagevorlage (A23).** `halle_absage_vorlage`
+startet nicht mehr mit `NULL`, sondern mit einem verwendbaren Absagebrief (`V010`). Die Spalte
+bleibt `NULL`-fähig – das Leeren muss möglich bleiben. **Der Vertrag ändert sich dadurch nicht**,
+nur der Startwert; der Client-Track muss nichts nachziehen.
+
+**Nachtrag vom 30.08.2026 – `auswechselModus` (A20b).** Die Konfiguration hat ein elftes
+änderbares Feld: Wer bei ungerader Teilnehmerzahl als Auswechselspieler geführt wird
+(`SCHWAECHSTER_UEBERZAHL` als Vorgabe, sonst `ZULETZT_ANGEMELDET`). **Ausgewertet wird es erst
+vom Teamgenerator in S5** – es entsteht trotzdem jetzt, weil es anwendungsweite Konfiguration
+ist und der Vertrag für den Client-Track sonst ein zweites Mal brechend wüchse. Dazu `V009`,
+die erste Migration seit S2. **Für den Client-Track brechend:** Ein Voll-Update ohne das Feld
+liefert `400`.
+
 **Nachtrag vom 30.08.2026 – Gastverwaltung.** Auf Vorgabe des Haupt-Entwicklers sind zwei
 Adminendpunkte dazugekommen: `GET /admin/gast/lesen` und `POST /admin/gast/freigeben`. Der
 Vertrag steht damit bei **23 Endpunkten**, der Tag „Gastverwaltung" und die Aktion
@@ -99,7 +112,8 @@ in den `S<n>_UMSETZUNG.md` weiter:
 | `absolutGueltigBis` | zweiter Zeitpunkt in der Sitzungsauskunft. Nähert sich der Countdown ihm, hilft „Verlängern" nicht mehr |
 | `anmeldename` in `AdminLoginRequest` | **brechend** (29.08.2026): Ein Körper mit nur `passwort` liefert `400`. Einzelheiten in 4a |
 | `DATEN_VERALTET` (`409`) | erster neuer Fehlercode seit S2b. Heisst „neu laden und erneut speichern", nicht „Eingabe falsch". Ab S4 auch für Termine, ab S6 für Ergebnisse |
-| `/admin/config/aendern` | **Voll-Update**: vorher `lesen`, dann alle zehn Felder samt `version` zurückschicken |
+| `/admin/config/aendern` | **Voll-Update**: vorher `lesen`, dann alle elf Felder samt `version` zurückschicken |
+| `auswechselModus` | **brechend** (30.08.2026): elftes Pflichtfeld der Konfiguration (A20b). Werte `SCHWAECHSTER_UEBERZAHL` (Vorgabe) und `ZULETZT_ANGEMELDET`. Ein Körper ohne das Feld liefert `400`. Das Admin-Formular braucht ein Auswahlfeld; ausgewertet wird der Wert erst ab S5 |
 | `skills` in `SpielerAnlegenRequest` | **brechend** (30.08.2026): Pflichtfeld, vollständig. Ein Körper mit nur `name` liefert `400`. Das Anlegeformular baut seine Felder aus `/admin/skills/lesen`. `bearbeiten` bleibt unverändert |
 | `sitzungGueltig` in `GastPlatzInfo` | **dreiwertig** (30.08.2026): `true` lebende Sitzung, `false` verwaister Platz, `null` freier Platz. Ein `if (sitzungGueltig)` behandelt den freien wie den verwaisten – der Unterschied ist gerade der Punkt |
 | `/admin/gast/freigeben` | genau eines von `slotIds` und `alle`. Leerer Körper `400`, nicht „alle". Der Aufruf **meldet aktive Gäste ab**; die Oberfläche fragt vor dem Sammelabbruch nach |
@@ -170,7 +184,7 @@ server/                        Repo-Wurzel (remote: FuBo-Server, oeffentlich)
   compose.dev.yml              postgres:17
   .env / .env.example          DB-Zugang, FUBO_INITIAL_PIN, ADMIN_*, SMTP_*
   scripts/                     seed-lokal.sh + anonymisierter 30er-Datensatz
-  src/main/resources/db/       migration/ V001-V008, demodata/ (nur dev und test)
+  src/main/resources/db/       migration/ V001-V010, demodata/ (nur dev und test)
   src/main/java/de/fubo/appserver/
     common/  config error security
     controller/ auth admin        service/ auth profil audit mail config
@@ -189,8 +203,10 @@ configs`, `flyway.validate-migration-naming=true`, `server.forward-headers-strat
 Actuator auf `health` beschränkt. Die Demodaten-Location steht **nur** in
 `src/test/resources/application.yml`.
 
-**Datenmodell: 18 Tabellen in drei Schemas, `V001`–`V008`. Seit S2 kam keine Migration mehr
-dazu** – weder S2b noch S3 brauchten eine.
+**Datenmodell: 18 Tabellen in drei Schemas, `V001`–`V010`.** S2b und S3 kamen ohne Migration
+aus; `V009` ist die erste seit S2. Beide neuen ändern nur `configs.app_config` und legen keine
+Tabelle an: `V009` die Spalte `auswechsel_modus` (A20b), `V010` den Vorgabetext für
+`halle_absage_vorlage` (A23), beide vom 30.08.2026.
 
 **Die 23 Endpunkte** (massgeblich bleibt `fubo-api.json`):
 
@@ -216,7 +232,7 @@ dazu** – weder S2b noch S3 brauchten eine.
 | `GET` | `/admin/user/lesen` | Alle Profile **mit** Skillwerten |
 | `GET` | `/admin/skills/lesen` | Skillkategorien und Wertebereiche |
 | `GET` | `/admin/config/lesen` | Admin-Konfiguration samt `version` |
-| `POST` | `/admin/config/aendern` | Voll-Update; `409 DATEN_VERALTET` bei veralteter `version` |
+| `POST` | `/admin/config/aendern` | Voll-Update (elf Felder); `409 DATEN_VERALTET` bei veralteter `version` |
 | `GET` | `/admin/gast/lesen` | Alle Gastplätze samt Zustand der Sitzung dahinter |
 | `POST` | `/admin/gast/freigeben` | Plätze räumen **und** die Gäste abmelden; `204` |
 
@@ -260,6 +276,11 @@ sind, sondern Weggabelungen mit Datum:
 | 30.08. | Die Gastübersicht hängt an den **Plätzen**, nicht an den Sitzungen | eine Sitzungsliste zeigte den verwaisten Platz nie an – genau den, der den nächsten Gast aussperrt |
 | 30.08. | Freigeben **widerruft** die Sitzung, es räumt nicht nur die Zeile | ein Platz ohne Sitzung wäre neu vergeben, während der alte Gast weiterarbeitet |
 | 30.08. | Adressierung über `slotIds` **oder** `alle: true`; leerer Körper `400` | ein Sammelabbruch soll kein Versehen sein können – er wirft im Zweifel vier angemeldete Gäste heraus |
+| 30.08. | `auswechselModus` schon jetzt, obwohl der Generator erst in S5 entsteht | anwendungsweite Konfiguration; nachgezogen wüchse der Vertrag ein zweites Mal brechend, und der Client-Track müsste das Admin-Formular zweimal anfassen |
+| 30.08. | Genau zwei Werte, kein „kein Auswechselspieler" | A20b nennt zwei Kandidaten und macht nur die Wahl zwischen ihnen einstellbar; ein dritter Wert liesse offen, was bei ungerader Zahl dann geschieht. Nachträglich ergänzbar, ohne den Vertrag zu brechen |
+| 30.08. | „Schwächster" nach dem Skill-Snapshot des Laufs, nicht nach dem aktuellen Profilstand | sonst wechselte der Auswechselspieler einer gespeicherten Einteilung rückwirkend, sobald ein Skillwert korrigiert wird |
+| 30.08. | Vorgabetext der Absagevorlage in `V010`, **nicht** in `halleAbsageVorlageBereinigt()` | im Schreibpfad wäre er eine Regel bei jedem Speichern – der Admin könnte die Vorlage nie wieder leeren, und genau das begründet das Voll-Update |
+| 30.08. | Die Vorlage nennt Datum, Uhrzeit und Ort **nicht** | Platzhalter brauchten eine Ersetzung samt Syntax im Vertrag; bis S7 sie hat, stünden die Klammern wörtlich in der Mail. Die Angaben gehören in Betreff und Datenblock |
 
 **Zwei Abweichungen aus S1, die im Datenmodell sichtbar sind:** `min_teilnehmer = 6`,
 `anz_team_generator = 1`, `session_maximal_stunden = 1` (statt 8/2/8), und `session.stage`
@@ -357,7 +378,8 @@ löschen, solange Termine daran hängen; nicht mehr benötigte Termine gehen üb
 ### 6.4 Verifikation
 
 **`./mvnw clean verify` grün am 30.08.2026 – 260 Tests in 23 Klassen**, keine Fehler, keine
-Abbrüche, keine übersprungenen Tests. Die Anwendung startet auf einer frischen Datenbank durch.
+Abbrüche, keine übersprungenen Tests. **Ausstehend: der Lauf zu `auswechselModus` (A20b) und zum
+Vorgabetext (A23) – erwartet 264 in denselben 23 Klassen**; committet wird erst danach. Die Anwendung startet auf einer frischen Datenbank durch.
 Er braucht Docker (Testcontainers, `postgres:17`) und läuft ausschliesslich lokal.
 
 Der Lauf vom 29.08.2026 schloss S3 mit **244** Fällen ab; die drei zusätzlichen stammen aus der
@@ -378,7 +400,8 @@ docker compose -f compose.dev.yml --env-file .env up -d
 ```
 
 **Verlauf:** 148 Tests in 16 Klassen (22.08.), 184 (23.08.), 227 in 21 Klassen und 244 in
-22 Klassen (beide 29.08.), 247 und 260 in 23 Klassen (beide 30.08.2026). **Der vorab gezählte Erwartungswert traf jedes Mal
+22 Klassen (beide 29.08.), 247 und 260 in 23 Klassen (beide 30.08.2026), erwartet 264
+(A20b und A23). **Der vorab gezählte Erwartungswert traf jedes Mal
 exakt** –
 `grep -c '^\s*@Test\s*$'` je Klasse. Nach dem Lauf gilt die Zahl aus den Berichten, nicht die
 fortgeschriebene; die Klassenzahl war einmal falsch, weil sie geschätzt statt gezählt wurde:
@@ -414,7 +437,7 @@ zu S2b in `S2b_UMSETZUNG.md`, Abschnitt 12.1. Die Bruno-Collection führt durch 
    - **Der Pflichtpunkt aus S3:** Eine Skilländerung ist eine Teilnehmeränderung (A15) und muss
      die `teilnehmer_version` betroffener künftiger Termine hochzählen. Der vorbereitete `UPDATE`
      steht in `S3_UMSETZUNG.md`, Abschnitt 3.5, die Umsetzung in `S4_UMSETZUNG.md`, Abschnitt 8.
-   - **Keine Migration nötig** – `V005` legt alles an, `V008` bleibt die letzte.
+   - **Keine Migration nötig** – `V005` legt alles an; `V010` bleibt die letzte.
    - **`uq_termin_zeit` ist global und trifft auch die Tests.** Zwei Testklassen, die beide
      „morgen um 20:00" anlegen, kollidieren; jede braucht ihren eigenen Zeitraum.
 2. **Manuelle Prüfliste zu S3** (`S3_UMSETZUNG.md`, Abschnitt 10.1) – läuft beim

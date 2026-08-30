@@ -65,6 +65,17 @@ Identifikation über den hinterlegten Namen. Rollen: ADMIN, USER, GAST.
   Torwart-Zwang.
 - (A20b) Spielmodus mit Auswechselspieler: Der Auswechselspieler ist entweder der schwächste Spieler aus dem Überzahl-Team oder der zuletzt angemeldete Spieler
   (Default: Schwächster Spieler aus dem Überzahl-Team). Der Auswechselspieler wird im Userdashboard in der jeweiligen Teamübersicht angezeigt. Der jeweilige Modus (Schwächster Spieler im Überzahl-Team oder der zuletzt angemeldete Spieler) muss in den Konfigurationseinstellungen des Admins einstellbar sein (Default: Schwächster Spieler aus dem Überzahl-Team).
+  - **Einstellbar seit dem 30.08.2026**, obwohl der Generator erst in S5 entsteht:
+    `configs.app_config.auswechsel_modus` (`V009`, `VARCHAR(24)` mit
+    `ck_app_config_auswechsel`), im Vertrag `auswechselModus` mit den Werten
+    `SCHWAECHSTER_UEBERZAHL` (Vorgabe) und `ZULETZT_ANGEMELDET`. **Die Einstellung ändert die
+    Einteilung nicht** – A20a bleibt unberührt; gewählt wird allein, wen das größere Team als
+    Auswechselspieler ausweist.
+  - **„Schwächster" meint den Skill-Snapshot des Laufs**, nicht den aktuellen Profilstand. Sonst
+    wechselte der Auswechselspieler nachträglich, sobald der Admin einen Skillwert korrigiert –
+    und eine gespeicherte Einteilung soll sich nicht rückwirkend ändern.
+  - **„Zuletzt angemeldet" meint den Zeitpunkt der Zusage**, nicht die Warteschlangenposition:
+    Wer nachrückt, hat früher zugesagt als jemand, der sich danach direkt angemeldet hat.
 - Zwei austauschbare Algorithmen (`configs.algorithm_type`: `EXHAUSTIV`, `HEURISTIK`) mit identischer
   Zielfunktion und Datengrundlage (Details unten und in `/PRJ_FuBo/harness/AGENT.md`, Abschnitt Teamgenerator).
 
@@ -75,6 +86,21 @@ Identifikation über den hinterlegten Namen. Rollen: ADMIN, USER, GAST.
 - (A23) Hallenmodus: Absage des Termins an die hinterlegte E-Mail des Hallenbetreibers über einen
   vordefinierten Text; nur zulässig bis mindestens 48 Stunden vor dem Termin, sonst serverseitig
   deaktiviert.
+  - **Die Vorlage startet mit einem Vorgabetext** (`V010`, 30.08.2026) statt mit `NULL`. Ein
+    leeres Feld verlangte, sich unter Zeitdruck einen höflichen Absagebrief auszudenken – genau
+    dann, wenn ohnehin etwas schiefgegangen ist.
+  - **Der Vorgabewert gehört in die Migration, nicht in die Eingabebereinigung.** In
+    `halleAbsageVorlageBereinigt()` wäre er eine Regel, die bei *jedem* Speichern griffe: Der
+    Admin löscht den Text, bekommt `204` und liest einen zurück, den er nicht getippt hat. Die
+    Fähigkeit, ein Feld wieder zu leeren, ist die Begründung für das Voll-Update; ein
+    Vorgabewert im Schreibpfad nähme sie zurück. Die Migration setzt deshalb
+    `SET halle_absage_vorlage = DEFAULT WHERE ... IS NULL` – ein gepflegter Text bleibt
+    unangetastet, die Spalte bleibt `NULL`-fähig.
+  - **Die Vorlage nennt Datum, Uhrzeit und Ort nicht.** Diese Angaben schreibt S7 in Betreff
+    und Datenblock. Platzhalter im Text brauchten eine Ersetzung samt festgeschriebener Syntax,
+    und bis die existiert, stünden die Klammern wörtlich in der Mail beim Hallenbetreiber.
+  - **Nutzerseitige Texte tragen echte Umlaute**, auch in Migrationen (`V007`, `V010`) – anders
+    als Kommentare und Commit-Nachrichten. Die Absagevorlage verlässt das Haus.
 
 ### Verbindliche Architekturregeln (Server)
 
