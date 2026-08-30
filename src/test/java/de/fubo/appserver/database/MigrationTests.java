@@ -80,6 +80,30 @@ class MigrationTests {
     }
 
     /**
+     * {@code V009} ergaenzt {@code auswechsel_modus} mit Vorgabe und CHECK-Constraint (A20b).
+     *
+     * <p>Der Default steht in der Spalte, nicht nur im Java-Enum: {@code V007} hat die Zeile
+     * bereits angelegt, ein {@code ALTER TABLE ... NOT NULL} ohne {@code DEFAULT} waere daran
+     * gescheitert. Geprueft wird deshalb beides - dass die bestehende Zeile den Vorgabewert
+     * traegt und dass die Datenbank einen Fremdwert ablehnt.
+     *
+     * <p>Der zweite Teil ist der wichtigere: Er belegt, dass {@code ck_app_config_auswechsel}
+     * wirklich angelegt wurde. Ohne ihn faende ein Schreibzugriff aus {@code psql} oder einem
+     * spaeteren Skript keinen Widerstand, und die Anwendung braeche erst beim naechsten Lesen -
+     * dann mit einer Ausnahme aus dem Enum-Mapping statt an der Stelle des Fehlers.
+     */
+    @Test
+    void auswechselModusHatVorgabeUndCheckConstraint() {
+        String vorgabe = jdbc.queryForObject(
+                "SELECT auswechsel_modus FROM configs.app_config WHERE id = 1", String.class);
+        assertThat(vorgabe).isEqualTo("SCHWAECHSTER_UEBERZAHL");
+
+        assertThatThrownBy(() -> jdbc.update(
+                "UPDATE configs.app_config SET auswechsel_modus = 'IRGENDWER' WHERE id = 1"))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    /**
      * NULLS NOT DISTINCT: Zwei Kontingentzeilen mit demselben Gast-Slot kollidieren,
      * obwohl akteur_spieler_id in beiden Zeilen NULL ist.
      */

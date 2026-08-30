@@ -57,11 +57,11 @@ class KonfigurationControllerTests {
 
     private static final String COOKIE = "FUBO_SESSION";
 
-    /** Die zehn aenderbaren Felder in der Reihenfolge des Vertrags. */
+    /** Die elf aenderbaren Felder in der Reihenfolge des Vertrags. */
     private static final List<String> AENDERBAR = List.of(
-            "minTeilnehmer", "maxTeilnehmer", "anzGuests", "algorithmType", "anzTeamGenerator",
-            "sessionLeerlaufMinuten", "sessionMaximalStunden", "halleEmail", "halleAbsageVorlage",
-            "halleVorlaufStunden");
+            "minTeilnehmer", "maxTeilnehmer", "anzGuests", "algorithmType", "auswechselModus",
+            "anzTeamGenerator", "sessionLeerlaufMinuten", "sessionMaximalStunden", "halleEmail",
+            "halleAbsageVorlage", "halleVorlaufStunden");
 
     @Autowired
     private WebApplicationContext kontext;
@@ -102,11 +102,14 @@ class KonfigurationControllerTests {
         assertThat(zahl(konfiguration, "maxTeilnehmer")).isEqualTo(22);
         assertThat(zahl(konfiguration, "anzGuests")).isEqualTo(4);
         assertThat(konfiguration.get("algorithmType")).isEqualTo("EXHAUSTIV");
+        assertThat(konfiguration.get("auswechselModus")).isEqualTo("SCHWAECHSTER_UEBERZAHL");
         assertThat(zahl(konfiguration, "anzTeamGenerator")).isEqualTo(1);
         assertThat(zahl(konfiguration, "sessionLeerlaufMinuten")).isEqualTo(15);
         assertThat(zahl(konfiguration, "sessionMaximalStunden")).isEqualTo(1);
         assertThat(konfiguration.get("halleEmail")).isNull();
-        assertThat(konfiguration.get("halleAbsageVorlage")).isNull();
+        assertThat(konfiguration.get("halleAbsageVorlage"))
+                .as("Seit V010 steht hier ein Vorgabetext statt null (A23)")
+                .asString().startsWith("Sehr geehrte Damen und Herren,");
         assertThat(zahl(konfiguration, "halleVorlaufStunden")).isEqualTo(48);
 
         assertThat(konfiguration.get("geaendertAm")).isNotNull();
@@ -127,14 +130,15 @@ class KonfigurationControllerTests {
 
     // --------------------------------------------------------------------- Aendern
 
-    /** Ein Voll-Update schreibt alle zehn Felder in die Datenbank. */
+    /** Ein Voll-Update schreibt alle elf Felder in die Datenbank. */
     @Test
-    void aendernSchreibtAlleZehnFelder() throws Exception {
+    void aendernSchreibtAlleElfFelder() throws Exception {
         Map<String, Object> koerper = aktuellerKoerper();
         koerper.put("minTeilnehmer", 8);
         koerper.put("maxTeilnehmer", 20);
         koerper.put("anzGuests", 6);
         koerper.put("algorithmType", "HEURISTIK");
+        koerper.put("auswechselModus", "ZULETZT_ANGEMELDET");
         koerper.put("anzTeamGenerator", 3);
         koerper.put("sessionLeerlaufMinuten", 30);
         koerper.put("sessionMaximalStunden", 8);
@@ -149,6 +153,7 @@ class KonfigurationControllerTests {
         assertThat(spalte(zeile, "max_teilnehmer")).isEqualTo(20);
         assertThat(spalte(zeile, "anz_guests")).isEqualTo(6);
         assertThat(zeile.get("algorithm_type")).isEqualTo("HEURISTIK");
+        assertThat(zeile.get("auswechsel_modus")).isEqualTo("ZULETZT_ANGEMELDET");
         assertThat(spalte(zeile, "anz_team_generator")).isEqualTo(3);
         assertThat(spalte(zeile, "session_leerlauf_minuten")).isEqualTo(30);
         assertThat(spalte(zeile, "session_maximal_stunden")).isEqualTo(8);
@@ -271,6 +276,74 @@ class KonfigurationControllerTests {
     }
 
     /** Ein unbekannter Aufzaehlungswert wird beim Lesen des Koerpers abgelehnt. */
+    /**
+     * Ein unbekannter Auswechselmodus wird abgelehnt (A20b).
+     *
+     * <p>Dieselbe Absicherung wie beim Algorithmus, und aus demselben Grund: Jackson bildet
+     * einen unbekannten Enum-Namen nicht ab, das ergibt {@code 400} an der API-Grenze. Der Fall
+     * steht hier, damit eine spaetere Umstellung auf eine nachsichtige Deserialisierung
+     * auffaellt - {@code READ_UNKNOWN_ENUM_VALUES_AS_NULL} liesse den Wert stillschweigend zu
+     * {@code null} werden, und die Spalte ist {@code NOT NULL}: Aus dem sprechenden {@code 400}
+     * wuerde ein {@code 500} beim Schreiben.
+     */
+    /**
+     * Die Absagevorlage laesst sich trotz des Vorgabetextes wieder leeren (A23, 30.08.2026).
+     *
+     * <p><b>Der Fall schuetzt die Entscheidung, den Vorgabetext in {@code V010} zu setzen und
+     * nicht in {@code halleAbsageVorlageBereinigt()}.</b> Dort waere er eine Ersetzungsregel bei
+     * jedem Speichern: Der Admin loescht den Text, bekommt {@code 204} und liest anschliessend
+     * einen Text zurueck, den er nicht getippt hat. Genau die Faehigkeit, ein Feld wieder zu
+     * leeren, ist die Begruendung fuer das Voll-Update - sie darf nicht am Vorgabewert
+     * scheitern.
+     *
+     * <p>Gegenstueck zu {@link #halleEmailLaesstSichWiederLeeren()}; geprueft wird zusaetzlich
+     * die leere Zeichenkette, weil ein Formularfeld beim Leeren regelmaessig {@code ""} sendet
+     * und nicht {@code null}.
+     */
+    @Test
+    void absagevorlageLaesstSichWiederLeeren() throws Exception {
+        Map<String, Object> geleert = aktuellerKoerper();
+        geleert.put("halleAbsageVorlage", null);
+        aendern(geleert).andExpect(status().isNoContent());
+        assertThat(konfigurationsZeile().get("halle_absage_vorlage")).isNull();
+
+        Map<String, Object> gesetzt = aktuellerKoerper();
+        gesetzt.put("halleAbsageVorlage", "Der Termin faellt aus.");
+        aendern(gesetzt).andExpect(status().isNoContent());
+        assertThat(konfigurationsZeile().get("halle_absage_vorlage")).isEqualTo("Der Termin faellt aus.");
+
+        Map<String, Object> leerzeichen = aktuellerKoerper();
+        leerzeichen.put("halleAbsageVorlage", "   ");
+        aendern(leerzeichen).andExpect(status().isNoContent());
+        assertThat(konfigurationsZeile().get("halle_absage_vorlage")).isNull();
+    }
+
+    @Test
+    void unbekannterAuswechselModusLiefert400() throws Exception {
+        Map<String, Object> koerper = aktuellerKoerper();
+        koerper.put("auswechselModus", "IRGENDWER");
+
+        aendern(koerper).andExpect(status().isBadRequest());
+
+        assertThat(konfigurationsZeile().get("auswechsel_modus")).isEqualTo("SCHWAECHSTER_UEBERZAHL");
+    }
+
+    /**
+     * Ein fehlender Auswechselmodus wird abgelehnt - Weglassen ist keine Angabe.
+     *
+     * <p>Der Fall ist der Grund, aus dem die Ergaenzung fuer den Client-Track brechend ist: Ein
+     * Koerper, der bis gestern vollstaendig war, ist es heute nicht mehr. Ohne diesen Test
+     * bliebe die Verschaerfung unbelegt, und ein spaeter ergaenzter Vorgabewert im DTO wuerde
+     * nicht auffallen.
+     */
+    @Test
+    void fehlenderAuswechselModusLiefert400() throws Exception {
+        Map<String, Object> koerper = aktuellerKoerper();
+        koerper.remove("auswechselModus");
+
+        aendern(koerper).andExpect(status().isBadRequest());
+    }
+
     @Test
     void unbekannterAlgorithmusLiefert400() throws Exception {
         Map<String, Object> koerper = aktuellerKoerper();
@@ -366,7 +439,7 @@ class KonfigurationControllerTests {
     /**
      * Die Aenderung erzeugt einen Eintrag mit altem <b>und</b> neuem Wert je geaendertem Feld.
      *
-     * <p>Anders als bei den Skillwerten lohnt sich der Vorher-Wert hier: Es sind hoechstens zehn
+     * <p>Anders als bei den Skillwerten lohnt sich der Vorher-Wert hier: Es sind hoechstens elf
      * Werte, sie gelten anwendungsweit, und "seit wann steht das Leerlauf-Fenster auf 30 Minuten"
      * ist ohne ihn nicht zu beantworten. Unveraenderte Felder stehen nicht im Eintrag.
      *

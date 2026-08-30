@@ -2,6 +2,7 @@ package de.fubo.appserver.service.config;
 
 import de.fubo.appserver.database.TestcontainersConfiguration;
 import de.fubo.appserver.domain.config.AlgorithmType;
+import de.fubo.appserver.domain.config.AuswechselModus;
 import de.fubo.appserver.domain.config.AppConfig;
 import de.fubo.appserver.dto.admin.KonfigurationAendernRequest;
 import org.junit.jupiter.api.Test;
@@ -58,15 +59,18 @@ class ConfigServiceTests {
 
         // Teamgenerator (A15)
         assertThat(cfg.getAlgorithmType()).isEqualTo(AlgorithmType.EXHAUSTIV);
+        assertThat(cfg.getAuswechselModus()).isEqualTo(AuswechselModus.SCHWAECHSTER_UEBERZAHL);
         assertThat(cfg.getAnzTeamGenerator()).isEqualTo((short) 1);
 
         // Zwei-Timer-Modell (A14)
         assertThat(cfg.getSessionLeerlaufMinuten()).isEqualTo((short) 15);
         assertThat(cfg.getSessionMaximalStunden()).isEqualTo((short) 1);
 
-        // Hallenmodus (A23) - die beiden Textfelder sind im Seed nicht belegt
+        // Hallenmodus (A23) - die Adresse ist installationsabhaengig und bleibt leer,
+        // die Vorlage traegt seit V010 einen Vorgabetext
         assertThat(cfg.getHalleEmail()).isNull();
-        assertThat(cfg.getHalleAbsageVorlage()).isNull();
+        assertThat(cfg.getHalleAbsageVorlage())
+                .isNotNull();
         assertThat(cfg.getHalleVorlaufStunden()).isEqualTo((short) 48);
 
         // Aenderungsverfolgung
@@ -75,12 +79,25 @@ class ConfigServiceTests {
         assertThat(cfg.getVersion()).isZero();
     }
 
-    /** Der Enum-Wert muss sich aus der Textspalte zurueckuebersetzen lassen. */
+    /**
+     * Die Enum-Werte muessen sich aus der Textspalte zurueckuebersetzen lassen.
+     *
+     * <p>Geprueft wird zugleich die Anzahl. Ein dritter Wert im Java-Enum ohne Nachzug des
+     * CHECK-Constraints ({@code ck_app_config_algo}, {@code ck_app_config_auswechsel}) liefe
+     * beim Lesen fehlerfrei und schlage erst beim Schreiben fehl - dort dann als {@code 500}
+     * mit einem Constraint-Namen statt einer Meldung. Der Fall haelt beide Seiten zusammen.
+     */
     @Test
-    void algorithmusWirdAlsEnumAbgebildet() {
+    void enumWerteWerdenAusDerTextspalteAbgebildet() {
         assertThat(AlgorithmType.valueOf("EXHAUSTIV")).isEqualTo(AlgorithmType.EXHAUSTIV);
         assertThat(AlgorithmType.valueOf("HEURISTIK")).isEqualTo(AlgorithmType.HEURISTIK);
         assertThat(AlgorithmType.values()).hasSize(2);
+
+        assertThat(AuswechselModus.valueOf("SCHWAECHSTER_UEBERZAHL"))
+                .isEqualTo(AuswechselModus.SCHWAECHSTER_UEBERZAHL);
+        assertThat(AuswechselModus.valueOf("ZULETZT_ANGEMELDET"))
+                .isEqualTo(AuswechselModus.ZULETZT_ANGEMELDET);
+        assertThat(AuswechselModus.values()).hasSize(2);
     }
 
     /**
@@ -149,6 +166,7 @@ class ConfigServiceTests {
                 bestand.getMaxTeilnehmer(),
                 bestand.getAnzGuests(),
                 bestand.getAlgorithmType(),
+                bestand.getAuswechselModus(),
                 bestand.getAnzTeamGenerator(),
                 bestand.getSessionLeerlaufMinuten(),
                 bestand.getSessionMaximalStunden(),
