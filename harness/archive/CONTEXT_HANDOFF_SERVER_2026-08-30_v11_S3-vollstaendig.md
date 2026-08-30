@@ -8,7 +8,7 @@
 > **Kein Monorepo** – das Frontend liegt getrennt (`FuBo-Client`). `PRJ_FuBo/` und
 > `PRJ_FuBo/harness/` sind bewusst **nicht** versioniert. Gearbeitet wird auf `dev`.
 
-## Stand: 30.08.2026
+## Stand: 29.08.2026
 
 **Abgeschlossen und verifiziert: S0, S1, S2, S2b und S3 – vollständig.**
 `./mvnw clean verify` grün am 29.08.2026 – **244 Tests in 22 Klassen**, keine Fehler, keine
@@ -21,10 +21,8 @@ Optimistic Locking), die mitgepflegten Gastplätze (offener Punkt 18 aus S2 dami
 Bestandsaufnahme der Autorisierung. Der Vertrag steht bei **21 Endpunkten**, der Fehlercode
 `DATEN_VERALTET` und der Tag „Konfiguration" sind eingetragen.
 
-**Als Nächstes: S4 (Termine & Teilnahme).** Die Umsetzungsanleitung liegt seit dem 30.08.2026 als
-`harness/tmp/S4_UMSETZUNG.md` vor – **sechs Weggabelungen sind dort vor der ersten Zeile Code zu
-entscheiden.** Parallel läuft beim Haupt-Entwickler die manuelle Prüfliste zu S3
-(`S3_UMSETZUNG.md`, Abschnitt 10.1); ihr Ergebnis wird hier nachgetragen. Vor dem nächsten
+**Als Nächstes: S4 (Termine & Teilnahme).** Die manuelle Prüfliste aus `S3_UMSETZUNG.md`,
+Abschnitt 10.1, steht noch aus; die Bruno-Collection führt durch sie hindurch. Vor dem nächsten
 Bruno-Lauf `adminName` und `neuerAdminName` in den Umgebungen füllen – beim Anmeldenamen zählt die
 Schreibweise.
 
@@ -33,9 +31,9 @@ Schreibweise.
 > `AGENT_SERVER.md` und werden hier nicht wiederholt; die Schritt-für-Schritt-Erzählung der
 > abgeschlossenen Meilensteine lebt in `harness/archive/` und in den `S<n>_UMSETZUNG.md`
 > weiter. Zuletzt archiviert:
-> `CONTEXT_HANDOFF_SERVER_2026-08-30_v11_S3-vollstaendig.md`. **Zum Abschluss von S3 sind
-> Abschnitt 4 (Vertragshistorie) und 6.4 (Testklassentabelle) eingedampft worden** – was dort
-> stand, lebt in Git, in `S3_UMSETZUNG.md` und in der archivierten Fassung weiter.
+> `CONTEXT_HANDOFF_SERVER_2026-08-29_v10_S3-Pakete0-4-verifiziert.md`. **Das grosse Eindampfen
+> der S3-Abschnitte steht noch aus** – der Meilenstein ist seit dem grünen Lauf abgeschlossen,
+> die Straffung ist damit fällig, aber ein eigener Schritt.
 
 ---
 
@@ -66,30 +64,58 @@ Vollständige Liste in `CONTEXT_HANDOFF.md`, Abschnitt 3. Serverseitig besonders
 
 ## 4. Schnittstelle zum Frontend (Vertrag)
 
-**Der maßgebliche Endpunktkontrakt ist `server/fubo-api.json`** – OpenAPI 3.1 in JSON, auf der
-Wurzel des Server-Repositories und damit mitversioniert (Festlegung des Haupt-Entwicklers vom
-22.08.2026; Ablageort, Format und die beiden Regeln dazu sind in `AGENT_SERVER.md` begründet).
-**Bei Abweichungen ist die Datei maßgeblich, nicht dieses Dokument.**
+**Der maßgebliche Endpunktkontrakt liegt seit dem 22.08.2026 als `server/fubo-api.json` vor** –
+OpenAPI 3.1 in JSON, auf der Wurzel des Server-Repositories und damit mitversioniert.
 
-**Umfang: 21 Endpunkte** – acht aus S2 (Auth und Sitzung), sieben aus S2b (Zugangsdatenpflege
-und Spielerverwaltung), sechs aus S3 (Endpunkttabelle in Abschnitt 6.1). Aufgenommen wird nur,
-was umgesetzt ist; S4 bis S7 tragen ihre Endpunkte bei Fertigstellung nach.
+**Ablageort (Entscheidung des Haupt-Entwicklers, 22.08.2026):** Repo-Wurzel `server/`, nicht
+`src/main/resources/openapi/` wie ursprünglich in der S2-Anleitung vorgesehen und nicht der
+übergeordnete Ordner `PRJ_FuBo/`. Begründung: Der Vertrag ist kein Anwendungsartefakt, das zur
+Laufzeit gelesen wird – er gehört dorthin, wo ihn jemand sucht, der das Repository öffnet. Und
+`PRJ_FuBo/` ist bewusst unversioniert; dort hätte der Vertrag keine Historie und wäre für den
+Client-Track nur lokal sichtbar. Da Server und Client in getrennten Repositories liegen, ist ein
+gemeinsamer Commit ohnehin unmöglich: Jede Vertragsänderung wird **zuerst** in dieser Datei
+abgebildet, der Client-Track zieht danach nach.
 
-Inhaltliche Kernpunkte (Herleitung in `AGENT_SERVER.md`): REST/JSON, getrennte Origins mit
-CORS-Allowlist (`allowCredentials`), HttpOnly-Session-Cookie, `401`/`403`-Semantik, DTOs ohne
-Skillwerte für USER/GAST, Belegtstatus zum Pollen, einheitliches Fehler-JSON nach RFC 9457.
+**Format JSON statt YAML** – ebenfalls Vorgabe des Haupt-Entwicklers. Praktischer Nebeneffekt: Die
+Datei lässt sich ohne Zusatzwerkzeug maschinell prüfen, und die üblichen
+TypeScript-Generatoren des Client-Tracks lesen sie unverändert.
 
-**Was der Client-Track aus S2 bis S3 kennen muss.** Die übrige Vertragshistorie lebt in Git und
-in den `S<n>_UMSETZUNG.md` weiter:
+**Umfang:** ausschliesslich das, was tatsächlich umgesetzt ist – **21 Endpunkte**: die acht
+Auth- und Sitzungsendpunkte aus S2, die sieben aus S2b (Zugangsdatenpflege und
+Spielerverwaltung) und die sechs aus S3 (Abschnitt 6.1). Spekulative Endpunkte wären ein Vertrag
+über etwas, das es nicht gibt; S4 bis S7 tragen ihre Endpunkte jeweils bei Fertigstellung nach.
 
-| Punkt | Bedeutung für den Client |
-|---|---|
-| `X-FuBo-Kein-Refresh: true` | Anfragheader für Hintergrundaufrufe, die die Sitzung nicht verlängern sollen |
-| `Retry-After` und `wartesekunden` | Restwartezeit beim `429` des PIN-Endpunkts; doppelt geführt, weil der Header cross-origin nicht lesbar wäre |
-| `absolutGueltigBis` | zweiter Zeitpunkt in der Sitzungsauskunft. Nähert sich der Countdown ihm, hilft „Verlängern" nicht mehr |
-| `anmeldename` in `AdminLoginRequest` | **brechend** (29.08.2026): Ein Körper mit nur `passwort` liefert `400`. Einzelheiten in 4a |
-| `DATEN_VERALTET` (`409`) | erster neuer Fehlercode seit S2b. Heisst „neu laden und erneut speichern", nicht „Eingabe falsch". Ab S4 auch für Termine, ab S6 für Ergebnisse |
-| `/admin/config/aendern` | **Voll-Update**: vorher `lesen`, dann alle zehn Felder samt `version` zurückschicken |
+Inhaltliche Kernpunkte (unverändert, Herleitung in `AGENT_SERVER.md`, Abschnitt „Schnittstelle zum
+Frontend"): REST/JSON, getrennte Origins mit CORS-Allowlist (`allowCredentials`),
+HttpOnly-Session-Cookie, `401`/`403`-Semantik, DTOs ohne Skillwerte für USER/GAST,
+Belegtstatus-Endpunkt zum Pollen, einheitliches Fehler-JSON nach RFC 9457.
+
+Neu im Vertrag seit dem 22.08.2026:
+- **`X-FuBo-Kein-Refresh: true`** als Anfrageheader für Hintergrundaufrufe.
+- **`Retry-After`** und das Feld `wartesekunden` beim `429` des PIN-Endpunkts.
+- **`absolutGueltigBis`** in der Sitzungsauskunft, zusätzlich zu `gueltigBis`.
+
+Ergänzt am 29.08.2026 mit den S3-Paketen 5 bis 8:
+- **Zwei Endpunkte** `GET /admin/config/lesen` und `POST /admin/config/aendern`, ein Tag
+  „Konfiguration", drei Schemas (`Konfiguration`, `KonfigurationAendernRequest`,
+  `AlgorithmType`).
+- **Ein Fehlercode `DATEN_VERALTET` (`409`)** – erster neuer Code seit S2b. Bewusst allgemein
+  benannt und nicht `KONFIG_VERALTET`: Termine (S4) und Ergebnisse (S6) tragen dieselbe
+  `version`-Spalte und werden ihn wiederverwenden. **Für den Client-Track heisst das:** Ein
+  unbekannter Code ist wie ein allgemeiner Fehler zu behandeln, aber dieser hier verdient eine
+  eigene Behandlung – „neu laden und erneut speichern", nicht „Eingabe falsch".
+- **`/admin/config/aendern` ist ein Voll-Update.** Der Client liest, ändert einzelne Werte und
+  schickt alle zehn Felder samt `version` zurück. `AlgorithmType` ist ein eigenes Schema
+  geworden, obwohl die Anleitung nur zwei neue nannte – beide Konfigurationsschemas verweisen
+  darauf, und der Generator des Client-Tracks bekommt so einen Aufzählungstyp statt zweier
+  loser Zeichenkettenfelder.
+
+Geändert am 29.08.2026:
+- **`AdminLoginRequest` hat ein zweites Pflichtfeld `anmeldename`** (max. 60 Zeichen,
+  zeichengenau geprüft). Das ist
+  eine **brechende** Vertragsänderung für den Client-Track: Ein Anfragekörper mit nur
+  `passwort` liefert jetzt `400 EINGABE_UNGUELTIG`. Kein neuer Fehlercode, kein neuer
+  Endpunkt; die Fehlercodeliste bleibt unverändert.
 
 ## 4a. Offene Übergabe an den Client-Track
 
@@ -117,7 +143,7 @@ Mid-Level-Entwickler, KI-gestützt, ca. 6,5 h/Woche.
 | S2 | Auth & Session: Security-Filterchain, PIN-Login + Brute-Force-Schutz, `stage`-Erzwingung, opaker Token/HttpOnly, Zwei-Timer-Modell, Namensliste/-belegung, Gast-Login, Admin-Login, Bootstrap, Sitzungsendpunkte, Online-Status, API-Vertrag – **abgeschlossen und verifiziert (148 Tests)**, Anleitung `harness/tmp/S2_UMSETZUNG.md` | 23 |
 | S2b | Zugangsdatenpflege und Spielerverwaltung: Passwort-Reset per E-Mail (5-stellige PIN, Rate-Limit, Sitzungswiderruf), Passwortänderung im angemeldeten Zustand, Änderung der zentralen PIN, Anlegen/Entfernen/Sperren von Spielerprofilen, Aufräumjob – **abgeschlossen und verifiziert (29.08.2026)**. Anleitung `harness/tmp/S2b_UMSETZUNG.md` | 10 |
 | S3 | Profile & Skills API: Admin-CRUD, Rollen/Autorisierung, `configs` (Import der Referenzdaten entfällt – siehe Abschnitt 7.3) – **abgeschlossen und verifiziert (29.08.2026, 244 Tests)**. Anleitung `harness/tmp/S3_UMSETZUNG.md`                                                        | 11 |
-| S4 | Termine & Teilnahme API: Einzel/Serie, Teilnahme, `teilnehmer_version`, Min/Max + Warteschlange, Gast-Flow/`gast_slot` – Anleitung liegt vor: `harness/tmp/S4_UMSETZUNG.md`, **Schrittsumme 17 h** (Abschnitt 12 dort) | 16 |
+| S4 | Termine & Teilnahme API: Einzel/Serie, Teilnahme, `teilnehmer_version`, Min/Max + Warteschlange, Gast-Flow/`gast_slot`                                                                                                                                                                                                          | 16 |
 | S5 | Teamgenerator: `EXHAUSTIV` + `HEURISTIK`, Zielfunktion inkl. Torwart-Gewicht, Kontingent/Seed/Snapshot, Auswechselspieler, Tests                                                                                                                                                                                                | 18 |
 | S6 | Ergebnis & Audit API: „erster Eintrag gilt", Admin-Korrektur, `audit_log`                                                                                                                                                                                                                                                       | 8 |
 | S7 | Hallenmodus: E-Mail-Absage, 48-Stunden-Regel, serverseitige Deaktivierung                                                                                                                                                                                                                                                       | 6 |
@@ -252,11 +278,13 @@ löschen, solange Termine daran hängen; nicht mehr benötigte Termine gehen üb
   Wert.** Spring Boots `Binder` reicht unauflösbare Platzhalter wörtlich durch – anders als
   `@Value`. `--env-file` gilt nur für Docker Compose, nicht für die JVM; deshalb
   `spring.config.import`.
-- **Die `.env` ist eine Properties-Datei und hat drei Leser mit drei Parsern.** Daraus zwei
-  Symptome, die beide schon zugeschlagen haben: Anführungszeichen landen im Wert und kosteten am
-  29.08.2026 einen `550`-Fehler beim Mailversand; ein `source .env` liess `seed-lokal.sh` am `<`
-  von `SMTP_ABSENDER` scheitern (`syntax error near unexpected token 'newline'`, 30.08.2026).
-  Regel und Begründung stehen in `AGENT_SERVER.md`.
+- **In der `.env` nie Anführungszeichen** – sie wird als Java-Properties-Datei gelesen und
+  übernimmt sie in den Wert. Kostete am 29.08.2026 einen `550`-Fehler beim Mailversand.
+- **Und kein Skript darf sie `source`n** (30.08.2026). `seed-lokal.sh` tat es und scheiterte an
+  `SMTP_ABSENDER` in der Form `Anzeigename <adresse@domain>`:
+  `.env: line 29: syntax error near unexpected token 'newline'` – die Shell liest das `<` als
+  Umleitung. Behoben, indem das Skript nur noch die drei Schlüssel liest, die es braucht, und
+  Docker Compose `--env-file .env` bekommt. Regel und Begründung stehen in `AGENT_SERVER.md`.
 - **`target/classes` vergisst nichts.** Nach dem Umbenennen oder Löschen einer Ressource immer
   `./mvnw clean` – das gilt auch nach jeder Änderung an `application.yml`.
 
@@ -315,9 +343,12 @@ löschen, solange Termine daran hängen; nicht mehr benötigte Termine gehen üb
 ### 6.4 Verifikation
 
 **`./mvnw clean verify` grün am 29.08.2026 – 244 Tests in 22 Klassen**, keine Fehler, keine
-Abbrüche, keine übersprungenen Tests. Der Lauf schliesst S3 vollständig ab; die Anwendung
-startet auf einer frischen Datenbank durch. Er braucht Docker (Testcontainers, `postgres:17`)
-und läuft ausschliesslich lokal.
+Abbrüche, keine übersprungenen Tests. Der Lauf schliesst S3 vollständig ab. Die Anwendung startet
+auf einer frischen Datenbank durch. Zahlen aus `target/surefire-reports/`, nicht fortgeschrieben.
+
+Neu gegenüber dem Lauf mit 227 Fällen: 15 in `KonfigurationControllerTests` und zwei in
+`ConfigServiceTests`. `SecurityConfigTests` blieb bei 26 – die beiden neuen Pfade sind in die
+bestehenden gebündelten Fälle gewandert, nicht in eigene Methoden.
 
 ```bash
 docker info > /dev/null                                    # muss durchlaufen
@@ -325,10 +356,26 @@ docker compose -f compose.dev.yml --env-file .env up -d
 ./mvnw clean verify
 ```
 
-**Verlauf:** 148 Tests in 16 Klassen (22.08.), 184 (23.08.), 227 in 21 Klassen und 244 in
-22 Klassen (beide 29.08.2026). **Der vorab gezählte Erwartungswert traf jedes Mal exakt** –
-`grep -c '^\s*@Test\s*$'` je Klasse. Nach dem Lauf gilt die Zahl aus den Berichten, nicht die
-fortgeschriebene; die Klassenzahl war einmal falsch, weil sie geschätzt statt gezählt wurde:
+| Testklasse | Fälle | | Testklasse | Fälle |
+|---|---:|---|---|---:|
+| `SpielerControllerTests` | 34 | | `BruteForceServiceTests` | 10 |
+| `SecurityConfigTests` | 26 | | `AdminBootstrapTests` | 9 |
+| `SessionServiceTests` | 18 | | `SessionCookieFactoryTests` | 9 |
+| `PasswortResetControllerTests` | 15 | | `GastControllerTests` | 8 |
+| `KonfigurationControllerTests` | 15 | | `MigrationTests` | 7 |
+| `SessionAuthFilterTests` | 14 | | `AuditServiceTests` | 6 |
+| `ZugangsdatenControllerTests` | 12 | | `ApiVersionConfigTests` | 5 |
+| `AdminControllerTests` | 11 | | `MailConfigTests` | 5 |
+| `NamenControllerTests` | 10 | | `SkillKategorieControllerTests` | 4 |
+| `AuthControllerTests` | 10 | | `ConfigServiceTests` | 4 |
+| `SessionControllerTests` | 10 | | `GastServiceTransaktionTests` | 2 |
+| | | | **Summe** | **244** |
+
+**Erwartungswerte vorab: `grep -c '^\s*@Test\s*$'` je Klasse für die Fälle,
+`find src/test -name '*Tests.java' | wc -l` für die Klassen.** Die Fallzahl traf am 22.08.
+(148), 23.08. (184) und am 29.08.2026 zweimal (227 und 244) exakt; die Klassenzahl war einmal
+falsch, weil sie fortgeschrieben statt nachgezählt wurde. **Nach dem Lauf beide Zahlen aus
+`target/surefire-reports/` übernehmen**, nicht nur die auffällige. Kürzester Weg:
 
 ```bash
 awk -F'[:,]' '/^Tests run:/ {t+=$2; k++} END {print k" Klassen, "t" Faelle"}' \
@@ -344,43 +391,42 @@ die drei Klassen ohne Spring-Kontext (`SessionAuthFilterTests`, `SessionCookieFa
 `BruteForceServiceTests`): Sind die grün, liegt es nicht am Anwendungscode. Am 23.08.2026
 lautete die Antwort `Could not find a valid Docker environment`.
 
-**Was der Testlauf nicht abdeckt, decken die manuellen Prüflisten ab** – jeder Fall läuft in
-einer Transaktion, die zurückgerollt wird, und sagt deshalb nichts über die Wirkung im
-laufenden Betrieb. Die Liste zu S3 steht in `harness/tmp/S3_UMSETZUNG.md`, Abschnitt 10.1, die
-zu S2b in `S2b_UMSETZUNG.md`, Abschnitt 12.1. Die Bruno-Collection führt durch beide.
+Die manuelle Prüfliste steht in `S2b_UMSETZUNG.md`, Abschnitt 12.1; die Bruno-Collection deckt
+sie ab.
 
 ## 7. Nächste Schritte
 
-1. **S4 beginnen** (`harness/tmp/S4_UMSETZUNG.md`). **Zuerst die sechs Weggabelungen aus
-   Abschnitt 0.4 entscheiden** – jede berührt den Vertrag oder das Verhalten der Warteschlange und
-   lässt sich nachträglich nur mit einer Vertragsänderung korrigieren. Die folgenreichste ist A:
-   `uq_termin_zeit UNIQUE (datum, uhrzeit)` ist eine *globale* Bedingung, und bei einer
-   Zwölf-Wochen-Serie genügt ein einziger bestehender Einzeltermin, um das Anlegen scheitern zu
-   lassen.
-   **Drei Punkte, die dabei nicht untergehen dürfen:**
-   - **Der Pflichtpunkt aus S3:** Eine Skilländerung ist eine Teilnehmeränderung (A15) und muss
-     die `teilnehmer_version` betroffener künftiger Termine hochzählen. Der vorbereitete `UPDATE`
-     steht in `S3_UMSETZUNG.md`, Abschnitt 3.5, die Umsetzung in `S4_UMSETZUNG.md`, Abschnitt 8.
-   - **Keine Migration nötig** – `V005` legt alles an, `V008` bleibt die letzte.
-   - **`uq_termin_zeit` ist global und trifft auch die Tests.** Zwei Testklassen, die beide
-     „morgen um 20:00" anlegen, kollidieren; jede braucht ihren eigenen Zeitraum.
-2. **Manuelle Prüfliste zu S3** (`S3_UMSETZUNG.md`, Abschnitt 10.1) – läuft beim
-   Haupt-Entwickler. Der Testlauf deckt sie nicht ab: Er läuft in einer zurückgerollten
-   Transaktion und sagt nichts darüber, ob `sessionLeerlaufMinuten` im laufenden Betrieb wirklich
-   sofort greift und `sessionMaximalStunden` wirklich nicht rückwirkend.
-3. **Client-Track über die Vertragsänderung informieren** (Abschnitt 4a). Das Anmeldeformular
+1. ~~**Manuelle Prüfliste abarbeiten** (`S2b_UMSETZUNG.md`, Abschnitt 12.1). Der Reset lässt sich
+   nur mit echtem SMTP-Zugang durchspielen; die Bruno-Collection führt durch die Reihenfolge.
+   Vorher `adminName` und `neuerAdminName` in den Umgebungen füllen – beim Anmeldenamen
+   **zeichengenau wie `ADMIN_NAME`**, sonst scheitert jeder Admin-Request mit `401`.
+   Zusätzlich zu prüfen: „Admin anmelden" mit richtigem Namen, mit falschem Namen und mit
+   abweichender Schreibweise – die drei Ablehnungen müssen in Code, Statuscode und Anzeigetext
+   identisch sein.~~ - **Erledigt: Erfolgreich geprüft**
+2. **Client-Track über die Vertragsänderung informieren** (Abschnitt 4a). Das Anmeldeformular
    des Admins braucht ein zweites Pflichtfeld, sonst liefert der Endpunkt `400`.
+3. **Manuelle Prüfliste zu S3 abarbeiten** (`harness/tmp/S3_UMSETZUNG.md`, Abschnitt 10.1). Der
+   Testlauf deckt sie nicht ab: Er läuft in einer Transaktion, die zurückgerollt wird, und sagt
+   deshalb nichts darüber, ob `sessionLeerlaufMinuten` im laufenden Betrieb wirklich sofort
+   greift und `sessionMaximalStunden` wirklich nicht rückwirkend. Die Bruno-Collection führt
+   durch die Liste; der Ordner `admin/config` ist dafür angelegt.
+4. **S3 endgültig abschliessen:** die S3-Abschnitte dieses Handoffs eindampfen und die
+   Vorfassung archivieren – wie bei S2 am 23.08.2026 (rund 400 auf 95 Zeilen). Erhalten bleiben
+   Endpunkttabelle, Entscheidungen mit Datum und Fallstricke.
+5. **Danach S4** (Termine & Teilnahme). **Pflichtpunkt von dort:** Eine Skilländerung ist eine
+   Teilnehmeränderung (A15) und muss die `teilnehmer_version` betroffener künftiger Termine
+   hochzählen – in S3 mangels `spieltag`-Service nicht umsetzbar.
 
 **Offene Punkte, die keine Aufgabe für heute sind:**
 
-- **Punkt 20 (S5):** Wie behandelt der Teamgenerator Profile ohne gepflegte Skillwerte? Die
-  Bewertung des Haupt-Entwicklers steht: unvollständige Werte sollen eine Fehlermeldung erzeugen.
-  Durch S2b und S3 kleiner geworden – über `/admin/user/anlegen` entstandene Profile haben immer
+- ~~**Punkt 18 (S3/S5):** Weitere Gastplätze anlegen, wenn `anz_guests` über vier steigt.~~
+  **Erledigt mit S3, Paket 6:** `GastSlotRepository#plaetzeSicherstellen` legt fehlende Zeilen
+  in derselben Transaktion wie die Konfigurationsänderung an. Das Senken bleibt eine reine
+  Grenze – gelöscht wird nie.
+- **Punkt 20 (S5):** Wie behandelt der Teamgenerator Profile ohne gepflegte Skillwerte? Durch
+  S2b und S3 kleiner geworden – über `/admin/user/anlegen` entstandene Profile haben immer
   vollständige Werte, ungepflegt bleiben nur Profile aus einem Datenimport, und
   `/admin/user/lesen` macht die Lücke sichtbar.
-- **`AGENT.md` nennt für `terminserie.ort` und `termin.ort` 120 Zeichen, `V005` legt 160 an.**
-  Code schlägt Anleitung, Migrationen sind unveränderlich. Beim Abschluss von S4 ins
-  Änderungsprotokoll aufnehmen.
 - **Betriebsaufgabe ohne Code:** Custom Domain `app.<domain>` in Cloudflare Pages einrichten.
   Ohne sie funktioniert die Anmeldung produktiv nicht – `pages.dev` steht auf der Public Suffix
   List und wäre gegenüber `api.<domain>` cross-site, mit `SameSite=None; Secure`, zwingendem
