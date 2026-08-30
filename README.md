@@ -21,7 +21,7 @@ docker compose -f compose.dev.yml down
 docker compose -f compose.dev.yml --env-file .env up -d
 
 // Server starten
-./mvnw spring-boot:run   // Flyway legt V001-V008 neu an
+./mvnw spring-boot:run   // Flyway legt alle Migrationen neu an
 
 // Testdaten laden
 ./scripts/seed-lokal.sh scripts/data/spielerprofile_anonym.sql
