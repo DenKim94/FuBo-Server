@@ -8,7 +8,9 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.beans.TypeMismatchException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -133,6 +135,39 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         Fehlercode code = Fehlercode.EINGABE_UNGUELTIG;
         ProblemDetail pd = problem(code, "Der Anfragekoerper ist unvollstaendig oder fehlerhaft.");
 
+        return handleExceptionInternal(ex, pd, headers, code.getStatus(), request);
+    }
+
+    /**
+     * Ein Pfad- oder Abfrageparameter passt nicht zum erwarteten Typ.
+     *
+     * <p>Erstmals erreichbar mit S4: {@code /termine/{terminId}/lesen} traegt einen
+     * {@code Long} im Pfad, {@code /termine/lesen} ein {@code LocalDate} als Abfrage-
+     * parameter. Bis dahin gab es keinen Endpunkt, bei dem ein Aufrufer hier
+     * danebengreifen konnte.
+     *
+     * <p>Ohne diese Ueberschreibung antwortete die Basisklasse zwar ebenfalls mit
+     * {@code 400}, aber <b>ohne das Feld {@code code}</b> - und das Frontend haette zwei
+     * Fehlerformate zu unterscheiden. Dieselbe Begruendung wie bei
+     * {@link #handleHttpMessageNotReadable}.
+     *
+     * <p><b>Der Feldname steht in der Antwort, der uebergebene Wert nicht.</b> Der Name
+     * hilft dem Frontend, die Eingabe zuzuordnen; der Wert kaeme aus der Anfrage zurueck
+     * und waere ein Weg, fremden Inhalt in einer Fehlermeldung zu spiegeln.
+     */
+    @Override
+    protected ResponseEntity<Object> handleTypeMismatch(
+            TypeMismatchException ex, HttpHeaders headers,
+            HttpStatusCode status, WebRequest request) {
+
+        LOG.debug("Parameter passt nicht zum erwarteten Typ", ex);
+
+        Fehlercode code = Fehlercode.EINGABE_UNGUELTIG;
+        ProblemDetail pd = problem(code, "Ein Parameter hat nicht das erwartete Format.");
+
+        if (ex instanceof MethodArgumentTypeMismatchException mismatch) {
+            pd.setProperty("felder", Map.of(mismatch.getName(), "ungueltiges Format"));
+        }
         return handleExceptionInternal(ex, pd, headers, code.getStatus(), request);
     }
 

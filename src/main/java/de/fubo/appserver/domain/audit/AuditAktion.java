@@ -140,5 +140,44 @@ public enum AuditAktion {
      * zwei sehr verschiedene Vorgaenge unter demselben Aufruf: das Aufraeumen verwaister Zeilen,
      * hinter denen niemand mehr sass, und das Hinauswerfen eines angemeldeten Gastes.
      */
-    GAST_ABGEMELDET
+    GAST_ABGEMELDET,
+
+    /**
+     * Der Admin hat einen Einzeltermin angelegt (A18, S4 Abschnitt 3.6).
+     *
+     * <p>Die vier Terminaktionen tragen als {@code entitaet} den Wert {@code termin}
+     * beziehungsweise {@code terminserie} und als {@code entitaet_id} die betroffene Id.
+     * Die Details nennen Datum und Uhrzeit - ohne sie waere nach einer Absage nicht mehr
+     * erkennbar, um welchen Termin es ging.
+     */
+    TERMIN_ANGELEGT,
+
+    /**
+     * Der Admin hat Datum, Uhrzeit oder Ort eines Termins geaendert (S4, Abschnitt 3.6).
+     *
+     * <p><b>Hier stehen alter und neuer Wert je geaendertem Feld</b>, wie bei
+     * {@link #KONFIG_GEAENDERT} und anders als bei {@link #PROFIL_GEAENDERT}. Es sind drei
+     * Felder mit betrieblicher Bedeutung, und die Frage "wer hat den Ort verlegt" ist ohne
+     * den alten Wert nicht zu beantworten.
+     */
+    TERMIN_GEAENDERT,
+
+    /**
+     * Der Admin hat einen Termin abgesagt (S4, Abschnitt 3.4).
+     *
+     * <p>Der Vorgang ist endgueltig und im Betrieb sofort spuerbar - er gehoert deshalb
+     * nachvollziehbar ins Protokoll, so wie {@link #PIN_GEAENDERT}.
+     */
+    TERMIN_ABGESAGT,
+
+    /**
+     * Der Admin hat eine Terminserie angelegt (A18, S4 Abschnitt 4).
+     *
+     * <p>Als {@code entitaet} steht {@code terminserie}, als {@code entitaet_id} die Id der
+     * Serie. <b>Die erzeugten Termine bekommen keinen eigenen Eintrag</b> - bei 52 Terminen
+     * waeren das 52 Zeilen fuer einen Vorgang. Die Details nennen stattdessen die Anzahl der
+     * angelegten und der uebersprungenen Termine; welche es im Einzelnen sind, steht in
+     * {@code spieltag.termin} und ueberlebt dort auch die Loeschfrist von 90 Tagen.
+     */
+    SERIE_ANGELEGT
 }

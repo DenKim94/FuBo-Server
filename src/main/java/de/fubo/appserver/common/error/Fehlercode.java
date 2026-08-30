@@ -98,6 +98,39 @@ public enum Fehlercode {
      */
     DATEN_VERALTET(HttpStatus.CONFLICT,
             "Die Daten wurden zwischenzeitlich geändert. Bitte neu laden und erneut speichern."),
+    /**
+     * Zu diesem Zeitpunkt gibt es bereits einen Termin (S4, Abschnitt 3.3).
+     *
+     * <p><b>Die Bedingung ist global.</b> {@code uq_termin_zeit UNIQUE (datum, uhrzeit)}
+     * laesst je Zeitpunkt genau einen Termin zu - auch an verschiedenen Orten. Der
+     * bestehende Termin ist deshalb nicht unbedingt der, den der Admin gerade im Blick hat.
+     *
+     * <p>Ohne eigene Behandlung braechte der Constraint eine
+     * {@code DataIntegrityViolationException} und daraus einen {@code 500}. Der Code steht
+     * fuer den gleichen Fall an zwei Stellen: beim Anlegen entscheidet ihn die
+     * {@code ON CONFLICT}-Klausel, beim Aendern eine vorgelagerte Abfrage - ein
+     * {@code UPDATE} kennt kein {@code ON CONFLICT}.
+     */
+    TERMIN_BELEGT(HttpStatus.CONFLICT,
+            "Zu diesem Zeitpunkt existiert bereits ein Termin."),
+
+    /**
+     * Der Termin ist nicht mehr offen (S4, Abschnitte 3.4 und 5.2).
+     *
+     * <p><b>Bewusst allgemein benannt und allgemein formuliert.</b> Der Code deckt jeden
+     * Fall ab, in dem ein Termin keine Aenderung mehr annimmt: Er ist abgesagt, er ist
+     * abgeschlossen, oder - ab S4-Paket 5 - sein Beginn liegt zurueck. Fuer den Aufrufer ist
+     * die Wirkung dieselbe, und der Status steht ohnehin in der Terminliste. Dieselbe
+     * Ueberlegung wie bei {@link #RESET_UNGUELTIG}, das vier Faelle buendelt.
+     *
+     * <p>Wo eine genauere Meldung hilft, setzt der Aufrufer sie ueber den zweiten
+     * Konstruktor von {@code FachlicherFehler} - so wie {@link #ADMIN_PASSWORT_FALSCH} an
+     * zwei Endpunkten mit unterschiedlichem Anzeigetext auftritt. Der Code bleibt derselbe;
+     * {@code detail} ist Anzeigetext und darf sich ohne Vertragsaenderung aendern.
+     */
+    TERMIN_GESCHLOSSEN(HttpStatus.CONFLICT,
+            "Dieser Termin ist nicht mehr offen."),
+
     EINGABE_UNGUELTIG(HttpStatus.BAD_REQUEST, "Ungültige Eingabedaten."),
     INTERNER_FEHLER(HttpStatus.INTERNAL_SERVER_ERROR, "Ein unerwarteter Fehler ist aufgetreten."),
     INHALT_NICHT_GEFUNDEN(HttpStatus.NOT_FOUND, "Der gesuchte Inhalt wurde nicht gefunden.");
