@@ -1,7 +1,13 @@
 package de.fubo.appserver.repository.auth;
 
+import de.fubo.appserver.domain.auth.GastPlatz;
+import de.fubo.appserver.domain.auth.GastStufe;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
+
+import java.time.OffsetDateTime;
+import java.util.Collection;
+import java.util.List;
 
 /**
  * Zugriff auf {@code profil.gast_slot} - die feste Obergrenze gleichzeitig angemeldeter
@@ -141,6 +147,59 @@ public class GastSlotRepository {
                AND id > :maxGaeste
             """;
 
+    /**
+     * Alle Plaetze samt Zustand - die Datengrundlage von {@code GET /admin/gast/lesen}
+     * (Vorgabe vom 30.08.2026).
+     *
+     * <p><b>{@code LEFT JOIN} und nicht {@code JOIN}:</b> Ein freier Platz hat keine Sitzung,
+     * soll aber in der Liste stehen. Fuer ihn bleiben alle Sitzungsspalten {@code NULL}, und
+     * damit auch {@code sitzung_gueltig} - ein Vergleich mit {@code NULL} ergibt {@code UNKNOWN},
+     * nicht {@code FALSE}. Genau diese Dreiwertigkeit ist gewollt: {@code null} heisst "kein
+     * Gast", {@code false} heisst "Gast war da, Sitzung ist tot".
+     *
+     * <p>Die Bedingung fuer eine lebende Sitzung ist dieselbe wie beim Belegtstatus der
+     * Namensliste: nicht widerrufen und beide Ablaufzeitpunkte in der Zukunft. Wer sie hier
+     * aendert, aendert sie auch dort.
+     *
+     * <p>Ohne {@code WHERE}: Auch Plaetze jenseits der aktuellen {@code anz_guests} gehoeren in
+     * die Antwort. Sie sind unwirksam, koennen aber belegt sein - der Fall entsteht, sobald der
+     * Admin die Zahl senkt, waehrend hoehere Plaetze besetzt sind.
+     */
+    private static final String SQL_ALLE_MIT_ZUSTAND = """
+            SELECT g.id, g.anzeige_name, g.belegt, g.belegt_seit, g.session_id,
+                   s.gast_name, s.gast_stufe,
+                   (s.widerrufen_am IS NULL
+                    AND s.gueltig_bis > now()
+                    AND s.absolut_gueltig_bis > now()) AS sitzung_gueltig
+              FROM profil.gast_slot g
+              LEFT JOIN profil.session s ON s.id = g.session_id
+             ORDER BY g.id
+            """;
+
+    /**
+     * Gibt bestimmte Plaetze frei (Vorgabe vom 30.08.2026).
+     *
+     * <p>{@code AND belegt} macht den Aufruf wiederholbar und haelt die Zaehlung ehrlich: Ein
+     * bereits freier Platz wird nicht mitgezaehlt und nicht angefasst. Die Bedingung ist
+     * ausserdem der Grund, warum {@code ck_gast_slot_belegung} nicht ausloest - sie verlangt,
+     * dass {@code belegt = false} mit {@code session_id IS NULL} einhergeht, und genau das
+     * schreibt dieses Statement gemeinsam.
+     *
+     * <p><b>Die Sitzung wird hier nicht angefasst.</b> Sie zu widerrufen ist Sache des Dienstes,
+     * und zwar <b>nach</b> diesem Aufruf: {@code gast_slot.session_id} zeigt auf sie, der Platz
+     * muss also zuerst losgelassen werden. Dieselbe Reihenfolge wie in
+     * {@code SessionService#abmelden}.
+     */
+    private static final String SQL_FREIGEBEN_NUMMERN = """
+            UPDATE profil.gast_slot
+               SET belegt      = FALSE,
+                   session_id  = NULL,
+                   belegt_seit = NULL,
+                   version     = version + 1
+             WHERE belegt
+               AND id IN (:nummern)
+            """;
+
     private final JdbcClient jdbc;
 
     public GastSlotRepository(JdbcClient jdbc) {
@@ -230,5 +289,58 @@ public class GastSlotRepository {
                 .param("maxGaeste", maxGaeste)
                 .query(Integer.class)
                 .single();
+    }
+
+    /**
+     * Liest alle Plaetze samt Zustand, nach Nummer sortiert.
+     *
+     * <p>{@code wirksam} fehlt bewusst: Es haengt an {@code configs.app_config.anz_guests}, und
+     * diese Klasse kennt die Konfiguration nicht. Der Dienst ergaenzt es beim Bauen des DTOs.
+     *
+     * @return alle Zeilen aus {@code profil.gast_slot}, auch die unwirksamen und die freien
+     */
+    public List<GastPlatz> alleMitZustand() {
+        return jdbc.sql(SQL_ALLE_MIT_ZUSTAND)
+                .query((rs, zeile) -> new GastPlatz(
+                        rs.getInt("id"),
+                        rs.getString("anzeige_name"),
+                        rs.getBoolean("belegt"),
+                        rs.getObject("belegt_seit", OffsetDateTime.class),
+                        rs.getObject("session_id", Long.class),
+                        rs.getString("gast_name"),
+                        stufeOderNull(rs.getString("gast_stufe")),
+                        rs.getObject("sitzung_gueltig", Boolean.class)))
+                .list();
+    }
+
+    /**
+     * Gibt die genannten Plaetze frei, soweit sie belegt sind.
+     *
+     * <p><b>Der Aufrufer merkt sich die {@code sessionId} vorher</b> und widerruft die Sitzungen
+     * anschliessend - dieser Aufruf loescht den Verweis und macht sie danach nicht mehr
+     * auffindbar.
+     *
+     * @param nummern zu leerende Platznummern; darf nicht leer sein
+     * @return Anzahl tatsaechlich freigegebener Plaetze
+     */
+    public int freigeben(Collection<Integer> nummern) {
+        if (nummern.isEmpty()) {
+            // IN () waere ein Syntaxfehler. Der Dienst prueft das bereits; die Zusicherung
+            // hier haelt sie auch fuer kuenftige Aufrufer.
+            return 0;
+        }
+        return jdbc.sql(SQL_FREIGEBEN_NUMMERN)
+                .param("nummern", nummern)
+                .update();
+    }
+
+    /**
+     * Uebersetzt die Textspalte in den Aufzaehlungstyp; {@code null} bleibt {@code null}.
+     *
+     * <p>Ein freier Platz hat keine Sitzung und damit keine Stufe - {@code GastStufe.valueOf}
+     * scheiterte daran mit einer {@code NullPointerException}.
+     */
+    private static GastStufe stufeOderNull(String wert) {
+        return wert == null ? null : GastStufe.valueOf(wert);
     }
 }

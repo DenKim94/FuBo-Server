@@ -126,5 +126,19 @@ public enum AuditAktion {
      * steht trotzdem: Er belegt, wer wann gespeichert hat, und {@code geaendert_am} ist ebenfalls
      * gewandert.
      */
-    KONFIG_GEAENDERT
+    KONFIG_GEAENDERT,
+
+    /**
+     * Der Admin hat belegte Gastplaetze freigegeben und die zugehoerigen Gaeste abgemeldet
+     * (Vorgabe vom 30.08.2026).
+     *
+     * <p>Als {@code entitaet} steht {@code gast_slot}, {@code entitaet_id} bleibt <b>leer</b>: Der
+     * Vorgang betrifft in der Regel mehrere Zeilen, und eine willkuerlich herausgegriffene Nummer
+     * waere irrefuehrend. Die betroffenen Plaetze stehen als Liste in den Details.
+     *
+     * <p><b>Das Detail {@code warAktiv} je Platz ist der eigentliche Beleg.</b> Es unterscheidet
+     * zwei sehr verschiedene Vorgaenge unter demselben Aufruf: das Aufraeumen verwaister Zeilen,
+     * hinter denen niemand mehr sass, und das Hinauswerfen eines angemeldeten Gastes.
+     */
+    GAST_ABGEMELDET
 }

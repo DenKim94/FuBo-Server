@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.Collection;
 import java.util.Map;
 
 /**
@@ -176,12 +177,18 @@ public class AuditService {
      * 29.08.2026 beim Protokoll der Profilbearbeitung, die als erster Aufrufer eine
      * Skillkarte uebergibt.
      *
-     * <p><b>Fuer andere zusammengesetzte Typen gilt der Fallstrick weiter:</b> Eine
-     * {@code Collection} wird nach wie vor zu ihrer {@code toString}-Form. Sie hat heute
-     * keinen Aufrufer; wer einen anlegt, ergaenzt hier einen Zweig. Absichtlich <b>keine
-     * Ausnahme</b> fuer unbekannte Typen: Eine Ausnahme an dieser Stelle riss die
-     * umgebende Transaktion mit sich und machte aus einem unschoenen Protokolleintrag eine
-     * zurueckgerollte Fachaenderung.
+     * <h2>Und seit dem 30.08.2026 auch Listen</h2>
+     * Die Freigabe von Gastplaetzen war der erste Aufrufer, der eine {@code Collection}
+     * uebergibt - bis dahin waere sie in ihrer {@code toString}-Form gelandet, also als Text,
+     * der wie JSON aussieht und keines ist. Derselbe Fallstrick wie bei den Karten, nur eine
+     * Klammerart weiter. Der Zweig baut jetzt ein echtes JSON-Array; {@code jsonb_array_length}
+     * und {@code details->'plaetze'->0->>'nummer'} treffen damit.
+     *
+     * <p><b>Fuer andere zusammengesetzte Typen gilt der Fallstrick weiter</b> - ein Array
+     * primitiver Java-Typen etwa landet nach wie vor in seiner {@code toString}-Form. Wer einen
+     * solchen Aufrufer anlegt, ergaenzt hier einen Zweig. Absichtlich <b>keine Ausnahme</b> fuer
+     * unbekannte Typen: Eine Ausnahme an dieser Stelle riss die umgebende Transaktion mit sich
+     * und machte aus einem unschoenen Protokolleintrag eine zurueckgerollte Fachaenderung.
      *
      * <p>Die Rekursion ist unbegrenzt. Das traegt, weil die Karten im Code entstehen und
      * nicht aus einer Eingabe - eine sich selbst enthaltende Karte kann es hier nicht geben.
@@ -196,7 +203,32 @@ public class AuditService {
         if (rohwert instanceof Map<?, ?> karte) {
             return alsObjekt(karte);
         }
+        if (rohwert instanceof Collection<?> liste) {
+            return alsArray(liste);
+        }
         return '"' + maskieren(rohwert.toString()) + '"';
+    }
+
+    /**
+     * Setzt eine Sammlung in ein JSON-Array um.
+     *
+     * <p>Ruft je Element wieder {@link #wert(Object)} auf - eine Liste von Karten wird damit zu
+     * einem Array von Objekten, und genau das braucht die Gastfreigabe.
+     *
+     * <p>Eine <b>leere</b> Sammlung wird zu {@code []} und nicht zu {@code null}: Anders als bei
+     * der aeusseren Detail-Karte ist "keine Eintraege" hier eine Aussage, kein fehlender Wert.
+     */
+    private static String alsArray(Collection<?> liste) {
+        StringBuilder json = new StringBuilder("[");
+        boolean erstes = true;
+        for (Object element : liste) {
+            if (!erstes) {
+                json.append(',');
+            }
+            erstes = false;
+            json.append(wert(element));
+        }
+        return json.append(']').toString();
     }
 
     /** Maskiert die Zeichen, die in einem JSON-Text nicht unmaskiert vorkommen duerfen. */
