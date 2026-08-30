@@ -12,20 +12,11 @@
 
 **Abgeschlossen und verifiziert: S0, S1, S2, S2b und S3 – vollständig, einschliesslich der
 manuellen Prüflisten.**
-`./mvnw clean verify` zuletzt grün am 30.08.2026 – **300 Tests in 25 Klassen**, keine Fehler,
-keine Abbrüche, keine übersprungenen Tests; die Anwendung startet auf einer frischen Datenbank
-durch. Der Lauf braucht Docker (Testcontainers, `postgres:17`) und läuft ausschliesslich lokal.
-Er schliesst die fünf Nachträge desselben Tages mit ein (Abschnitt 6.2); der S3-Abschluss selbst
+`./mvnw clean verify` grün am 30.08.2026 – **264 Tests in 23 Klassen**, keine Fehler, keine
+Abbrüche, keine übersprungenen Tests; die Anwendung startet auf einer frischen Datenbank durch.
+Der Lauf braucht Docker (Testcontainers, `postgres:17`) und läuft ausschliesslich lokal. Er
+schliesst die vier Nachträge desselben Tages mit ein (Abschnitt 6.2); der S3-Abschluss selbst
 stand am 29.08.2026 bei 244 Fällen.
-
-**Aus S4 sind die Pakete 1 bis 4 abgeschlossen und verifiziert** – `./mvnw clean verify` grün am
-30.08.2026 mit **300 Tests in 25 Klassen**, keine Fehler, keine Abbrüche, keine übersprungenen
-Tests. Umgesetzt: Termine lesen (Liste und Einzelansicht), Einzeltermin anlegen, ändern und
-absagen sowie Terminserien. Der Vertrag ist von 23 auf **29 Endpunkte** gewachsen, es gibt zwei
-neue Fehlercodes (`TERMIN_BELEGT`, `TERMIN_GESCHLOSSEN`) und vier neue Audit-Aktionen.
-**Was noch fehlt und mit den Paketen 5 bis 7 kommt:** die Rückmeldung eines Spielers oder
-Gastes, die Skill-Stufe eines Gastes durch den Admin, die Teilnehmerliste samt Warteschlange
-und der Zähler `teilnehmer_version` – er wird heute geführt, aber von keinem Vorgang erhöht.
 
 **Die manuellen Prüflisten sind durch** (30.08.2026): die zu S3 (`S3_UMSETZUNG.md`,
 Abschnitt 10.1) und die drei Punkte zur Gastverwaltung, die der Testlauf bauartbedingt nicht
@@ -68,17 +59,18 @@ Vertrag steht damit bei **23 Endpunkten**, der Tag „Gastverwaltung" und die Ak
 Anlass war ein Betriebsfall: Alle vier Gastplätze waren belegt, ohne dass noch ein Gast
 angemeldet gewesen wäre (Abschnitt 6.2).
 
-**Als Nächstes: die S4-Pakete 5 bis 10**, dazu die drei am 30.08.2026 ergänzten Anforderungen
-A7, A18 und A19 (Abschnitt 6.2). Vor dem nächsten Bruno-Lauf `adminName` und `neuerAdminName`
-in den Umgebungen füllen – beim Anmeldenamen zählt die Schreibweise. Die Collection hat seit
-dem 30.08.2026 die Ordner `termine` und `admin/termin`.
+**Als Nächstes: S4 (Termine & Teilnahme).** Die Umsetzungsanleitung liegt seit dem 30.08.2026 als
+`harness/tmp/S4_UMSETZUNG.md` vor; die sechs Weggabelungen aus Abschnitt 0.4 sind entschieden und
+in 6.2 festgehalten. **Die Umsetzung kann unmittelbar beginnen.** Vor dem nächsten Bruno-Lauf
+`adminName` und `neuerAdminName` in den Umgebungen füllen – beim Anmeldenamen zählt die
+Schreibweise.
 
 > **Zur Fassung:** Dieses Dokument ist am 29.08.2026 von 836 auf rund 450 Zeilen eingedampft
 > worden. Entscheidungen, die inzwischen **verbindliche Regeln** sind, stehen nur noch in
 > `AGENT_SERVER.md` und werden hier nicht wiederholt; die Schritt-für-Schritt-Erzählung der
 > abgeschlossenen Meilensteine lebt in `harness/archive/` und in den `S<n>_UMSETZUNG.md`
 > weiter. Zuletzt archiviert:
-> `CONTEXT_HANDOFF_SERVER_2026-08-30_v12_S4-startklar.md`. **Zum Abschluss von S3 sind
+> `CONTEXT_HANDOFF_SERVER_2026-08-30_v11_S3-vollstaendig.md`. **Zum Abschluss von S3 sind
 > Abschnitt 4 (Vertragshistorie) und 6.4 (Testklassentabelle) eingedampft worden** – was dort
 > stand, lebt in Git, in `S3_UMSETZUNG.md` und in der archivierten Fassung weiter.
 
@@ -116,11 +108,10 @@ Wurzel des Server-Repositories und damit mitversioniert (Festlegung des Haupt-En
 22.08.2026; Ablageort, Format und die beiden Regeln dazu sind in `AGENT_SERVER.md` begründet).
 **Bei Abweichungen ist die Datei maßgeblich, nicht dieses Dokument.**
 
-**Umfang: 29 Endpunkte** – acht aus S2 (Auth und Sitzung), sieben aus S2b (Zugangsdatenpflege
-und Spielerverwaltung), sechs aus S3, zwei aus dem Nachtrag zur Gastverwaltung vom 30.08.2026
-und sechs aus den S4-Paketen 2 bis 4 (Endpunkttabelle in Abschnitt 6.1). Aufgenommen wird nur,
-was umgesetzt ist; die restlichen zwei Endpunkte aus S4 sowie S5 bis S7 tragen ihre bei
-Fertigstellung nach.
+**Umfang: 23 Endpunkte** – acht aus S2 (Auth und Sitzung), sieben aus S2b (Zugangsdatenpflege
+und Spielerverwaltung), sechs aus S3 und zwei aus dem Nachtrag zur Gastverwaltung vom
+30.08.2026 (Endpunkttabelle in Abschnitt 6.1). Aufgenommen wird nur, was umgesetzt ist; S4 bis
+S7 tragen ihre Endpunkte bei Fertigstellung nach.
 
 Inhaltliche Kernpunkte (Herleitung in `AGENT_SERVER.md`): REST/JSON, getrennte Origins mit
 CORS-Allowlist (`allowCredentials`), HttpOnly-Session-Cookie, `401`/`403`-Semantik, DTOs ohne
@@ -141,12 +132,6 @@ in den `S<n>_UMSETZUNG.md` weiter:
 | `skills` in `SpielerAnlegenRequest` | **brechend** (30.08.2026): Pflichtfeld, vollständig. Ein Körper mit nur `name` liefert `400`. Das Anlegeformular baut seine Felder aus `/admin/skills/lesen`. `bearbeiten` bleibt unverändert |
 | `sitzungGueltig` in `GastPlatzInfo` | **dreiwertig** (30.08.2026): `true` lebende Sitzung, `false` verwaister Platz, `null` freier Platz. Ein `if (sitzungGueltig)` behandelt den freien wie den verwaisten – der Unterschied ist gerade der Punkt |
 | `/admin/gast/freigeben` | genau eines von `slotIds` und `alle`. Leerer Körper `400`, nicht „alle". Der Aufruf **meldet aktive Gäste ab**; die Oberfläche fragt vor dem Sammelabbruch nach |
-| `eigeneRueckmeldung` | **dreiwertig** (30.08.2026, S4): `true` zugesagt, `false` abgesagt, `null` noch nicht gemeldet. Ein `if` über dem Feld zeigt eine Absage an, wo niemand geantwortet hat. Bis Paket 5 steht dort immer `null` |
-| `TerminStatus` | `GEPLANT`, `ABGESAGT`, `ABGESCHLOSSEN`. **Eine Absage ist endgültig** – es gibt keinen Weg zurück nach `GEPLANT`, und das gehört in die Bestätigungsabfrage. `ABGESCHLOSSEN` vergibt heute kein Endpunkt, es entsteht mit S6 |
-| `SerieAngelegt` | Die Antwort auf `/admin/serie/anlegen` ist **nicht bloss „angelegt"**: Sie nennt die erzeugten *und* die übersprungenen Zeitpunkte. Kollisionen lassen die Serie nicht scheitern; die Oberfläche muss die zweite Liste anzeigen |
-| `TerminDetails.version` | Vor jedem `/admin/termin/aendern` einmal `/termine/{terminId}/lesen` – ohne die gelesene `version` antwortet der Server `409 DATEN_VERALTET` |
-| `/admin/termin/aendern` | **feldweise**, anders als die Konfiguration. Weglassen heisst „nicht ändern"; `ort: ""` leert den Ort. Ein Körper ohne jedes zu ändernde Feld liefert `400` |
-| Termine für Gäste | `/termine/lesen` und `/termine/{terminId}/lesen` sind ab `PROFILE_AUTHENTICATED` erreichbar, **auch für `GAST`** (Weggabelung F). Skillwerte tragen sie nicht |
 
 ## 4a. Offene Übergabe an den Client-Track
 
@@ -174,7 +159,7 @@ Mid-Level-Entwickler, KI-gestützt, ca. 6,5 h/Woche.
 | S2 | Auth & Session: Security-Filterchain, PIN-Login + Brute-Force-Schutz, `stage`-Erzwingung, opaker Token/HttpOnly, Zwei-Timer-Modell, Namensliste/-belegung, Gast-Login, Admin-Login, Bootstrap, Sitzungsendpunkte, Online-Status, API-Vertrag – **abgeschlossen und verifiziert (148 Tests)**, Anleitung `harness/tmp/S2_UMSETZUNG.md` | 23 |
 | S2b | Zugangsdatenpflege und Spielerverwaltung: Passwort-Reset per E-Mail (5-stellige PIN, Rate-Limit, Sitzungswiderruf), Passwortänderung im angemeldeten Zustand, Änderung der zentralen PIN, Anlegen/Entfernen/Sperren von Spielerprofilen, Aufräumjob – **abgeschlossen und verifiziert (29.08.2026)**. Anleitung `harness/tmp/S2b_UMSETZUNG.md` | 10 |
 | S3 | Profile & Skills API: Admin-CRUD, Rollen/Autorisierung, `configs` (Import der Referenzdaten entfällt – siehe Abschnitt 7.3) – **abgeschlossen und verifiziert (29.08.2026, 244 Tests)**. Anleitung `harness/tmp/S3_UMSETZUNG.md`                                                        | 11 |
-| S4 | Termine & Teilnahme API: Einzel/Serie, Teilnahme, `teilnehmer_version`, Min/Max + Warteschlange, Gast-Flow/`gast_slot` – **Pakete 1 bis 4 umgesetzt** (Termine lesen, Einzeltermin, Serie), Testlauf steht aus; Pakete 5 bis 7 offen. Anleitung `harness/tmp/S4_UMSETZUNG.md`, **Schrittsumme 17 h** (Abschnitt 12 dort) | 16 |
+| S4 | Termine & Teilnahme API: Einzel/Serie, Teilnahme, `teilnehmer_version`, Min/Max + Warteschlange, Gast-Flow/`gast_slot` – Anleitung liegt vor: `harness/tmp/S4_UMSETZUNG.md`, **Schrittsumme 17 h** (Abschnitt 12 dort) | 16 |
 | S5 | Teamgenerator: `EXHAUSTIV` + `HEURISTIK`, Zielfunktion inkl. Torwart-Gewicht, Kontingent/Seed/Snapshot, Auswechselspieler, Tests                                                                                                                                                                                                | 18 |
 | S6 | Ergebnis & Audit API: „erster Eintrag gilt", Admin-Korrektur, `audit_log`                                                                                                                                                                                                                                                       | 8 |
 | S7 | Hallenmodus: E-Mail-Absage, 48-Stunden-Regel, serverseitige Deaktivierung                                                                                                                                                                                                                                                       | 6 |
@@ -204,47 +189,23 @@ Alternativen in `S2b_UMSETZUNG.md`, Abschnitt 0.3.
 
 ### 6.1 Was steht
 
-**S0, S1, S2, S2b und S3 sind abgeschlossen und verifiziert; aus S4 stehen die Pakete 1 bis 4,
-der Testlauf dazu fehlt noch.** Zuletzt kamen der Fachbereich `spieltag` mit Terminen und
-Serien, der Fehlercode-Doppel `TERMIN_BELEGT`/`TERMIN_GESCHLOSSEN`, die vier Audit-Aktionen
-rund um Termine und die Zeitzone der Anwendung dazu.
+**S0, S1, S2, S2b und S3 sind abgeschlossen und verifiziert.** Mit den S3-Paketen 5 bis 8 kamen
+zuletzt die Admin-Konfiguration, die mitgepflegten Gastplätze, die Bestandsaufnahme der
+Autorisierung und der Vertrag dazu.
 
 ```
 server/                        Repo-Wurzel (remote: FuBo-Server, oeffentlich)
-  fubo-api.json                Endpunktkontrakt, 29 Endpunkte (Abschnitt 4)
+  fubo-api.json                Endpunktkontrakt, 23 Endpunkte (Abschnitt 4)
   compose.dev.yml              postgres:17
   .env / .env.example          DB-Zugang, FUBO_INITIAL_PIN, ADMIN_*, SMTP_*
   scripts/                     seed-lokal.sh + anonymisierter 30er-Datensatz
   src/main/resources/db/       migration/ V001-V011, demodata/ (nur dev und test)
   src/main/java/de/fubo/appserver/
     common/  config error security
-    controller/ auth admin spieltag   service/ auth profil audit mail config spieltag
-    repository/ auth profil audit spieltag
-    domain/ auth profil audit config spieltag
-    dto/ auth profil admin spieltag   utils
+    controller/ auth admin        service/ auth profil audit mail config
+    repository/ auth profil audit domain/ auth profil audit config
+    dto/ auth profil admin        utils
 ```
-
-**Der Fachbereich `spieltag` (S4, Pakete 1 bis 4):**
-
-```
-domain/spieltag/      Termin, Terminserie   (Entities)
-                      TerminStatus          (Aufzaehlung)
-                      TerminEintrag         (Wertobjekt der Uebersichtsabfrage)
-repository/spieltag/  TerminRepository      JPA + JdbcClient-Fragment
-                      TerminserieRepository JPA, ohne eigene Abfragen
-service/spieltag/     TerminService         lesen, anlegen, aendern, absagen
-                      SerienService         anlegen samt Materialisierung
-dto/spieltag/         TerminUebersicht, TerminDetails, TerminAnlegenRequest,
-                      TerminAngelegt, TerminAendernRequest, TerminIdRequest,
-                      SerieAnlegenRequest, SerieAngelegt
-controller/spieltag/  TerminController              lesen (ab PROFILE_AUTHENTICATED)
-controller/admin/     TerminVerwaltungController    anlegen, aendern, absagen, Serie
-```
-
-**Zum Paketschnitt:** Der Verwaltungscontroller liegt in `controller/admin`, seine DTOs in
-`dto/spieltag`. Das ist kein Widerspruch – `admin` ist ein Zugriffs-, kein Datenbereich, genau
-wie bei den Profilen. Die Regel, nach der Skill-DTOs unter `dto/admin` bleiben, greift hier
-nicht: Termine tragen keine Bewertungen.
 
 **Abhängigkeiten:** `actuator`, `data-jpa`, `flyway` (+ `flyway-database-postgresql`),
 `security`, `validation`, `webmvc`, `mail`, `postgresql`; im Test die `*-test`-Starter,
@@ -263,7 +224,7 @@ an: `V009` `auswechsel_modus` in `configs.app_config` (A20b), `V010` den Vorgabe
 `halle_absage_vorlage` (A23), `V011` die drei Bilanz-Zähler in `profil.spieler` (A21) – alle vom
 30.08.2026.
 
-**Die 29 Endpunkte** (massgeblich bleibt `fubo-api.json`):
+**Die 23 Endpunkte** (massgeblich bleibt `fubo-api.json`):
 
 | Methode | Pfad unter `/api/v1` | Zweck |
 |---|---|---|
@@ -290,22 +251,13 @@ an: `V009` `auswechsel_modus` in `configs.app_config` (A20b), `V010` den Vorgabe
 | `POST` | `/admin/config/aendern` | Voll-Update (elf Felder); `409 DATEN_VERALTET` bei veralteter `version` |
 | `GET` | `/admin/gast/lesen` | Alle Gastplätze samt Zustand der Sitzung dahinter |
 | `POST` | `/admin/gast/freigeben` | Plätze räumen **und** die Gäste abmelden; `204` |
-| `GET` | `/termine/lesen` | Termine ab einem Stichtag, mit Zusagenzahl und eigener Rückmeldung |
-| `GET` | `/termine/{terminId}/lesen` | Ein Termin samt `version`; Teilnehmerliste folgt mit Paket 7 |
-| `POST` | `/admin/termin/anlegen` | Einzeltermin; `201` mit der Id, `409 TERMIN_BELEGT` |
-| `POST` | `/admin/termin/aendern` | Datum, Uhrzeit, Ort – feldweise, mit `version`; `204` |
-| `POST` | `/admin/termin/absagen` | Status auf `ABGESAGT`, endgültig; `204` |
-| `POST` | `/admin/serie/anlegen` | Serie samt ihrer Termine; `201` mit beiden Listen |
 
 Die ersten acht stammen aus S2, die folgenden fünf aus S2b, die nächsten acht aus S2b und S3,
-die beiden darauf aus dem Nachtrag vom 30.08.2026 und die letzten sechs aus den S4-Paketen 2
-bis 4. Alles unterhalb von `/api/*/admin/**` verlangt `ROLE_ADMIN`; die Reset-Endpunkte und die
-drei Login-Wege sind ausschliesslich in `PIN_VERIFIED` erreichbar. **Auch S4 hat der
-Filterchain nichts hinzugefügt** – die vier Adminendpunkte liegen unter `/admin/` und erben die
-Regel, die beiden Leseendpunkte liegen bewusst *nicht* dort und fallen damit unter
-`anyRequest().hasAnyRole("USER", "ADMIN", "GAST")`. Genau das setzt Weggabelung F um: Ein Gast
-sieht Termine. **Der Ort der Endpunkte ist damit die Autorisierungsentscheidung** – wer einen
-Terminendpunkt unter `/admin/` anlegte, sperrte Gäste aus, ohne eine Regel zu ändern. Die neuen Pfade stehen trotzdem namentlich in
+die letzten beiden aus dem Nachtrag vom 30.08.2026. Alles unterhalb von `/api/*/admin/**`
+verlangt `ROLE_ADMIN`; die Reset-Endpunkte und die drei Login-Wege sind ausschliesslich in
+`PIN_VERIFIED` erreichbar. **Weder S3 noch der Nachtrag haben der Filterchain etwas
+hinzugefügt** – jeder neue Endpunkt liegt unter `/admin/` und erbt die Regel; Paket 7 war
+Prüfarbeit, keine Bauarbeit. Die neuen Pfade stehen trotzdem namentlich in
 `SecurityConfigTests`: Die Platzhalterprüfung bliebe grün, wenn jemand für einen echten
 Endpunkt eine offenere Regel **davor** setzte – Spring Security wertet die Matcher der Reihe
 nach aus, und die erste passende gewinnt.
@@ -348,15 +300,6 @@ sind, sondern Weggabelungen mit Datum:
 | 30.08. | Bilanz-Zähler **neu berechnen** statt fortschreiben (A21) | `+1`/`-1` setzt voraus, dass die Teameinteilung zwischen Eintrag und Korrektur unverändert bleibt; tut sie es nicht, trifft die Rücknahme andere Spieler – und es gibt keine zweite Quelle, an der das auffiele |
 | 30.08. | Die drei Zähler stehen auf `profil.spieler`, nicht in einer eigenen Tabelle | drei Zahlen mit demselben Lebenszyklus wie das Profil; eine Tabelle mit 1:1-Beziehung wäre Ballast |
 | 30.08. | Gastteilnahmen bekommen **keine** Bilanz | ein Gast hat keine Profilzeile, und ein Zähler an `gast_slot` summierte die Ergebnisse verschiedener Personen – der Platz wird wiederverwendet |
-| 30.08. | **Höchstens 52 Termine je Serie** (offener Punkt 7 der S4-Anleitung, Vorgabe des Haupt-Entwicklers) | ein Jahr wöchentlich deckt jeden realistischen Fall ab und fängt den Tippfehler „2036" statt „2026" ab. Als Konstante im `SerienService`, **nicht** in der Konfiguration: Dort wäre es ein zwölftes Pflichtfeld im Voll-Update und damit eine brechende Vertragsänderung – für eine Grenze, die niemand verstellen will |
-| 30.08. | **Die Zeitzone der Anwendung steht in `fubo.zeitzone`** (Vorgabe `Europe/Berlin`), die `Clock`-Bean läuft darin statt in UTC | `termin.datum` und `.uhrzeit` sind `DATE` und `TIME` **ohne** Zeitzone, also Ortszeit. „Liegt dieser Termin in der Vergangenheit" ist damit erstmals eine Frage nach der Wanduhr und nicht nach einem Abstand – mit der bisherigen UTC-Uhr wäre die Antwort im Sommer zwei Stunden falsch. Die Zone des Rechners zu nehmen genügt nicht: In einem Container ist sie per Voreinstellung UTC |
-| 30.08. | Die Einzelansicht liefert die Teilnehmerliste **noch nicht** – sie kommt mit Paket 7 als zusätzliches Feld | der Vertrag beschreibt nur, was umgesetzt ist. Ein Feld nachzutragen ist additiv und damit nicht brechend; ein Feld zu beschreiben, das immer leer wäre, wäre ein Vertrag über nichts |
-| 30.08. | Beim Anlegen entscheidet **`ON CONFLICT DO NOTHING RETURNING id`** über die Kollision, nicht eine vorgelagerte Abfrage (Abweichung von Abschnitt 3.3 der Anleitung) | Die Anleitung schlägt „prüfen *und* Constraint behalten" vor. Das erreicht dasselbe Ziel, lässt zwischen Prüfung und Einfügen aber ein Fenster offen – und dann bricht der `INSERT` doch am Constraint, mit genau dem `500`, den die Prüfung verhindern sollte. Beim **Ändern** bleibt es bei der Vorabprüfung: Ein `UPDATE` kennt kein `ON CONFLICT` |
-| 30.08. | Geprüft wird der **Zeitpunkt**, nicht nur der Tag (Schärfung von Abschnitt 3.2) | Die Anleitung nennt „datum nicht in der Vergangenheit", begründet die Regel aber mit Weggabelung C: zugesagt wird bis Terminbeginn. Ein Termin heute um 8 Uhr, angelegt um 20 Uhr, nähme nie eine Rückmeldung entgegen |
-| 30.08. | Beim **Ändern** greift die Vergangenheitsprüfung nur, wenn Datum oder Uhrzeit sich wirklich ändern | sonst liesse sich der Ort eines längst vergangenen Termins nicht mehr berichtigen, obwohl das niemandem schadet. Verschieben *in* die Vergangenheit bleibt gesperrt |
-| 30.08. | Auch eine **Serie** wird abgelehnt, wenn ihr erster Termin schon vorbei ist | die Anleitung erwähnt das für Serien nicht; sie auszunehmen hiesse, denselben Zustand über einen zweiten Weg doch zu erlauben |
-| 30.08. | `TERMIN_GESCHLOSSEN` ist **allgemein** formuliert („Dieser Termin ist nicht mehr offen") | der Code deckt drei Fälle ab: abgesagt, abgeschlossen und – ab Paket 5 – Beginn vorbei. Für den Aufrufer ist die Wirkung dieselbe. Wo eine genauere Meldung hilft, setzt der Dienst sie über `detail`; das ist Anzeigetext und darf sich ohne Vertragsänderung ändern |
-| 30.08. | `handleTypeMismatch` im `GlobalExceptionHandler` | Erstmals mit S4 erreichbar: `/termine/{terminId}/lesen` trägt einen `Long` im Pfad, `/termine/lesen` ein `LocalDate` als Parameter. Ohne die Überschreibung antwortete die Basisklasse mit `400` **ohne** das Feld `code` – zwei Fehlerformate für das Frontend |
 
 **Die sechs Weggabelungen für S4** sind am 30.08.2026 entschieden – durchgängig entlang der
 Empfehlung aus `S4_UMSETZUNG.md`, Abschnitt 0.4. Sie stehen hier, weil sie den Vertrag oder das
@@ -433,21 +376,6 @@ löschen, solange Termine daran hängen; nicht mehr benötigte Termine gehen üb
 - **Antworten über Jackson auswerten, nicht mit `contains` auf dem rohen JSON** – ein
   Zeichenkettenvergleich trifft auch eine andere Zeile und meldet eine falsche Zuordnung als
   Erfolg.
-- **`uq_termin_zeit UNIQUE (datum, uhrzeit)` ist global und trifft auch die Tests.** Zwei
-  Testklassen, die beide „morgen um 20:00" anlegen, kollidieren – auch wenn jede für sich
-  zurückgerollt wird, laufen sie nicht zwingend nacheinander. **Jede Klasse braucht ihren
-  eigenen Zeitstreifen**, und zwar in *beiden* Achsen: `TerminControllerTests` arbeitet um
-  40 Tage herum zur Uhrzeit 18:15, `TerminVerwaltungControllerTests` ab 120 Tagen zur Uhrzeit
-  19:45. Der Serientest braucht den weitesten Abstand, weil er über Wochen hinweg Zeilen
-  anlegt.
-- **Termine für Lesetests entstehen per SQL, nicht über den Adminendpunkt.** Der Lesepfad soll
-  unabhängig vom Schreibpfad prüfbar bleiben – und ein Termin in der *Vergangenheit* lässt sich
-  über den Endpunkt gar nicht anlegen. Dasselbe gilt für Teilnahmen: Der Endpunkt dafür entsteht
-  erst mit Paket 5.
-- **Zeitgrenzen mit Abstand prüfen, nicht am Rand.** Die Termine der Testklassen liegen Wochen
-  von „jetzt" entfernt; damit spielt es keine Rolle, ob die Zeitzone der Anwendung und die des
-  Rechners auseinanderlaufen. `fubo.zeitzone` steht trotzdem ausdrücklich in
-  `src/test/resources/application.yml` – in einem CI-Container stünde die Systemzeit auf UTC.
 
 **Sicherheit und Betrieb**
 
@@ -482,16 +410,9 @@ löschen, solange Termine daran hängen; nicht mehr benötigte Termine gehen üb
 
 ### 6.4 Verifikation
 
-**`./mvnw clean verify` zuletzt grün am 30.08.2026 – 300 Tests in 25 Klassen**, keine Fehler,
-keine Abbrüche, keine übersprungenen Tests. Die Anwendung startet auf einer frischen Datenbank
-durch. Der Lauf braucht Docker (Testcontainers, `postgres:17`) und läuft ausschliesslich lokal.
-
-**Die S4-Pakete 1 bis 4 sind mit demselben Lauf verifiziert – 300 Fälle in 25 Klassen**, der
-vorab gezählte Erwartungswert traf wieder exakt. Neu sind `TerminControllerTests` (15 Fälle, Lesepfad) und `TerminVerwaltungControllerTests`
-(20 Fälle, Schreibpfad). **`SecurityConfigTests` bleibt bei 26** – die vier neuen Adminpfade und
-die beiden Terminpfade stehen dort als Zusicherungen *innerhalb* der bestehenden Bündelfälle,
-nicht als eigene Methoden. Wer die Fallzahl als Mass für die Abdeckung liest, unterschätzt
-diese Klasse deshalb systematisch.
+**`./mvnw clean verify` grün am 30.08.2026 – 264 Tests in 23 Klassen**, keine Fehler, keine
+Abbrüche, keine übersprungenen Tests. Die Anwendung startet auf einer frischen Datenbank durch.
+Der Lauf braucht Docker (Testcontainers, `postgres:17`) und läuft ausschliesslich lokal.
 
 Der Lauf vom 29.08.2026 schloss S3 mit **244** Fällen ab; die drei zusätzlichen stammen aus der
 Anforderungsänderung am Anlegen-Endpunkt (6.2). In `SpielerControllerTests` sind dabei zwei
@@ -531,9 +452,8 @@ docker compose -f compose.dev.yml --env-file .env up -d
 ```
 
 **Verlauf:** 148 Tests in 16 Klassen (22.08.), 184 (23.08.), 227 in 21 Klassen und 244 in
-22 Klassen (beide 29.08.), 247, 260, 264 und 265 in 23 Klassen (alle 30.08.2026 – die letzten
-beiden für A20b/A23 und für die Bilanz aus `V011`) und **300 in 25 Klassen** (S4, Pakete 1
-bis 4, ebenfalls 30.08.2026). **Der vorab gezählte Erwartungswert traf jedes Mal
+22 Klassen (beide 29.08.), 247 und 260 in 23 Klassen (beide 30.08.2026), erwartet 264
+(A20b und A23). **Der vorab gezählte Erwartungswert traf jedes Mal
 exakt** –
 `grep -c '^\s*@Test\s*$'` je Klasse. Nach dem Lauf gilt die Zahl aus den Berichten, nicht die
 fortgeschriebene; die Klassenzahl war einmal falsch, weil sie geschätzt statt gezählt wurde:
@@ -559,27 +479,17 @@ zu S2b in `S2b_UMSETZUNG.md`, Abschnitt 12.1. Die Bruno-Collection führt durch 
 
 ## 7. Nächste Schritte
 
-1. **Den Testlauf zu den S4-Paketen 1 bis 4 fahren.** `docker info`, dann
-   `docker compose -f compose.dev.yml --env-file .env up -d` und `./mvnw clean verify`.
-   **Erwartet: 300 Fälle in 25 Klassen.** Danach die Handprüfungen aus `S4_UMSETZUNG.md`,
-   Abschnitt 11.1, soweit sie ohne Rückmeldung auskommen – die Bruno-Collection führt mit den
-   Ordnern `termine` und `admin/termin` hindurch. **Erst danach committen**; die Commits sind
-   nach Themen geschnitten (Vertrag, Termine lesen, Einzeltermin, Serie, Tests, Doku), und die
-   Reihenfolge muss übersetzbar bleiben.
-2. **S4 fortsetzen: die Pakete 5 bis 7** (`harness/tmp/S4_UMSETZUNG.md`). Es fehlen zwei
-   Endpunkte (`POST /termine/rueckmeldung`, `POST /admin/teilnahme/gast-stufe`), damit wächst
-   der Vertrag von 29 auf 31. **Vier Punkte, die dabei nicht untergehen dürfen:**
+1. **S4 umsetzen** (`harness/tmp/S4_UMSETZUNG.md`). Die sechs Weggabelungen sind entschieden
+   (6.2), die Anleitung ist damit vollständig – acht Endpunkte, zwei neue Fehlercodes
+   (`TERMIN_BELEGT`, `TERMIN_GESCHLOSSEN`), Vertrag von 23 auf 31 Endpunkte, geschätzt 17 h.
+   **Drei Punkte, die dabei nicht untergehen dürfen:**
    - **Der Pflichtpunkt aus S3:** Eine Skilländerung ist eine Teilnehmeränderung (A15) und muss
      die `teilnehmer_version` betroffener künftiger Termine hochzählen. Der vorbereitete `UPDATE`
      steht in `S3_UMSETZUNG.md`, Abschnitt 3.5, die Umsetzung in `S4_UMSETZUNG.md`, Abschnitt 8.
-     **Heute erhöht kein einziger Vorgang den Zähler** – er steht auf 0 und wird nur gelesen.
-   - **`AktiveSitzung` trägt die Gast-Stufe noch nicht.** Der Record hat `gastName`, aber kein
-     `gastStufe`; `teilnahme.gast_stufe` wird bei der Zusage aus der Sitzung **kopiert**
-     (Abschnitt 6.2 der Anleitung), also muss der Wert dort erst ankommen.
-   - **Die Teilnehmerliste ist ein zusätzliches Feld an `TerminDetails`**, kein neuer Endpunkt
-     und keine Änderung an der Liste. Additiv, also nicht brechend.
    - **Keine Migration nötig** – `V005` legt alles an; `V011` bleibt die letzte.
-3. **Client-Track über die drei brechenden Vertragsänderungen informieren** (Abschnitt 4 und
+   - **`uq_termin_zeit` ist global und trifft auch die Tests.** Zwei Testklassen, die beide
+     „morgen um 20:00" anlegen, kollidieren; jede braucht ihren eigenen Zeitraum.
+2. **Client-Track über die drei brechenden Vertragsänderungen informieren** (Abschnitt 4 und
    4a). Alle drei betreffen Formulare, alle drei liefern sonst `400`: `anmeldename` im
    Admin-Login, vollständige `skills` beim Anlegen eines Profils, `auswechselModus` im
    Voll-Update der Konfiguration.

@@ -51,10 +51,13 @@ Identifikation über den hinterlegten Namen. Rollen: ADMIN, USER, GAST.
 
 **Termine, Teilnahme, Warteschlange**
 - (A7) Zu-/Absage je Termin persistieren (eigenes Schema `spieltag`).
+  - **Ergänzung durch Entwickler:** Die Zu- oder Absage eines Teilnehmers ist **bis spätestens zum jeweiligen Terminbeginn** möglich und solange der Status des Termins bei `GEPLANT` steht. Ist der Status des Termins bei `GEPLANT` aber der Termin hat schon begonnen, dann ist die Zu- oder Absage nicht mehr möglich.
 - (A8) Gast-Anmeldung serverseitig: temporärer Name, Selbsteinschätzung über Dummy-Profil, Gastsitzung.
 - (A11) Bei Überschreitung der Maximalzahl übrige Teilnehmer einer Warteschlange zuordnen (Reihenfolge
   serverseitig bestimmen).
 - (A18) Termine als Einzeltermin oder befristete Serie (Enddatum Pflicht bei Serie, optionaler Ort).
+  - **Ergänzung durch Entwickler:** Der jeweilige Termin ändert seinen Status 30 Minuten nach Beginn des Termins von `GEPLANT` zu `ABGESCHLOSSEN` automatisch, wenn dieser bis dahin nicht abgesagt wurde.
+- (19) **Terminbearbeitung:** Der Admin kann Termine (Einzeltermine) bearbeiten oder entfernen (z.B. Datum, Uhrzeit, Ort oder den Status).
 
 **Teamgenerierung**
 - (A15) Kontingent je Nutzer und Spieltag (Default konfigurierbar); Rücksetzung ausschließlich über die
@@ -202,6 +205,34 @@ Identifikation über den hinterlegten Namen. Rollen: ADMIN, USER, GAST.
   steigt; einziger Auslöser für die Kontingent-Rücksetzung und das Veraltet-Kennzeichen.
   **Eine Skilländerung zählt dazu (A15) – Pflichtpunkt für S4**, in S3 mangels `spieltag`-Service
   nicht umsetzbar und deshalb ausdrücklich vermerkt.
+- **Termine** (ab S4):
+  1. **Ein Termin wird nie gelöscht, nur auf `ABGESAGT` gesetzt – und die Absage ist
+     endgültig.** Fünf Tabellen hängen mit `ON DELETE CASCADE` am Termin: `teilnahme` aus
+     `V005`, dazu `team_generierung`, `generierung_kontingent` und `ergebnis` aus `V006` und
+     über die Generierung auch `team_zuteilung`. Ein `DELETE` auf einer Zeile räumt lautlos den
+     halben Spieltag ab, einschliesslich der Ergebnisse. Die Kaskaden sind richtig gesetzt; nur
+     darf sie niemand auslösen. **Kein Weg zurück nach `GEPLANT`:** Die Zusagen dazwischen sind
+     unbrauchbar geworden, weil niemand weiss, wer von der Absage schon erfahren hat. Wer den
+     Termin doch braucht, legt ihn neu an – und `uq_termin_zeit` zwingt ihn, den alten vorher zu
+     verschieben. **Das ist eine bewusste Härte und gehört in die Beschreibung des Endpunkts.**
+  2. **`uq_termin_zeit UNIQUE (datum, uhrzeit)` ist eine *globale* Bedingung** – es gibt keine
+     zwei Termine zur selben Zeit, auch nicht an verschiedenen Orten. **Beim Anlegen entscheidet
+     sie eine einzige Anweisung** (`ON CONFLICT ON CONSTRAINT … DO NOTHING RETURNING id`); ein
+     leeres Ergebnis heisst „belegt". „Erst prüfen, dann einfügen" liesse ein Fenster offen, in
+     dem eine zweite Anfrage denselben Zeitpunkt belegt – und dann bräche der `INSERT` doch am
+     Constraint, mit genau dem `500`, den die Prüfung verhindern sollte. **Beim Ändern bleibt es
+     bei der Vorabprüfung**, weil ein `UPDATE` kein `ON CONFLICT` kennt; der eigene Termin ist
+     dabei auszunehmen, sonst wäre eine reine Ortsänderung unmöglich.
+  3. **Für die Serie ist dieselbe Klausel die Antwort auf die Kollision:** Ein belegter
+     Zeitpunkt wird **übersprungen und namentlich gemeldet**, nicht abgelehnt. Bei zwölf Wochen
+     genügte sonst ein einziger bestehender Einzeltermin. Eine Serie ist nach dem Anlegen nicht
+     mehr änderbar – ihre Termine sind echte Zeilen, eine Änderung an der Regel wirkte nicht auf
+     sie zurück.
+  4. **Ein Zeitpunkt in der Vergangenheit wird abgelehnt** – geprüft wird `datum` *und*
+     `uhrzeit`, nicht nur der Tag: Zugesagt wird bis Terminbeginn, ein Termin von heute Morgen
+     nähme also nie eine Rückmeldung entgegen. Beim Ändern greift die Prüfung nur, wenn der
+     Zeitpunkt sich wirklich ändert; die Ortskorrektur an einem vergangenen Termin schadet
+     niemandem.
 - **Teamzuteilung als Snapshot:** jeder Lauf speichert die gültigen Skillwerte und seinen Seed.
 - **Gast-Slots:** feste Datensätze, Belegung per bedingtem `UPDATE` (keine gezählte Abfrage);
   `configs.app_config.anz_guests` wirkt über `id <= :maxGaeste`, eine Änderung also sofort.
@@ -516,6 +547,19 @@ entscheidet. **Wird eine `version`-Spalte per SQL geändert, ist sie von Hand fo
 Zeit darüber statt über `Instant.now()` – sonst wären Sperrdauern nur mit `Thread.sleep` prüfbar.
 Zeitpunkte, die in der Datenbank entstehen, werden weiterhin gegen deren `now()` geprüft; zwei
 Uhren für denselben Sachverhalt wären eine Fehlerquelle.
+
+**Die Uhr läuft in der Zeitzone aus `fubo.zeitzone`, nicht in UTC** (ab S4, Vorgabe
+`Europe/Berlin`). Bis S3 wurde sie ausschliesslich für *Differenzen* genutzt, und dafür ist die
+Zone gleichgültig. Mit `spieltag.termin.datum` und `.uhrzeit` kommen erstmals `DATE` und `TIME`
+**ohne** Zeitzone dazu, also Ortszeit: „Liegt dieser Termin in der Vergangenheit" ist damit eine
+Frage nach der Wanduhr, nicht nach einem Abstand. **Mit einer UTC-Uhr wäre die Antwort im Sommer
+zwei Stunden falsch** – ein Termin heute um 18:00 liesse sich um 19:00 noch anlegen –, und der
+Fehler beträfe nur einen schmalen Zeitstreifen am Tag, fiele also weder im Test noch im Betrieb
+verlässlich auf. **Die Zone des Rechners zu nehmen genügt nicht:** In einem Docker-Container ist
+sie per Voreinstellung UTC, gleich wo der Rechner steht. Der Wert steht deshalb ausdrücklich in
+der Konfiguration und wird beim Start protokolliert; `ZoneId.of` bricht bei einer unbekannten
+Zone ab. **Noch offen:** Die Zeitzone der Datenbanksitzung ist nicht mitgezogen – `current_date`
+und `current_time` in nativen Abfragen richten sich nach ihr.
 
 ### Flyway-Konventionen (verbindlich ab S1)
 - Ablage: `src/main/resources/db/migration`. Namensschema `V<nnn>__<kurze_beschreibung>.sql` mit
