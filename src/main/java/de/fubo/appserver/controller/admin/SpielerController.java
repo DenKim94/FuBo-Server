@@ -112,7 +112,7 @@ public class SpielerController {
      * gibt bis S3 keinen Endpunkt, der ein einzelnes Profil ausliefert - ein Verweis auf
      * eine Adresse, die es nicht gibt, waere eine leere Zusage.
      *
-     * @param anfrage Name und optionale Skillwerte
+     * @param anfrage Name und die vollstaendigen Skillwerte
      * @param request fuer die Ermittlung der Client-IP
      * @param sitzung aufrufende Adminsitzung; nie {@code null}, weil die Filterchain den
      *                Zugriff sonst gar nicht durchgelassen haette
@@ -125,7 +125,7 @@ public class SpielerController {
 
         SpielerAngelegt angelegt = spielerVerwaltungService.anlegen(
                 anfrage.nameGetrimmt(),
-                anfrage.skillsOderLeer(),
+                anfrage.skillsOderNull(),
                 sitzung.spielerId(),
                 ClientIpErmittler.ermitteln(request));
 

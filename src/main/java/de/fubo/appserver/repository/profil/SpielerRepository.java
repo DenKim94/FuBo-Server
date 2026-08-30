@@ -108,37 +108,6 @@ public interface SpielerRepository extends JpaRepository<Spieler, Long>, Spieler
     int nullwerteAnlegen(@Param("spielerId") Long spielerId);
 
     /**
-     * Legt fuer ein Profil die Skillwerte einer Gastvorlage an (S2b, Abschnitt 8).
-     *
-     * <p><b>Warum die Vorgaben aus {@code profil.gast_vorlage} kommen und nicht aus Nullen:</b>
-     * Ein Profil mit lauter Nullen bekaeme in der Teamgenerierung ein Team ohne jede Staerke
-     * zugeteilt, ohne dass jemand den Grund saehe. Die Stufe {@code MITTEL} ist genau der
-     * Wert, mit dem auch ein Gast ohne Selbsteinschaetzung eingeht - eine ehrliche Annahme
-     * statt einer stillen Verzerrung. Das Adminprofil bleibt der Sonderfall: Es ist ein
-     * technisches Konto, wird nie eingeteilt und behaelt deshalb
-     * {@link #nullwerteAnlegen(Long)}.
-     *
-     * <p>{@code ON CONFLICT DO NOTHING} macht den Aufruf wiederholbar und laesst bereits
-     * gesetzte Werte unangetastet - der Aufrufer kann also erst die Vorgaben legen und
-     * danach einzelne Kategorien ueberschreiben, oder umgekehrt.
-     *
-     * @param spielerId Profil, dessen Skillzeilen entstehen sollen
-     * @param stufe     Stufe der Vorlage: {@code STARK}, {@code MITTEL} oder {@code SCHWACH}
-     * @return Anzahl angelegter Zeilen
-     */
-    @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query(value = """
-            INSERT INTO profil.spieler_skill (spieler_id, kategorie, wert)
-            SELECT :spielerId, v.kategorie, v.wert
-              FROM profil.gast_vorlage v
-              JOIN profil.skill_kategorie k ON k.schluessel = v.kategorie
-             WHERE v.stufe = :stufe
-               AND k.aktiv
-            ON CONFLICT ON CONSTRAINT uq_spieler_skill DO NOTHING
-            """, nativeQuery = true)
-    int vorgabewerteAnlegen(@Param("spielerId") Long spielerId, @Param("stufe") String stufe);
-
-    /**
      * Setzt einen einzelnen Skillwert (S2b, Abschnitt 8).
      *
      * <p>{@code ON CONFLICT ... DO UPDATE} statt eines vorherigen Lesezugriffs: Ob die Zeile

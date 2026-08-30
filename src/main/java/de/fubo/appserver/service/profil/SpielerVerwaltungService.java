@@ -3,7 +3,6 @@ package de.fubo.appserver.service.profil;
 import de.fubo.appserver.common.error.FachlicherFehler;
 import de.fubo.appserver.common.error.Fehlercode;
 import de.fubo.appserver.domain.audit.AuditAktion;
-import de.fubo.appserver.domain.auth.GastStufe;
 import de.fubo.appserver.domain.auth.Rolle;
 import de.fubo.appserver.domain.profil.Profileintrag;
 import de.fubo.appserver.domain.profil.SkillKategorie;
@@ -76,16 +75,6 @@ import java.util.stream.Collectors;
 @Service
 public class SpielerVerwaltungService {
 
-    /**
-     * Vorgabestufe fuer Skillwerte, wenn der Admin keine angibt.
-     *
-     * <p><b>Warum {@code MITTEL} und nicht 0:</b> Ein Profil mit lauter Nullen bekaeme in der
-     * Teamgenerierung (S5) ein Team ohne jede Staerke zugeteilt, ohne dass jemand den Grund
-     * saehe. {@code MITTEL} ist derselbe Wert, mit dem ein Gast ohne Selbsteinschaetzung
-     * eingeht - eine ehrliche Annahme statt einer stillen Verzerrung.
-     */
-    private static final GastStufe VORGABESTUFE = GastStufe.MITTEL;
-
     /** Bezeichnung der betroffenen Entitaet im Audit-Log. */
     private static final String ENTITAET = "spieler";
 
@@ -113,19 +102,26 @@ public class SpielerVerwaltungService {
     /**
      * Legt ein Profil mit der Rolle {@link Rolle#USER} an.
      *
-     * <p>Die Skillwerte entstehen in zwei Schritten: erst die Vorgaben der Stufe
-     * {@link #VORGABESTUFE} fuer alle aktiven Kategorien, dann die ausdruecklich genannten
-     * darueber. Damit ist eine <i>teilweise</i> Angabe moeglich, ohne dass der Aufrufer alle
-     * Kategorien kennen muesste.
+     * <p><b>Die Skillwerte sind Pflicht und muessen vollstaendig sein</b> (Vorgabe des
+     * Haupt-Entwicklers vom 30.08.2026). Bis dahin legte dieser Dienst zuerst die Vorgaben der
+     * Stufe {@code MITTEL} fuer alle aktiven Kategorien und schrieb die genannten darueber; eine
+     * teilweise Angabe war damit moeglich. Der Grund fuer die Umkehr steht am DTO
+     * {@link de.fubo.appserver.dto.admin.SpielerAnlegenRequest}: Eine Vorgabe ist eine
+     * Behauptung ueber einen Spieler, die niemand aufgestellt hat.
+     *
+     * <p><b>Gemessen wird an den aktiven Kategorien, nicht an einer festen Zahl.</b> Wird eine
+     * Kategorie abgeschaltet, faellt sie aus der Pflicht - wird eine ergaenzt, gehoert sie dazu.
+     * Dieselbe Regel wie bei der Wertebereichspruefung: Die Kategorien kommen aus der Datenbank,
+     * nie aus einer Liste im Code.
      *
      * @param name           bereits getrimmter Anzeigename
-     * @param skills         Skillwerte je Kategorieschluessel; darf leer sein
+     * @param skills         Skillwerte je Kategorieschluessel; Pflicht und vollstaendig
      * @param adminSpielerId Profil-Id des handelnden Admins, fuer das Protokoll
      * @param clientIp       Adresse des Aufrufers, fuer das Protokoll
      * @return Id und uebernommener Name
      * @throws FachlicherFehler {@code 409 NAME_BELEGT} bei belegtem Namen,
-     *                          {@code 400 EINGABE_UNGUELTIG} bei unbekannter Kategorie oder
-     *                          einem Wert ausserhalb ihres Bereichs
+     *                          {@code 400 EINGABE_UNGUELTIG} bei unbekannter Kategorie, einem
+     *                          Wert ausserhalb ihres Bereichs oder unvollstaendiger Angabe
      */
     @Transactional
     public SpielerAngelegt anlegen(String name, Map<String, Integer> skills,
@@ -136,7 +132,11 @@ public class SpielerVerwaltungService {
         if (spielerRepository.existsByNameIgnoreCase(name)) {
             throw new FachlicherFehler(Fehlercode.NAME_BELEGT);
         }
+        // Erst Schluessel und Wertebereich, dann die Vollstaendigkeit - in dieser Reihenfolge.
+        // Umgekehrt bekaeme ein Tippfehler im Schluessel die Meldung "unvollstaendig", und der
+        // eigentliche Fehler bliebe unerwaehnt.
         Map<String, Integer> gepruefteSkills = pruefeSkills(skills);
+        pruefeVollstaendig(gepruefteSkills);
 
         OffsetDateTime jetzt = OffsetDateTime.now();
         Spieler neu = new Spieler();
@@ -155,7 +155,6 @@ public class SpielerVerwaltungService {
         Long spielerId = gespeichert.getId();
         String uebernommenerName = gespeichert.getName();
 
-        spielerRepository.vorgabewerteAnlegen(spielerId, VORGABESTUFE.name());
         gepruefteSkills.forEach((kategorie, wert) ->
                 spielerRepository.skillwertSetzen(spielerId, kategorie, wert));
 
@@ -164,8 +163,7 @@ public class SpielerVerwaltungService {
         auditService.protokolliere(adminSpielerId, clientIp, AuditAktion.PROFIL_ANGELEGT,
                 ENTITAET, spielerId,
                 Map.of("name", uebernommenerName,
-                        "skillsGesetzt", gepruefteSkills.size(),
-                        "vorgabestufe", VORGABESTUFE.name()));
+                        "skillsGesetzt", gepruefteSkills.size()));
 
         return new SpielerAngelegt(spielerId, uebernommenerName);
     }
@@ -490,6 +488,42 @@ public class SpielerVerwaltungService {
             geprueft.put(schluessel, wert);
         }
         return geprueft;
+    }
+
+    /**
+     * Stellt sicher, dass zu jeder aktiven Kategorie ein Wert vorliegt (Vorgabe vom 30.08.2026).
+     *
+     * <p>Nur beim <b>Anlegen</b>. {@link #bearbeiten} laesst eine Teilmenge weiterhin zu: Dort
+     * hat das Profil bereits vollstaendige Werte, und einen einzelnen zu korrigieren soll nicht
+     * bedeuten, alle erneut zu senden.
+     *
+     * <p><b>Aufzurufen erst nach {@link #pruefeSkills}.</b> Sonst bekaeme ein Tippfehler im
+     * Schluessel die Meldung "unvollstaendig" - der Schluessel waere ja unbekannt und die
+     * zugehoerige Kategorie damit ungesetzt -, und die eigentliche Ursache bliebe unerwaehnt.
+     *
+     * <p>Die Kategorien werden ein zweites Mal gelesen, obwohl {@code pruefeSkills} sie bereits
+     * geholt hat. Das ist ein Zugriff auf fuenf Zeilen innerhalb derselben Transaktion; die
+     * Alternative waere ein Rueckgabewert oder ein Wahrheitswert-Parameter, der beide Methoden
+     * aneinanderbindet, ohne am Aufrufort etwas zu erklaeren.
+     *
+     * <p>Die fehlenden Schluessel stehen sortiert in der Meldung - so ist sie zwischen zwei
+     * Aufrufen vergleichbar und in einem Test pruefbar.
+     *
+     * @param gepruefteSkills bereits gegen Schluessel und Wertebereich gepruefte Werte
+     * @throws FachlicherFehler {@code 400 EINGABE_UNGUELTIG}, wenn eine Kategorie fehlt
+     */
+    private void pruefeVollstaendig(Map<String, Integer> gepruefteSkills) {
+        List<String> fehlend = skillKategorieRepository.aktive().stream()
+                .map(SkillKategorie::schluessel)
+                .filter(schluessel -> !gepruefteSkills.containsKey(schluessel))
+                .sorted()
+                .toList();
+
+        if (!fehlend.isEmpty()) {
+            throw new FachlicherFehler(Fehlercode.EINGABE_UNGUELTIG,
+                    "Unvollständige Eingabe. Es fehlen die Skillwerte für: %s."
+                            .formatted(String.join(", ", fehlend)));
+        }
     }
 
     /** Laedt ein Profil oder lehnt mit {@code 404} ab. */

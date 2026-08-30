@@ -25,6 +25,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -117,7 +118,7 @@ class SpielerControllerTests {
      */
     @Test
     void uebersichtLiefertDieSkillwerte() throws Exception {
-        anlegen("{\"name\":\"Pruefspieler L\",\"skills\":{\"TORWART\":2}}")
+        anlegen(vollstaendig("Pruefspieler L", Map.of("TORWART", 2)))
                 .andExpect(status().isCreated());
 
         String antwort = uebersicht();
@@ -160,7 +161,7 @@ class SpielerControllerTests {
      */
     @Test
     void ungepflegtesProfilLiefertEineKuerzereSkillkarte() throws Exception {
-        anlegen("{\"name\":\"Pruefspieler M\"}").andExpect(status().isCreated());
+        anlegen(vollstaendig("Pruefspieler M")).andExpect(status().isCreated());
         Long id = spielerId("Pruefspieler M");
 
         jdbc.update("DELETE FROM profil.spieler_skill WHERE spieler_id = ? AND kategorie = 'TORWART'", id);
@@ -210,7 +211,7 @@ class SpielerControllerTests {
         String vorher = uebersicht();
         assertThat(vorher).doesNotContain("Pruefspieler N");
 
-        anlegen("{\"name\":\"Pruefspieler N\"}").andExpect(status().isCreated());
+        anlegen(vollstaendig("Pruefspieler N")).andExpect(status().isCreated());
 
         assertThat(uebersicht())
                 .as("Das Anlegen muss den Speicher verworfen haben")
@@ -222,7 +223,7 @@ class SpielerControllerTests {
     /** Umbenennen wirkt in der Uebersicht und in der Namensauswahl. */
     @Test
     void bearbeitenAendertDenNamen() throws Exception {
-        anlegen("{\"name\":\"Pruefspieler B1\"}").andExpect(status().isCreated());
+        anlegen(vollstaendig("Pruefspieler B1")).andExpect(status().isCreated());
         Long id = spielerId("Pruefspieler B1");
 
         bearbeiten("{\"spielerId\":%d,\"name\":\"Pruefspieler B2\"}".formatted(id))
@@ -238,7 +239,7 @@ class SpielerControllerTests {
      */
     @Test
     void bearbeitenSetztNurDieGenanntenKategorien() throws Exception {
-        anlegen("{\"name\":\"Pruefspieler B3\"}").andExpect(status().isCreated());
+        anlegen(vollstaendig("Pruefspieler B3")).andExpect(status().isCreated());
         Long id = spielerId("Pruefspieler B3");
         int angriffVorher = skillwert(id, "ANGRIFF");
 
@@ -257,7 +258,7 @@ class SpielerControllerTests {
      */
     @Test
     void leereSkillkarteLoeschtNichts() throws Exception {
-        anlegen("{\"name\":\"Pruefspieler B4\"}").andExpect(status().isCreated());
+        anlegen(vollstaendig("Pruefspieler B4")).andExpect(status().isCreated());
         Long id = spielerId("Pruefspieler B4");
 
         bearbeiten("{\"spielerId\":%d,\"name\":\"Pruefspieler B5\",\"skills\":{}}".formatted(id))
@@ -324,8 +325,8 @@ class SpielerControllerTests {
     /** Der Name eines anderen Profils ist belegt. */
     @Test
     void fremderNameLiefert409() throws Exception {
-        anlegen("{\"name\":\"Pruefspieler B6\"}").andExpect(status().isCreated());
-        anlegen("{\"name\":\"Pruefspieler B7\"}").andExpect(status().isCreated());
+        anlegen(vollstaendig("Pruefspieler B6")).andExpect(status().isCreated());
+        anlegen(vollstaendig("Pruefspieler B7")).andExpect(status().isCreated());
 
         String antwort = bearbeiten("{\"spielerId\":%d,\"name\":\"Pruefspieler B7\"}"
                 .formatted(spielerId("Pruefspieler B6")))
@@ -342,7 +343,7 @@ class SpielerControllerTests {
      */
     @Test
     void eigenerNameInAndererSchreibweiseIstErlaubt() throws Exception {
-        anlegen("{\"name\":\"Pruefspieler B8\"}").andExpect(status().isCreated());
+        anlegen(vollstaendig("Pruefspieler B8")).andExpect(status().isCreated());
         Long id = spielerId("Pruefspieler B8");
 
         bearbeiten("{\"spielerId\":%d,\"name\":\"pruefspieler b8\"}".formatted(id))
@@ -385,7 +386,7 @@ class SpielerControllerTests {
      */
     @Test
     void bearbeitenWirdProtokolliert() throws Exception {
-        anlegen("{\"name\":\"Pruefspieler C1\"}").andExpect(status().isCreated());
+        anlegen(vollstaendig("Pruefspieler C1")).andExpect(status().isCreated());
         Long id = spielerId("Pruefspieler C1");
 
         bearbeiten("{\"spielerId\":%d,\"name\":\"Pruefspieler C2\",\"skills\":{\"TORWART\":1}}"
@@ -408,28 +409,21 @@ class SpielerControllerTests {
 
     // ----------------------------------------------------------------------- Anlegen
 
-    /**
-     * Ohne Angabe gelten die Vorgaben der Stufe {@code MITTEL} aus {@code profil.gast_vorlage}
-     * - nicht Nullen. Ein Profil mit lauter Nullen bekaeme in der Teamgenerierung ein Team
-     * ohne jede Staerke zugeteilt, ohne dass jemand den Grund saehe.
-     */
+    /** Mit vollstaendigen Werten entsteht ein aktives Profil der Rolle USER. */
     @Test
-    void anlegenOhneSkillsSetztDieVorgabenAusStufeMittel() throws Exception {
-        String antwort = anlegen("{\"name\":\"Pruefspieler A\"}")
+    void anlegenMitVollstaendigenSkillsLegtDasProfilAn() throws Exception {
+        String antwort = anlegen(vollstaendig("Pruefspieler A", Map.of("ANGRIFF", 5)))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
 
         assertThat(antwort).contains("\"name\":\"Pruefspieler A\"").contains("\"spielerId\":");
 
         Long id = spielerId("Pruefspieler A");
-        Map<String, Object> skills = jdbc.queryForMap(
-                "SELECT count(*) AS anzahl, sum(wert) AS summe FROM profil.spieler_skill WHERE spieler_id = ?",
-                id);
+        Long anzahl = jdbc.queryForObject(
+                "SELECT count(*) FROM profil.spieler_skill WHERE spieler_id = ?", Long.class, id);
 
-        assertThat(skills.get("anzahl")).as("fuenf aktive Kategorien").isEqualTo(5L);
-        assertThat(((Number) skills.get("summe")).intValue())
-                .as("vier Kategorien auf 3, Torwart auf 0")
-                .isEqualTo(12);
+        assertThat(anzahl).as("ein Wert je aktiver Kategorie").isEqualTo(5L);
+        assertThat(skillwert(id, "ANGRIFF")).isEqualTo(5);
 
         Map<String, Object> profil = jdbc.queryForMap(
                 "SELECT rolle, aktiv FROM profil.spieler WHERE id = ?", id);
@@ -438,24 +432,82 @@ class SpielerControllerTests {
     }
 
     /**
-     * Eine teilweise Angabe genuegt: Genannte Kategorien gewinnen, der Rest bleibt auf der
-     * Vorgabe. Sonst muesste der Aufrufer alle Kategorien kennen.
+     * Der Fall aus der Vorgabe vom 30.08.2026: zwei von fuenf Kategorien.
+     *
+     * <p>Bis dahin entstand daraus ein Profil, dessen uebrige Werte die Vorgabe der Stufe
+     * {@code MITTEL} trugen - eine Behauptung ueber einen Spieler, die niemand aufgestellt hat.
+     * Die Meldung nennt die fehlenden Schluessel, damit der Aufrufer nicht raten muss.
      */
     @Test
-    void angegebeneSkillwerteUeberschreibenDieVorgabe() throws Exception {
-        anlegen("{\"name\":\"Pruefspieler B\",\"skills\":{\"ANGRIFF\":5,\"TORWART\":2}}")
+    void unvollstaendigeSkillsLiefern400() throws Exception {
+        String antwort = anlegen("{\"name\":\"Pruefspieler B\",\"skills\":{\"ANGRIFF\":4,\"SPIELSTAERKE\":2}}")
+                .andExpect(status().isBadRequest())
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(antwort).contains("\"code\":\"EINGABE_UNGUELTIG\"")
+                .contains("Unvollständige Eingabe")
+                .contains("LAUFSTAERKE")
+                .contains("TORWART")
+                .contains("VERTEIDIGUNG");
+
+        assertThat(existiert("Pruefspieler B")).as("kein halbes Profil zurueck").isFalse();
+    }
+
+    /**
+     * Fehlt das Feld ganz, gilt dasselbe - es gibt keine Vorgabewerte mehr.
+     *
+     * <p><b>Der Koerper steht hier absichtlich woertlich da und nicht ueber
+     * {@link #vollstaendig(String)}.</b> Genau das ist der Pruefgegenstand: ein Aufruf ohne
+     * {@code skills}. Wer ihn beim naechsten Umbau auf den Helfer umstellt, dreht die Aussage
+     * des Falls um - er wuerde dann {@code 201} liefern und trotzdem gruen aussehen, weil der
+     * Name des Tests nichts erzwingt.
+     */
+    @Test
+    void anlegenOhneSkillsLiefert400() throws Exception {
+        String antwort = anlegen("{\"name\":\"Pruefspieler B0\"}")
+                .andExpect(status().isBadRequest())
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(antwort).contains("Unvollständige Eingabe");
+        assertThat(existiert("Pruefspieler B0")).isFalse();
+    }
+
+    /** Und eine leere Karte ebenso: Sie ist eine Angabe, nur eben keine vollstaendige. */
+    @Test
+    void anlegenMitLeererSkillkarteLiefert400() throws Exception {
+        anlegen("{\"name\":\"Pruefspieler B00\",\"skills\":{}}")
+                .andExpect(status().isBadRequest());
+
+        assertThat(existiert("Pruefspieler B00")).isFalse();
+    }
+
+    /**
+     * Gemessen wird an den <b>aktiven</b> Kategorien, nicht an einer festen Zahl.
+     *
+     * <p>Wird eine Kategorie abgeschaltet, faellt sie aus der Pflicht - sonst liesse sich nach
+     * dem Abschalten kein Profil mehr anlegen, und der Fehler waere von einem Tippfehler nicht
+     * zu unterscheiden.
+     */
+    @Test
+    void abgeschalteteKategorieGehoertNichtZurPflicht() throws Exception {
+        jdbc.update("UPDATE profil.skill_kategorie SET aktiv = false WHERE schluessel = 'TORWART'");
+
+        anlegen("{\"name\":\"Pruefspieler B000\",\"skills\":"
+                + "{\"ANGRIFF\":3,\"VERTEIDIGUNG\":3,\"SPIELSTAERKE\":3,\"LAUFSTAERKE\":3}}")
                 .andExpect(status().isCreated());
 
-        Long id = spielerId("Pruefspieler B");
-        assertThat(skillwert(id, "ANGRIFF")).isEqualTo(5);
-        assertThat(skillwert(id, "TORWART")).isEqualTo(2);
-        assertThat(skillwert(id, "LAUFSTAERKE")).as("nicht genannt, also Vorgabe").isEqualTo(3);
+        Long anzahl = jdbc.queryForObject(
+                "SELECT count(*) FROM profil.spieler_skill WHERE spieler_id = ?",
+                Long.class, spielerId("Pruefspieler B000"));
+        assertThat(anzahl).as("vier statt fuenf").isEqualTo(4L);
     }
 
     /** Kleinschreibung ist zulaessig - ein 400 dafuer waere Schikane ohne Sicherheitsgewinn. */
     @Test
     void kategorienDuerfenKleingeschriebenWerden() throws Exception {
-        anlegen("{\"name\":\"Pruefspieler C\",\"skills\":{\"angriff\":6}}")
+        anlegen("{\"name\":\"Pruefspieler C\",\"skills\":"
+                + "{\"angriff\":6,\"verteidigung\":3,\"spielstaerke\":3,"
+                + "\"laufstaerke\":3,\"torwart\":1}}")
                 .andExpect(status().isCreated());
 
         assertThat(skillwert(spielerId("Pruefspieler C"), "ANGRIFF")).isEqualTo(6);
@@ -487,10 +539,19 @@ class SpielerControllerTests {
         assertThat(existiert("Pruefspieler E")).isFalse();
     }
 
-    /** Der Name ist eindeutig - unabhaengig von Gross- und Kleinschreibung. */
+    /**
+     * Der Name ist eindeutig - unabhaengig von Gross- und Kleinschreibung.
+     *
+     * <p><b>Der zweite Aufruf schickt bewusst gar keine Skillwerte und bekommt trotzdem
+     * {@code 409} und nicht {@code 400}.</b> Seit dem 30.08.2026 sind die Werte Pflicht; dass
+     * hier der Namenskonflikt gewinnt, liegt an der Reihenfolge im Dienst: Erst der Name, dann
+     * die Skills. Das ist beabsichtigt - ein belegter Name ist das erste Hindernis, und ihn erst
+     * nach einer vollstaendigen Skilleingabe zu melden waere unfreundlich. Wer die Reihenfolge
+     * umdreht, bricht diesen Fall.
+     */
     @Test
     void belegterNameLiefert409() throws Exception {
-        anlegen("{\"name\":\"Pruefspieler F\"}").andExpect(status().isCreated());
+        anlegen(vollstaendig("Pruefspieler F")).andExpect(status().isCreated());
 
         String antwort = anlegen("{\"name\":\"pruefspieler f\"}")
                 .andExpect(status().isConflict())
@@ -504,7 +565,7 @@ class SpielerControllerTests {
     /** Das Profil verschwindet, die Skillwerte gehen per ON DELETE CASCADE mit. */
     @Test
     void entfernenLoeschtProfilUndSkillwerte() throws Exception {
-        anlegen("{\"name\":\"Pruefspieler G\"}").andExpect(status().isCreated());
+        anlegen(vollstaendig("Pruefspieler G")).andExpect(status().isCreated());
         Long id = spielerId("Pruefspieler G");
 
         entfernen(id).andExpect(status().isNoContent());
@@ -524,7 +585,7 @@ class SpielerControllerTests {
      */
     @Test
     void entfernenRaeumtDieSitzungenDesProfilsMitAb() throws Exception {
-        anlegen("{\"name\":\"Pruefspieler H\"}").andExpect(status().isCreated());
+        anlegen(vollstaendig("Pruefspieler H")).andExpect(status().isCreated());
         Long id = spielerId("Pruefspieler H");
         String token = sessionService.anlegen(Stage.PROFILE_AUTHENTICATED, id, Rolle.USER);
 
@@ -540,7 +601,7 @@ class SpielerControllerTests {
      */
     @Test
     void entfernenEinesVerwendetenProfilsLiefert409() throws Exception {
-        anlegen("{\"name\":\"Pruefspieler I\"}").andExpect(status().isCreated());
+        anlegen(vollstaendig("Pruefspieler I")).andExpect(status().isCreated());
         Long id = spielerId("Pruefspieler I");
 
         jdbc.update("""
@@ -585,7 +646,7 @@ class SpielerControllerTests {
      */
     @Test
     void blockierenWiderruftDieSitzungenUndVerstecktDenNamen() throws Exception {
-        anlegen("{\"name\":\"Pruefspieler J\"}").andExpect(status().isCreated());
+        anlegen(vollstaendig("Pruefspieler J")).andExpect(status().isCreated());
         Long id = spielerId("Pruefspieler J");
         String token = sessionService.anlegen(Stage.PROFILE_AUTHENTICATED, id, Rolle.USER);
 
@@ -606,7 +667,7 @@ class SpielerControllerTests {
      */
     @Test
     void freigebenMachtDasProfilWiederWaehlbar() throws Exception {
-        anlegen("{\"name\":\"Pruefspieler K\"}").andExpect(status().isCreated());
+        anlegen(vollstaendig("Pruefspieler K")).andExpect(status().isCreated());
         Long id = spielerId("Pruefspieler K");
 
         blockieren(id, true).andExpect(status().isNoContent());
@@ -625,7 +686,7 @@ class SpielerControllerTests {
     /** Wiederholbar: Zweimal sperren aendert nichts und ist trotzdem kein Fehler. */
     @Test
     void zweimalSperrenIstFolgenlos() throws Exception {
-        anlegen("{\"name\":\"Pruefspieler L\"}").andExpect(status().isCreated());
+        anlegen(vollstaendig("Pruefspieler L")).andExpect(status().isCreated());
         Long id = spielerId("Pruefspieler L");
 
         blockieren(id, true).andExpect(status().isNoContent());
@@ -715,6 +776,37 @@ class SpielerControllerTests {
                 .findFirst()
                 .map(zeile -> (Boolean) zeile.get("belegt"))
                 .orElseThrow(() -> new AssertionError("Kein Profil mit der Id %d.".formatted(spielerId)));
+    }
+
+    /**
+     * Baut einen vollstaendigen Anfragekoerper fuer das Anlegen.
+     *
+     * <p>Seit dem 30.08.2026 verlangt {@code /admin/user/anlegen} einen Wert je aktiver
+     * Kategorie. Die meisten Faelle dieser Klasse brauchen nur <i>irgendein</i> Profil und
+     * interessieren sich nicht fuer die Werte - fuer die ist dieser Helfer da.
+     *
+     * <p><b>Die Kategorien kommen aus der Datenbank, nicht aus einer Liste im Test.</b> Sie sind
+     * datengetrieben; ein fest verdrahteter Helfer muesste bei jeder Datenaenderung mitgepflegt
+     * werden und pruefte dann nur noch sich selbst. Die Werte liegen bewusst in der Mitte des
+     * jeweiligen Bereichs - 3, fuer den engeren Torwart-Bereich 2.
+     *
+     * @param name         Anzeigename des Profils
+     * @param abweichungen Kategorien, die einen bestimmten Wert bekommen sollen
+     */
+    private String vollstaendig(String name, Map<String, Integer> abweichungen) {
+        String skills = jdbc.queryForList("""
+                SELECT schluessel FROM profil.skill_kategorie WHERE aktiv ORDER BY reihenfolge
+                """, String.class).stream()
+                .map(schluessel -> "\"%s\":%d".formatted(schluessel,
+                        abweichungen.getOrDefault(schluessel, "TORWART".equals(schluessel) ? 2 : 3)))
+                .collect(Collectors.joining(","));
+
+        return "{\"name\":\"%s\",\"skills\":{%s}}".formatted(name, skills);
+    }
+
+    /** Vollstaendiger Koerper ohne besondere Werte. */
+    private String vollstaendig(String name) {
+        return vollstaendig(name, Map.of());
     }
 
     private ResultActions anlegen(String koerper) throws Exception {
