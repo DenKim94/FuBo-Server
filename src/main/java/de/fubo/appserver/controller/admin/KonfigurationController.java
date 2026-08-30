@@ -56,7 +56,7 @@ public class KonfigurationController {
      * seine eigenen alten Werte saehe - und mit ihnen eine veraltete Version, die jeden weiteren
      * Speicherversuch in einen Konflikt liefe.
      *
-     * @return {@code 200} mit den zehn aenderbaren Feldern, {@code geaendertAm} und {@code version}
+     * @return {@code 200} mit den elf aenderbaren Feldern, {@code geaendertAm} und {@code version}
      */
     @GetMapping(value = "/config/lesen", version = ApiVersionConfig.VERSION)
     public ResponseEntity<Konfiguration> konfigurationLesen() {
@@ -66,14 +66,14 @@ public class KonfigurationController {
     /**
      * Schreibt die Konfiguration vollstaendig.
      *
-     * <p>Der Anfragekoerper enthaelt alle zehn aenderbaren Felder und die Version - Begruendung am
+     * <p>Der Anfragekoerper enthaelt alle elf aenderbaren Felder und die Version - Begruendung am
      * DTO {@link KonfigurationAendernRequest}.
      *
      * <p><b>Antwortet mit {@code 204} und nicht mit dem neuen Stand.</b> Der Client haette davon
      * nur die neue Version; alles Uebrige hat er gerade selbst geschickt. Wer weiterarbeiten will,
      * liest neu - das ist derselbe Aufruf, den er vor dem Speichern ohnehin gemacht hat.
      *
-     * @param anfrage alle zehn Felder samt der Version, auf der sie aufsetzen
+     * @param anfrage alle elf Felder samt der Version, auf der sie aufsetzen
      * @param request fuer die Ermittlung der Client-IP
      * @param sitzung aufrufende Adminsitzung; nie {@code null}, weil die Filterchain den Zugriff
      *                sonst gar nicht durchgelassen haette

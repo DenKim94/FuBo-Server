@@ -15,13 +15,14 @@ import java.time.OffsetDateTime;
  * (Singleton, per CHECK-Constraint {@code ck_app_config_singleton} erzwungen,
  * Seed in {@code V007}).
  *
- * <p>Vollstaendiges Abbild von {@code configs.app_config} aus {@code V004}. Gelesen wird
- * in S2 nur das Zwei-Timer-Modell; die uebrigen Felder werden ab S3 (Admin-CRUD),
- * S4 (Teilnehmerzahlen), S5 (Teamgenerator) und S7 (Hallenmodus) verwendet.
+ * <p>Vollstaendiges Abbild von {@code configs.app_config} aus {@code V004} und {@code V009}.
+ * Gelesen wird in S2 nur das Zwei-Timer-Modell; die uebrigen Felder werden ab S3 (Admin-CRUD),
+ * S4 (Teilnehmerzahlen), S5 (Teamgenerator samt {@code auswechselModus}) und S7 (Hallenmodus)
+ * verwendet.
  *
  * <p>Die Wertebereiche sind in der Datenbank per CHECK-Constraint abgesichert
  * ({@code ck_app_config_teilnehmer}, {@code ck_app_config_guests},
- * {@code ck_app_config_algo}, {@code ck_app_config_generator},
+ * {@code ck_app_config_algo}, {@code ck_app_config_auswechsel}, {@code ck_app_config_generator},
  * {@code ck_app_config_session}, {@code ck_app_config_vorlauf}). Auf zusaetzliche
  * Bean-Validation-Annotationen an der Entity wird bewusst verzichtet - die Regel stuende
  * dann an zwei Orten und koennte auseinanderlaufen. Die Eingabepruefung gehoert an die
@@ -59,6 +60,18 @@ public class AppConfig {
     @Enumerated(EnumType.STRING)
     @Column(name = "algorithm_type", nullable = false, length = 20)
     private AlgorithmType algorithmType;
+
+    /**
+     * Wer bei ungerader Teilnehmerzahl als Auswechselspieler gilt (A20b,
+     * Default {@link AuswechselModus#SCHWAECHSTER_UEBERZAHL}).
+     *
+     * <p>{@code length = 24} passt zu {@code VARCHAR(24)} aus {@code V009} und damit zum
+     * laengsten Enum-Namen mit einem Zeichen Luft. Weicht die Laenge ab, bricht der Start
+     * an {@code ddl-auto=validate} - das ist beabsichtigt.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "auswechsel_modus", nullable = false, length = 24)
+    private AuswechselModus auswechselModus;
 
     /** Kontingent an Generierungslaeufen je Nutzer und Spieltag (Default 1). */
     @Column(name = "anz_team_generator", nullable = false)
@@ -159,6 +172,14 @@ public class AppConfig {
 
     public void setAlgorithmType(AlgorithmType algorithmType) {
         this.algorithmType = algorithmType;
+    }
+
+    public AuswechselModus getAuswechselModus() {
+        return auswechselModus;
+    }
+
+    public void setAuswechselModus(AuswechselModus auswechselModus) {
+        this.auswechselModus = auswechselModus;
     }
 
     public short getAnzTeamGenerator() {

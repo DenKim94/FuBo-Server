@@ -1,6 +1,7 @@
 package de.fubo.appserver.dto.admin;
 
 import de.fubo.appserver.domain.config.AlgorithmType;
+import de.fubo.appserver.domain.config.AuswechselModus;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -12,7 +13,7 @@ import jakarta.validation.constraints.Size;
  * (A10, A11, A14, A15, A17, A23; S3 Abschnitt 5).
  *
  * <h2>Voll-Update, nicht feldweise</h2>
- * Der Koerper enthaelt <b>alle zehn</b> aenderbaren Felder; der Client laedt vorher
+ * Der Koerper enthaelt <b>alle elf</b> aenderbaren Felder; der Client laedt vorher
  * {@code /admin/config/lesen} und schickt das veraenderte Ganze zurueck. Weglassen ist keine
  * Angabe - anders als bei {@link SpielerBearbeitenRequest}, wo genau das der Vertrag ist.
  *
@@ -64,6 +65,7 @@ import jakarta.validation.constraints.Size;
  * @param maxTeilnehmer          Hoechstteilnehmerzahl (A11); nicht unter {@code minTeilnehmer}
  * @param anzGuests              Obergrenze gleichzeitig angemeldeter Gaeste (A17)
  * @param algorithmType          Verfahren der Teamgenerierung (A15)
+ * @param auswechselModus        Auswahl des Auswechselspielers bei ungerader Zahl (A20b)
  * @param anzTeamGenerator       Kontingent an Generierungslaeufen je Nutzer und Spieltag (A15)
  * @param sessionLeerlaufMinuten gleitendes Leerlauf-Fenster in Minuten (A14)
  * @param sessionMaximalStunden  harte Obergrenze der Sitzungsdauer in Stunden (A14)
@@ -88,6 +90,9 @@ public record KonfigurationAendernRequest(
 
         @NotNull(message = "Das Verfahren der Teamgenerierung fehlt.")
         AlgorithmType algorithmType,
+
+        @NotNull(message = "Die Auswahl des Auswechselspielers fehlt.")
+        AuswechselModus auswechselModus,
 
         @Min(value = 1, message = "Das Kontingent des Teamgenerators muss mindestens 1 betragen.")
         short anzTeamGenerator,

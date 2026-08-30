@@ -1,6 +1,7 @@
 package de.fubo.appserver.dto.admin;
 
 import de.fubo.appserver.domain.config.AlgorithmType;
+import de.fubo.appserver.domain.config.AuswechselModus;
 import de.fubo.appserver.domain.config.AppConfig;
 
 import java.time.OffsetDateTime;
@@ -8,8 +9,8 @@ import java.time.OffsetDateTime;
 /**
  * Antwortobjekt von {@code GET /api/v1/admin/config/lesen} (S3, Abschnitt 5).
  *
- * <h2>Zehn aenderbare Felder, zwei Zusatzangaben</h2>
- * Die ersten zehn Komponenten stehen in derselben Reihenfolge und unter denselben Namen wie in
+ * <h2>Elf aenderbare Felder, zwei Zusatzangaben</h2>
+ * Die ersten elf Komponenten stehen in derselben Reihenfolge und unter denselben Namen wie in
  * {@link KonfigurationAendernRequest}: Der Client laedt diese Antwort, aendert einzelne Werte im
  * Formular und schickt das veraenderte Ganze zurueck. Waeren die Namen verschieden, muesste er
  * eine Umbenennungstabelle pflegen.
@@ -34,6 +35,7 @@ import java.time.OffsetDateTime;
  * @param maxTeilnehmer          Hoechstteilnehmerzahl (A11)
  * @param anzGuests              Obergrenze gleichzeitig angemeldeter Gaeste (A17)
  * @param algorithmType          Verfahren der Teamgenerierung (A15)
+ * @param auswechselModus        Auswahl des Auswechselspielers bei ungerader Zahl (A20b)
  * @param anzTeamGenerator       Kontingent an Generierungslaeufen je Nutzer und Spieltag (A15)
  * @param sessionLeerlaufMinuten gleitendes Leerlauf-Fenster in Minuten (A14)
  * @param sessionMaximalStunden  harte Obergrenze der Sitzungsdauer in Stunden (A14)
@@ -47,6 +49,7 @@ public record Konfiguration(short minTeilnehmer,
                             short maxTeilnehmer,
                             short anzGuests,
                             AlgorithmType algorithmType,
+                            AuswechselModus auswechselModus,
                             short anzTeamGenerator,
                             short sessionLeerlaufMinuten,
                             short sessionMaximalStunden,
@@ -66,7 +69,7 @@ public record Konfiguration(short minTeilnehmer,
      *
      * <p><b>Ein Zwischentyp waere hier Ballast.</b> Bei den Profilen steht zwischen Abfrage und
      * DTO ein Wertobjekt, weil die Abfrage mehr liefert, als nach aussen darf. Die Konfiguration
-     * hat nichts Geheimes: Von vierzehn Spalten bleiben nur {@code id} und {@code geaendertVon}
+     * hat nichts Geheimes: Von fuenfzehn Spalten bleiben nur {@code id} und {@code geaendertVon}
      * draussen, und beide sind inhaltsleer statt vertraulich.
      */
     public static Konfiguration von(AppConfig konfiguration) {
@@ -75,6 +78,7 @@ public record Konfiguration(short minTeilnehmer,
                 konfiguration.getMaxTeilnehmer(),
                 konfiguration.getAnzGuests(),
                 konfiguration.getAlgorithmType(),
+                konfiguration.getAuswechselModus(),
                 konfiguration.getAnzTeamGenerator(),
                 konfiguration.getSessionLeerlaufMinuten(),
                 konfiguration.getSessionMaximalStunden(),

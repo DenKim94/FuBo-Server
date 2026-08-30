@@ -133,7 +133,7 @@ public class ConfigService {
      * diesem Grund <b>nicht</b> dort steht: Ein Admin soll die Nachvollziehbarkeit seiner eigenen
      * Aenderungen nicht per Formular verkuerzen koennen.
      *
-     * @param anfrage        alle zehn aenderbaren Felder samt der Version, auf der sie aufsetzen
+     * @param anfrage        alle elf aenderbaren Felder samt der Version, auf der sie aufsetzen
      * @param adminSpielerId Profil-Id des handelnden Admins, fuer das Protokoll
      * @param clientIp       Adresse des Aufrufers, fuer das Protokoll
      * @throws FachlicherFehler {@code 400 EINGABE_UNGUELTIG}, wenn die Maximalzahl unter der
@@ -168,6 +168,7 @@ public class ConfigService {
         bestand.setMaxTeilnehmer(anfrage.maxTeilnehmer());
         bestand.setAnzGuests(anfrage.anzGuests());
         bestand.setAlgorithmType(anfrage.algorithmType());
+        bestand.setAuswechselModus(anfrage.auswechselModus());
         bestand.setAnzTeamGenerator(anfrage.anzTeamGenerator());
         bestand.setSessionLeerlaufMinuten(anfrage.sessionLeerlaufMinuten());
         bestand.setSessionMaximalStunden(anfrage.sessionMaximalStunden());
@@ -222,7 +223,7 @@ public class ConfigService {
      * Stellt fest, welche Felder sich wirklich aendern - fuer das Audit-Log.
      *
      * <p><b>Hier lohnt sich der Vorher-Wert</b>, anders als bei den Skillwerten in
-     * {@code SpielerVerwaltungService}: Es sind hoechstens zehn Werte, sie gelten anwendungsweit,
+     * {@code SpielerVerwaltungService}: Es sind hoechstens elf Werte, sie gelten anwendungsweit,
      * und die Betriebsfrage "seit wann steht das Leerlauf-Fenster auf 60 Minuten" ist ohne den
      * alten Wert nicht zu beantworten.
      *
@@ -241,6 +242,7 @@ public class ConfigService {
         vergleiche(felder, "maxTeilnehmer", bestand.getMaxTeilnehmer(), anfrage.maxTeilnehmer());
         vergleiche(felder, "anzGuests", bestand.getAnzGuests(), anfrage.anzGuests());
         vergleiche(felder, "algorithmType", bestand.getAlgorithmType(), anfrage.algorithmType());
+        vergleiche(felder, "auswechselModus", bestand.getAuswechselModus(), anfrage.auswechselModus());
         vergleiche(felder, "anzTeamGenerator", bestand.getAnzTeamGenerator(), anfrage.anzTeamGenerator());
         vergleiche(felder, "sessionLeerlaufMinuten",
                 bestand.getSessionLeerlaufMinuten(), anfrage.sessionLeerlaufMinuten());

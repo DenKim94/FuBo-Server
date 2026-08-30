@@ -116,7 +116,7 @@ public enum AuditAktion {
      * Tabelle traegt genau eine Zeile.
      *
      * <p><b>Hier stehen alte <i>und</i> neue Werte in den Details</b>, anders als bei
-     * {@link #PROFIL_GEAENDERT}. Es sind hoechstens zehn Werte, sie gelten anwendungsweit, und
+     * {@link #PROFIL_GEAENDERT}. Es sind hoechstens elf Werte, sie gelten anwendungsweit, und
      * die Betriebsfrage "seit wann steht das Leerlauf-Fenster auf 60 Minuten" ist ohne den alten
      * Wert nicht zu beantworten. Ausgenommen ist {@code halleAbsageVorlage}: Ein mehrzeiliger
      * Text in jedem Eintrag blaehte die Tabelle auf, ohne etwas zu belegen - dort genuegt der
