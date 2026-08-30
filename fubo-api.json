@@ -4,7 +4,7 @@
     "title": "FuBo Server API",
     "version": "1.0.0",
     "summary": "Vertrag zwischen FuBo-Server und FuBo-Client.",
-    "description": "Maßgebliche Beschreibung der REST-Schnittstelle des FuBo-Servers.\n\n**Diese Datei ist die Quelle der Wahrheit für den Client-Track.** Server und Client liegen in getrennten Repositories; eine Vertragsänderung wird deshalb immer zuerst hier abgebildet und der Client anschließend nachgezogen.\n\n**Stand:** S2 (Auth und Session) und S2b vollständig. S2b umfasst die Zugangsdatenpflege (Passwort-Reset per E-Mail, Passwortänderung im angemeldeten Zustand, Wechsel der zentralen PIN) und das Anlegen, Entfernen und Sperren von Spielerprofilen durch den Admin. Profile, Termine, Teams und Ergebnisse folgen mit S3 bis S6 und stehen bewusst noch nicht hier – spekulative Endpunkte wären ein Vertrag über etwas, das es nicht gibt.\n\n### Versionierung\nJeder fachliche Endpunkt liegt unter `/api/{version}/<bereich>/<ressource>/<aktion>`. Die Version steht als Präfix an Segment-Index 1, die Aktion als eigenes Segment am Ende. Umgesetzt mit `ApiVersionConfigurer#usePathSegment` aus Spring Framework 7.\n\n- `/api/v1/...` und `/api/1/...` werden beide als Version 1 gelesen; nach außen wird durchgängig `v1` verwendet.\n- Eine unbekannte Version (`/api/v99/...`) liefert `400`.\n- Ein fehlendes Versionssegment liefert `404` – ohne das Segment passt der Pfad schlicht auf kein Mapping.\n\n### Authentifizierung\nOpakes Session-Cookie (`FUBO_SESSION`, `HttpOnly`, `Secure`, `SameSite=Lax`, kein Ablaufdatum). Das Frontend kann den Token weder lesen noch prüfen und muss das auch nicht: Die Validierung passiert ausschließlich serverseitig in der Filterchain. Alle Aufrufe erfolgen mit `credentials: 'include'`.\n\n**Die zentrale PIN besteht aus vier Ziffern.** Das Eingabefeld im Frontend darf darauf ausgelegt werden. `POST /auth/pin/pruefen` schreibt der Eingabe trotzdem **kein** Format vor – ein abweichender Bestandswert aus der Erstkonfiguration muss eingebbar bleiben, und eine Mindestlänge im Vertrag wäre eine Auskunft über das Format der echten PIN. Verbindlich ist das Format nur beim *Setzen* über `POST /admin/pin/aendern`.\n\nDer Login ist zweistufig und wird serverseitig erzwungen:\n1. `PIN_VERIFIED` – zentrale PIN geprüft, Identität noch offen.\n2. `PROFILE_AUTHENTICATED` – erst hier existiert eine Rolle. Es führen drei Wege dorthin: Namensauswahl (`USER`), Gast-Login (`GAST`) und Admin-Login mit Passwort (`ADMIN`).\n\n**Das Adminprofil ist ein technisches Konto.** Es steht nicht in der Namensliste, nimmt an keinem Termin teil und wird nie in ein Team eingeteilt; seine Skillwerte stehen auf 0. Der Admin meldet sich deshalb über `POST /api/v1/auth/admin/anmelden` mit seinem Passwort an – die Namensauswahl lehnt das Adminprofil auch dann ab, wenn seine Id bekannt ist.\n\nBei jedem Stufenwechsel und bei jeder Erneuerung wird der Token rotiert (Schutz vor Session Fixation). Die `session.id` bleibt dabei erhalten.\n\n### Sitzungsdauer (Zwei-Timer-Modell)\n`gueltigBis` ist ein gleitendes Leerlauf-Fenster (Vorgabe 15 Minuten) und wandert bei jedem Aufruf nach hinten. `absolutGueltigBis` ist eine harte Obergrenze (Vorgabe 1 Stunde) und wird nie verschoben – auch nicht durch `/auth/session/erneuern`.\n\nHintergrundaufrufe (etwa das Pollen des Belegtstatus) sollen das Leerlauf-Fenster **nicht** verlängern und senden dazu `X-FuBo-Kein-Refresh: true`. Ohne diesen Header würde „15 Minuten Inaktivität\" den offenen Browser-Tab messen statt den Nutzer.\n\n### CORS\nFrontend und API liegen auf Subdomains derselben registrierbaren Domain (`app.<domain>` / `api.<domain>`). Der Server führt eine Allowlist mit `allowCredentials=true`; erlaubte Anfrageheader sind `Content-Type` und `X-FuBo-Kein-Refresh`, freigegebener Antwortheader ist `Retry-After`.\n\n### Datenschutz\nSkillbewertungen verlassen den Server nie in Richtung USER oder GAST (Anforderung A12). Sie erscheinen **ausschliesslich in Antworten unterhalb von `/admin/`** – heute in `GET /admin/user/lesen` – und erreichen `USER` und `GAST` nie; die Teamgenerierung läuft vollständig serverseitig.\n\nBis S2b enthielt kein Antwortobjekt dieser Beschreibung Skillwerte. Seit S3 gilt die genauere Fassung oben: Der Prüfpunkt ist nicht mehr „kommen Skillwerte vor\", sondern „kommen sie ausserhalb von `/admin/` vor\".\n\n### Nicht enthalten\n`GET /actuator/health` bleibt bewusst unversioniert und ist kein Teil der fachlichen API. Der Endpunkt dient dem Container-Healthcheck und wird von nginx nach außen abgeschottet.",
+    "description": "Maßgebliche Beschreibung der REST-Schnittstelle des FuBo-Servers.\n\n**Diese Datei ist die Quelle der Wahrheit für den Client-Track.** Server und Client liegen in getrennten Repositories; eine Vertragsänderung wird deshalb immer zuerst hier abgebildet und der Client anschließend nachgezogen.\n\n**Stand:** S2 (Auth und Session), S2b (Zugangsdatenpflege und Spielerverwaltung) und S3 (Profile, Skills, Konfiguration, Gastverwaltung) vollständig; aus S4 die Pakete 1 bis 4 – Termine lesen, Einzeltermin anlegen, ändern und absagen sowie Terminserien.\n\n**Noch nicht enthalten und deshalb hier nicht beschrieben:** die Rückmeldung eines Spielers oder Gastes (`/termine/rueckmeldung`), die Skill-Stufe eines Gastes durch den Admin und die Teilnehmerliste samt Warteschlange – sie folgen mit den S4-Paketen 5 bis 7. Teams und Ergebnisse folgen mit S5 und S6. Spekulative Endpunkte wären ein Vertrag über etwas, das es nicht gibt.\n\n### Versionierung\nJeder fachliche Endpunkt liegt unter `/api/{version}/<bereich>/<ressource>/<aktion>`. Die Version steht als Präfix an Segment-Index 1, die Aktion als eigenes Segment am Ende. Umgesetzt mit `ApiVersionConfigurer#usePathSegment` aus Spring Framework 7.\n\n- `/api/v1/...` und `/api/1/...` werden beide als Version 1 gelesen; nach außen wird durchgängig `v1` verwendet.\n- Eine unbekannte Version (`/api/v99/...`) liefert `400`.\n- Ein fehlendes Versionssegment liefert `404` – ohne das Segment passt der Pfad schlicht auf kein Mapping.\n\n### Authentifizierung\nOpakes Session-Cookie (`FUBO_SESSION`, `HttpOnly`, `Secure`, `SameSite=Lax`, kein Ablaufdatum). Das Frontend kann den Token weder lesen noch prüfen und muss das auch nicht: Die Validierung passiert ausschließlich serverseitig in der Filterchain. Alle Aufrufe erfolgen mit `credentials: 'include'`.\n\n**Die zentrale PIN besteht aus vier Ziffern.** Das Eingabefeld im Frontend darf darauf ausgelegt werden. `POST /auth/pin/pruefen` schreibt der Eingabe trotzdem **kein** Format vor – ein abweichender Bestandswert aus der Erstkonfiguration muss eingebbar bleiben, und eine Mindestlänge im Vertrag wäre eine Auskunft über das Format der echten PIN. Verbindlich ist das Format nur beim *Setzen* über `POST /admin/pin/aendern`.\n\nDer Login ist zweistufig und wird serverseitig erzwungen:\n1. `PIN_VERIFIED` – zentrale PIN geprüft, Identität noch offen.\n2. `PROFILE_AUTHENTICATED` – erst hier existiert eine Rolle. Es führen drei Wege dorthin: Namensauswahl (`USER`), Gast-Login (`GAST`) und Admin-Login mit Passwort (`ADMIN`).\n\n**Das Adminprofil ist ein technisches Konto.** Es steht nicht in der Namensliste, nimmt an keinem Termin teil und wird nie in ein Team eingeteilt; seine Skillwerte stehen auf 0. Der Admin meldet sich deshalb über `POST /api/v1/auth/admin/anmelden` mit seinem Passwort an – die Namensauswahl lehnt das Adminprofil auch dann ab, wenn seine Id bekannt ist.\n\nBei jedem Stufenwechsel und bei jeder Erneuerung wird der Token rotiert (Schutz vor Session Fixation). Die `session.id` bleibt dabei erhalten.\n\n### Sitzungsdauer (Zwei-Timer-Modell)\n`gueltigBis` ist ein gleitendes Leerlauf-Fenster (Vorgabe 15 Minuten) und wandert bei jedem Aufruf nach hinten. `absolutGueltigBis` ist eine harte Obergrenze (Vorgabe 1 Stunde) und wird nie verschoben – auch nicht durch `/auth/session/erneuern`.\n\nHintergrundaufrufe (etwa das Pollen des Belegtstatus) sollen das Leerlauf-Fenster **nicht** verlängern und senden dazu `X-FuBo-Kein-Refresh: true`. Ohne diesen Header würde „15 Minuten Inaktivität\" den offenen Browser-Tab messen statt den Nutzer.\n\n### CORS\nFrontend und API liegen auf Subdomains derselben registrierbaren Domain (`app.<domain>` / `api.<domain>`). Der Server führt eine Allowlist mit `allowCredentials=true`; erlaubte Anfrageheader sind `Content-Type` und `X-FuBo-Kein-Refresh`, freigegebener Antwortheader ist `Retry-After`.\n\n### Datenschutz\nSkillbewertungen verlassen den Server nie in Richtung USER oder GAST (Anforderung A12). Sie erscheinen **ausschliesslich in Antworten unterhalb von `/admin/`** – heute in `GET /admin/user/lesen` – und erreichen `USER` und `GAST` nie; die Teamgenerierung läuft vollständig serverseitig.\n\nBis S2b enthielt kein Antwortobjekt dieser Beschreibung Skillwerte. Seit S3 gilt die genauere Fassung oben: Der Prüfpunkt ist nicht mehr „kommen Skillwerte vor\", sondern „kommen sie ausserhalb von `/admin/` vor\".\n\n### Nicht enthalten\n`GET /actuator/health` bleibt bewusst unversioniert und ist kein Teil der fachlichen API. Der Endpunkt dient dem Container-Healthcheck und wird von nginx nach außen abgeschottet.",
     "contact": {
       "name": "FuBo-Server",
       "url": "https://github.com/DenKim94/FuBo-Server"
@@ -58,6 +58,10 @@
     {
       "name": "Gastverwaltung",
       "description": "Die Gastplätze aus Sicht des Admins: Zustand ansehen und belegte Plätze freigeben (A17)."
+    },
+    {
+      "name": "Termine",
+      "description": "Termine lesen, anlegen, ändern und absagen sowie Terminserien (A7, A9, A18). **Der Tag beschreibt den Gegenstand, nicht die Rolle** – die Adminendpunkte stehen deshalb hier und nicht unter einem eigenen Verwaltungstag, wie schon bei „Spielerverwaltung“."
     }
   ],
   "security": [
@@ -1601,6 +1605,368 @@
           }
         }
       }
+    },
+    "/api/v1/termine/lesen": {
+      "get": {
+        "tags": [
+          "Termine"
+        ],
+        "operationId": "termineLesen",
+        "summary": "Terminliste lesen",
+        "description": "Liefert die Termine ab einem Stichtag in zeitlicher Reihenfolge – je Termin die Stammdaten, die Zahl der Zusagen und die eigene Rückmeldung. Erreichbar ab der Stufe `PROFILE_AUTHENTICATED`, **auch für Gäste**: Ein Gast, der Termine nicht sieht, kann nicht zusagen, und der Gast-Login aus A8 wäre ohne Zweck.\n\n**Vergangene Termine sind nicht enthalten**, solange sie nicht über `ab` angefragt werden. Das hält die Antwort klein und macht die Historie trotzdem erreichbar; S6 wird sie für die Ergebnisanzeige brauchen.\n\n**Abgesagte Termine bleiben in der Liste.** Der Spieler soll sehen, dass sein Training ausfällt, statt einen Termin vorzufinden, der spurlos verschwunden ist – `status` unterscheidet sie.",
+        "parameters": [
+          {
+            "name": "ab",
+            "in": "query",
+            "required": false,
+            "description": "Stichtag im Format `YYYY-MM-DD`; enthalten sind Termine **ab** diesem Tag einschließlich. Vorgabe ist der heutige Tag in der Zeitzone der Anwendung.",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Die Termine ab dem Stichtag, nach Datum und Uhrzeit sortiert. Leere Liste, wenn keiner passt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TerminUebersicht"
+                  }
+                },
+                "example": [
+                  {
+                    "terminId": 12,
+                    "serieId": null,
+                    "datum": "2026-09-01",
+                    "uhrzeit": "20:00:00",
+                    "ort": "Sporthalle Nord",
+                    "status": "GEPLANT",
+                    "teilnehmerVersion": 0,
+                    "zusagen": 0,
+                    "eigeneRueckmeldung": null
+                  }
+                ]
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/EingabeUngueltig"
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          }
+        }
+      }
+    },
+    "/api/v1/termine/{terminId}/lesen": {
+      "get": {
+        "tags": [
+          "Termine"
+        ],
+        "operationId": "terminLesen",
+        "summary": "Einzelnen Termin lesen",
+        "description": "Liefert einen Termin samt seiner `version`. Erreichbar ab der Stufe `PROFILE_AUTHENTICATED`, auch für Gäste.\n\n**Der Aufruf vor jeder Änderung:** `/admin/termin/aendern` verlangt die `version` aus dieser Antwort zurück.\n\n**Die Teilnehmerliste kommt mit S4-Paket 7 dazu** – als zusätzliches Feld, nicht als zweiter Endpunkt: Wer einen Termin öffnet, will die Teilnehmer sehen, und zwei Aufrufe für eine Ansicht sind zwei Gelegenheiten für einen inkonsistenten Stand.",
+        "parameters": [
+          {
+            "name": "terminId",
+            "in": "path",
+            "required": true,
+            "description": "Technischer Schlüssel des Termins.",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Der Termin samt `version`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TerminDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/EingabeUngueltig"
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "404": {
+            "description": "Kein Termin mit dieser Id (`INHALT_NICHT_GEFUNDEN`).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/termin/anlegen": {
+      "post": {
+        "tags": [
+          "Termine"
+        ],
+        "operationId": "terminAnlegen",
+        "summary": "Einzeltermin anlegen",
+        "description": "Legt einen einzelnen Termin an (A18). Verlangt die Rolle `ADMIN`.\n\n**`datum` und `uhrzeit` sind global eindeutig** (`uq_termin_zeit`): Es gibt keine zwei Termine zum selben Zeitpunkt, auch nicht an verschiedenen Orten. Ein zweiter Versuch liefert `409 TERMIN_BELEGT`.\n\n**Ein Termin in der Vergangenheit wird abgelehnt** – nicht weil die Datenbank es verböte, sondern weil niemand mehr zusagen könnte und der Termin als unveränderliche Leiche im Bestand läge.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TerminAnlegenRequest"
+              },
+              "example": {
+                "datum": "2026-09-01",
+                "uhrzeit": "20:00:00",
+                "ort": "Sporthalle Nord"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Angelegt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TerminAngelegt"
+                },
+                "example": {
+                  "terminId": 12,
+                  "datum": "2026-09-01",
+                  "uhrzeit": "20:00:00"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/EingabeUngueltig"
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
+          },
+          "409": {
+            "description": "`TERMIN_BELEGT` – zu diesem Zeitpunkt existiert bereits ein Termin. Die Bedingung ist global; der bestehende Termin kann an einem anderen Ort liegen.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/termin/aendern": {
+      "post": {
+        "tags": [
+          "Termine"
+        ],
+        "operationId": "terminAendern",
+        "summary": "Termin ändern",
+        "description": "Ändert Datum, Uhrzeit und Ort eines Termins. Verlangt die Rolle `ADMIN`.\n\n**Feldweise:** Weglassen heißt „nicht ändern“. `ort` lässt sich mit einer leeren Zeichenkette leeren.\n\n**Nur ein `GEPLANT`-Termin ist änderbar.** Ein abgesagter bleibt abgesagt – die Absage ist endgültig.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TerminAendernRequest"
+              },
+              "example": {
+                "terminId": 12,
+                "version": 0,
+                "uhrzeit": "20:30:00",
+                "ort": ""
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Übernommen. Kein Inhalt – der neue Stand kommt aus einem erneuten `/termine/{terminId}/lesen`."
+          },
+          "400": {
+            "$ref": "#/components/responses/EingabeUngueltig"
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
+          },
+          "404": {
+            "description": "Kein Termin mit dieser Id (`INHALT_NICHT_GEFUNDEN`).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Drei Fälle:\n\n- `DATEN_VERALTET` – die mitgeschickte `version` ist nicht mehr aktuell. Neu laden und erneut speichern; es wurde nichts geschrieben.\n- `TERMIN_BELEGT` – der neue Zeitpunkt ist schon vergeben.\n- `TERMIN_GESCHLOSSEN` – der Termin ist nicht mehr `GEPLANT`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/termin/absagen": {
+      "post": {
+        "tags": [
+          "Termine"
+        ],
+        "operationId": "terminAbsagen",
+        "summary": "Termin absagen",
+        "description": "Setzt einen Termin auf `ABGESAGT`. Verlangt die Rolle `ADMIN`.\n\n**Ein Termin wird nie gelöscht.** Fünf Tabellen hängen mit `ON DELETE CASCADE` an ihm – Teilnahmen, Generierungsläufe, Kontingente, Zuteilungen und ab S6 die Ergebnisse. Ein `DELETE` räumte lautlos den halben Spieltag ab. Dazu kommt: Ohne die Zeile wäre nicht mehr nachvollziehbar, wer zugesagt hatte.\n\n**Die Absage ist endgültig** – es gibt keinen Weg zurück nach `GEPLANT`. Das gehört in die Bestätigungsabfrage der Oberfläche.\n\n**Ohne `version`:** Der Vorgang setzt ein Feld auf einen festen Wert und ist wiederholbar in seiner Wirkung, nicht in seinem Ergebnis – ein zweiter Aufruf läuft in `409`. Es gibt hier nichts, was eine gleichzeitige Änderung überschreiben könnte.\n\n**Kein E-Mail-Versand an den Hallenbetreiber.** Das ist der Hallenmodus aus A23 und gehört zu S7.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TerminIdRequest"
+              },
+              "example": {
+                "terminId": 12
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Übernommen. Kein Inhalt. Die Teilnahmen bleiben stehen."
+          },
+          "400": {
+            "$ref": "#/components/responses/EingabeUngueltig"
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
+          },
+          "404": {
+            "description": "Kein Termin mit dieser Id (`INHALT_NICHT_GEFUNDEN`).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`TERMIN_GESCHLOSSEN` – der Termin ist bereits abgesagt oder abgeschlossen.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/serie/anlegen": {
+      "post": {
+        "tags": [
+          "Termine"
+        ],
+        "operationId": "serieAnlegen",
+        "summary": "Terminserie anlegen",
+        "description": "Legt eine befristete Serie an und erzeugt ihre Termine sofort als echte Zeilen (A18). Verlangt die Rolle `ADMIN`.\n\n**Kollidierende Zeitpunkte werden übersprungen, nicht abgelehnt.** Die Antwort nennt beide Listen; die Serie entsteht auch dann, wenn einzelne Termine fehlen.\n\n**Höchstens 52 Termine je Serie** – ein Jahr wöchentlich. Die Grenze fängt den Tippfehler im Enddatum ab („2036“ statt „2026“ erzeugte über fünfhundert Termine, die einzeln wieder abzusagen wären). Überschreitet die Rechnung sie, antwortet der Server `400` und nennt die errechnete Zahl.\n\n**Eine Serie ist nach dem Anlegen nicht mehr änderbar** – und nicht löschbar, solange Termine an ihr hängen.\n\n**Drei Gründe für `400`, die kein Feld allein erklärt:** das Enddatum liegt nicht nach dem Startdatum (`ck_terminserie_zeitraum` ist strikt); in den Zeitraum fällt kein einziger passender Wochentag – eine Serie ohne Termine entsteht nicht; oder der erste Termin liegt bereits in der Vergangenheit. Der letzte Punkt ist dieselbe Regel wie beim Einzeltermin: Zu einem Termin, dessen Beginn vorbei ist, kann niemand mehr zusagen.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SerieAnlegenRequest"
+              },
+              "example": {
+                "titel": "Training Dienstag",
+                "wochentag": 2,
+                "uhrzeit": "20:00:00",
+                "startdatum": "2026-09-01",
+                "enddatum": "2026-09-30",
+                "ort": "Sporthalle Nord"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Die Serie samt der erzeugten und der übersprungenen Termine.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SerieAngelegt"
+                },
+                "example": {
+                  "serieId": 3,
+                  "titel": "Training Dienstag",
+                  "angelegteTermine": [
+                    {
+                      "terminId": 21,
+                      "datum": "2026-09-01",
+                      "uhrzeit": "20:00:00"
+                    },
+                    {
+                      "terminId": 22,
+                      "datum": "2026-09-15",
+                      "uhrzeit": "20:00:00"
+                    },
+                    {
+                      "terminId": 23,
+                      "datum": "2026-09-22",
+                      "uhrzeit": "20:00:00"
+                    },
+                    {
+                      "terminId": 24,
+                      "datum": "2026-09-29",
+                      "uhrzeit": "20:00:00"
+                    }
+                  ],
+                  "uebersprungeneTermine": [
+                    "2026-09-08"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/EingabeUngueltig"
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1763,7 +2129,9 @@
           "PROFIL_GESCHUETZT",
           "PROFIL_IN_VERWENDUNG",
           "DATEN_VERALTET",
-          "INTERNER_FEHLER"
+          "INTERNER_FEHLER",
+          "TERMIN_BELEGT",
+          "TERMIN_GESCHLOSSEN"
         ]
       },
       "Stage": {
@@ -2499,6 +2867,298 @@
             "description": "`true` gibt **alle** belegten Plätze frei. Nur `true` ist zulässig; `false` ist keine Angabe und liefert `400`."
           }
         }
+      },
+      "TerminStatus": {
+        "type": "string",
+        "description": "Zustand eines Termins (`spieltag.termin.status`).\n\n- `GEPLANT` – der Regelfall. Nur in diesem Zustand lässt sich der Termin ändern oder absagen, und nur hier nimmt er ab S4-Paket 5 Rückmeldungen an.\n- `ABGESAGT` – **endgültig**. Es gibt keinen Weg zurück nach `GEPLANT`: Die Zusagen dazwischen sind unbrauchbar geworden, weil niemand weiß, wer von der Absage schon erfahren hat. Wer den Termin doch braucht, legt ihn neu an – und muss den abgesagten vorher verschieben, weil `datum` und `uhrzeit` global nur einmal vorkommen dürfen.\n- `ABGESCHLOSSEN` – vorgesehen für die Ergebniserfassung in S6. **Heute setzt kein Endpunkt diesen Wert.**",
+        "enum": [
+          "GEPLANT",
+          "ABGESAGT",
+          "ABGESCHLOSSEN"
+        ]
+      },
+      "TerminUebersicht": {
+        "type": "object",
+        "description": "Ein Termin in der Listenansicht – genug für die Kachel eines Dashboards, ohne dass der Client je Termin einen zweiten Aufruf braucht (A9).",
+        "properties": {
+          "terminId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Technischer Schlüssel."
+          },
+          "serieId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Serie, aus der dieser Termin stammt; `null` bei einem Einzeltermin."
+          },
+          "datum": {
+            "type": "string",
+            "format": "date",
+            "description": "Datum in lokaler Zeit."
+          },
+          "uhrzeit": {
+            "type": "string",
+            "description": "Uhrzeit in lokaler Zeit, Format `HH:MM:SS` (Sekunden duerfen entfallen). Die Spalte ist `TIME` ohne Zeitzone – die Anwendung rechnet in der Zeitzone, die `fubo.zeitzone` benennt (Vorgabe `Europe/Berlin`).",
+            "examples": [
+              "20:00:00"
+            ]
+          },
+          "ort": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 160,
+            "description": "Spielort; optional (A18)."
+          },
+          "status": {
+            "$ref": "#/components/schemas/TerminStatus"
+          },
+          "teilnehmerVersion": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Zähler aller Teilnehmeränderungen dieses Termins (A15). Er steigt ab S4-Paket 5 bei jeder Zu- und Absage und bei jeder Änderung einer Skill-Stufe. **In S4 wird er nur geführt, nicht ausgewertet** – ab S5 setzt er das Generierungskontingent zurück und kennzeichnet eine Teameinteilung als veraltet."
+          },
+          "zusagen": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Anzahl der Zusagen. Absagen zählen nicht mit. **Solange die Rückmeldung (S4-Paket 5) fehlt, steht hier immer `0`.**"
+          },
+          "eigeneRueckmeldung": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Die eigene Rückmeldung des Aufrufers – **dreiwertig**: `true` zugesagt, `false` abgesagt, `null` noch nicht gemeldet. Ein `if (eigeneRueckmeldung)` behandelt „noch nicht gemeldet“ wie eine Absage; das Frontend zeigt drei Zustände, nicht zwei.\n\nBei einer Gastsitzung entscheidet der Gastname, bei einer Spielersitzung die Profil-Id. **Solange S4-Paket 5 fehlt, steht hier immer `null`.**"
+          }
+        },
+        "required": [
+          "terminId",
+          "datum",
+          "uhrzeit",
+          "status",
+          "teilnehmerVersion",
+          "zusagen"
+        ]
+      },
+      "TerminDetails": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/TerminUebersicht"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "integer",
+                "format": "int64",
+                "description": "Stand des Datensatzes für das Optimistic Locking. `/admin/termin/aendern` verlangt diesen Wert zurück und lehnt einen veralteten mit `409 DATEN_VERALTET` ab. Der Wert ist kein Geheimnis: Er zählt Schreibvorgänge und verrät nichts über ihren Inhalt."
+              }
+            },
+            "required": [
+              "version"
+            ]
+          }
+        ],
+        "description": "Die Einzelansicht eines Termins: dieselben Felder wie in der Liste, dazu die `version`.\n\n**Die Teilnehmerliste fehlt hier noch.** Sie gehört zu S4-Paket 7 und kommt als zusätzliches Feld `teilnehmer` dazu – additiv und damit **nicht brechend**. Solange keine Teilnahmen existieren, wäre sie ohnehin leer."
+      },
+      "TerminAnlegenRequest": {
+        "type": "object",
+        "description": "Anfragekörper von `/admin/termin/anlegen`.",
+        "properties": {
+          "datum": {
+            "type": "string",
+            "format": "date",
+            "description": "Datum des Termins. Zusammen mit `uhrzeit` **nicht in der Vergangenheit** – geprüft wird der Zeitpunkt, nicht nur der Tag, weil ein Termin, der heute morgen war, keine Rückmeldung mehr annehmen könnte."
+          },
+          "uhrzeit": {
+            "type": "string",
+            "description": "Uhrzeit in lokaler Zeit, Format `HH:MM:SS` (Sekunden duerfen entfallen). Die Spalte ist `TIME` ohne Zeitzone – die Anwendung rechnet in der Zeitzone, die `fubo.zeitzone` benennt (Vorgabe `Europe/Berlin`).",
+            "examples": [
+              "20:00:00"
+            ]
+          },
+          "ort": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 160,
+            "description": "Spielort; optional (A18). Randleerzeichen entfernt der Server, eine leere Zeichenkette wird zu `null`."
+          }
+        },
+        "required": [
+          "datum",
+          "uhrzeit"
+        ]
+      },
+      "TerminAngelegt": {
+        "type": "object",
+        "description": "Ein neu angelegter Termin. Die Id ist der einzige Wert, den der Aufrufer noch nicht kennt – ohne sie müsste er die Terminliste erneut lesen, um den eben angelegten Termin ändern oder absagen zu können.",
+        "properties": {
+          "terminId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "datum": {
+            "type": "string",
+            "format": "date"
+          },
+          "uhrzeit": {
+            "type": "string",
+            "examples": [
+              "20:00:00"
+            ]
+          }
+        },
+        "required": [
+          "terminId",
+          "datum",
+          "uhrzeit"
+        ]
+      },
+      "TerminAendernRequest": {
+        "type": "object",
+        "description": "Anfragekörper von `/admin/termin/aendern`.\n\n**Feldweise, kein Voll-Update** – anders als bei der Konfiguration. Der Grund für das Voll-Update dort ist die Unterscheidbarkeit von `null` und „nicht angegeben“ bei löschbaren Feldern. Hier gibt es nur ein solches Feld, `ort`, und das lässt sich mit einer leeren Zeichenkette sauber leeren. Weggelassene Felder bleiben unverändert; ein Aufruf ohne jede Änderung wird mit `400` abgelehnt.",
+        "properties": {
+          "terminId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Zu ändernder Termin."
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Stand aus `/termine/{terminId}/lesen`. Weicht er ab, antwortet der Server `409 DATEN_VERALTET` und schreibt nichts."
+          },
+          "datum": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date",
+            "description": "Neues Datum oder `null` für „unverändert“."
+          },
+          "uhrzeit": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Neue Uhrzeit oder `null` für „unverändert“. Uhrzeit in lokaler Zeit, Format `HH:MM:SS` (Sekunden duerfen entfallen). Die Spalte ist `TIME` ohne Zeitzone – die Anwendung rechnet in der Zeitzone, die `fubo.zeitzone` benennt (Vorgabe `Europe/Berlin`)."
+          },
+          "ort": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 160,
+            "description": "Neuer Ort. **Drei Bedeutungen:** ein Text setzt ihn, `\"\"` leert ihn, `null` beziehungsweise ein fehlendes Feld lässt ihn unverändert."
+          }
+        },
+        "required": [
+          "terminId",
+          "version"
+        ]
+      },
+      "TerminIdRequest": {
+        "type": "object",
+        "description": "Anfragekörper von `/admin/termin/absagen`. Die Id steht im Körper und nicht im Pfad, weil das Aktionssegment am Ende des Pfades steht – dieselbe Aufteilung wie bei `/admin/user/entfernen`.",
+        "properties": {
+          "terminId": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "terminId"
+        ]
+      },
+      "SerieAnlegenRequest": {
+        "type": "object",
+        "description": "Anfragekörper von `/admin/serie/anlegen` (A18).\n\n**Der Zeitraum ist strikt:** `enddatum` muss **größer** als `startdatum` sein (`ck_terminserie_zeitraum`). Eine Serie mit nur einem Termin ist damit unmöglich; wer einen einzelnen Termin will, nimmt `/admin/termin/anlegen`.",
+        "properties": {
+          "titel": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "Bezeichnung der Serie, etwa „Training Dienstag“. Pflichtfeld – die Spalte ist `NOT NULL`."
+          },
+          "wochentag": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 1,
+            "maximum": 7,
+            "description": "Wochentag nach ISO-8601: 1 = Montag … 7 = Sonntag."
+          },
+          "uhrzeit": {
+            "type": "string",
+            "description": "Uhrzeit in lokaler Zeit, Format `HH:MM:SS` (Sekunden duerfen entfallen). Die Spalte ist `TIME` ohne Zeitzone – die Anwendung rechnet in der Zeitzone, die `fubo.zeitzone` benennt (Vorgabe `Europe/Berlin`).",
+            "examples": [
+              "20:00:00"
+            ]
+          },
+          "startdatum": {
+            "type": "string",
+            "format": "date",
+            "description": "Beginn des Zeitraums. **Fällt er selbst auf den gewünschten Wochentag, gehört dieser Tag zur Serie.**"
+          },
+          "enddatum": {
+            "type": "string",
+            "format": "date",
+            "description": "Ende des Zeitraums, einschließlich. Muss nach `startdatum` liegen."
+          },
+          "ort": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 160,
+            "description": "Ort aller erzeugten Termine; optional."
+          }
+        },
+        "required": [
+          "titel",
+          "wochentag",
+          "uhrzeit",
+          "startdatum",
+          "enddatum"
+        ]
+      },
+      "SerieAngelegt": {
+        "type": "object",
+        "description": "Ergebnis von `/admin/serie/anlegen`.\n\n**Die Termine entstehen sofort als echte Zeilen**, nicht als Regel: `teilnahme.termin_id` ist ein Fremdschlüssel, und ein virtueller Termin hätte keine Id, an der eine Zusage hängen könnte.\n\n**Preis, den der Client kennen muss:** Eine Serie ist nach dem Anlegen nicht mehr änderbar. Sie ist eine Erzeugungsregel, kein lebender Datensatz – wer den Ort einer ganzen Serie ändern will, fasst jeden Termin einzeln an.",
+        "properties": {
+          "serieId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "titel": {
+            "type": "string"
+          },
+          "angelegteTermine": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TerminAngelegt"
+            },
+            "description": "Die erzeugten Termine in zeitlicher Reihenfolge."
+          },
+          "uebersprungeneTermine": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "date"
+            },
+            "description": "Zeitpunkte, an denen bereits ein Termin stand. **Sie lassen die Serie nicht scheitern, sondern werden übersprungen und hier namentlich genannt** – bei einer Zwölf-Wochen-Serie genügte sonst ein einziger bestehender Einzeltermin, um das Anlegen abzulehnen. Die Oberfläche sollte diese Liste anzeigen; sonst fällt eine unvollständige Serie erst beim Nachzählen auf."
+          }
+        },
+        "required": [
+          "serieId",
+          "titel",
+          "angelegteTermine",
+          "uebersprungeneTermine"
+        ]
       }
     }
   }
