@@ -9,6 +9,8 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Map;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -76,6 +78,33 @@ class MigrationTests {
 
         assertThatThrownBy(() -> jdbc.update(
                 "INSERT INTO profil.spieler_skill (spieler_id, kategorie, wert) VALUES (?, 'TORWART', 5)", id))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    /**
+     * {@code V011} legt die Bilanz eines Spielers an: drei Zaehler, alle bei null (A21).
+     *
+     * <p>Geprueft wird der Startwert <b>und</b> die Untergrenze. Der Startwert, weil ein
+     * {@code ALTER TABLE ... NOT NULL} ohne {@code DEFAULT} an den bestehenden Zeilen
+     * gescheitert waere - und die Demodaten legen welche an. Die Untergrenze, weil ein
+     * negativer Zaehler nur durch einen Fehler entstehen kann: Die Umsetzung in S6 berechnet
+     * die Werte neu, statt sie fortzuschreiben, ein Unterlauf ist damit ausgeschlossen. Der
+     * Constraint ist der Riegel gegen eine spaetere Umstellung auf {@code +1}/{@code -1},
+     * nicht gegen den geplanten Weg.
+     */
+    @Test
+    void bilanzStartetBeiNullUndBleibtNichtNegativ() {
+        Long id = jdbc.queryForObject(
+                "INSERT INTO profil.spieler (name) VALUES ('Testspieler D') RETURNING id", Long.class);
+
+        Map<String, Object> bilanz = jdbc.queryForMap("""
+                SELECT anz_siege, anz_niederlagen, anz_unentschieden
+                  FROM profil.spieler WHERE id = ?
+                """, id);
+        assertThat(bilanz.values()).containsOnly(0);
+
+        assertThatThrownBy(() -> jdbc.update(
+                "UPDATE profil.spieler SET anz_siege = -1 WHERE id = ?", id))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
