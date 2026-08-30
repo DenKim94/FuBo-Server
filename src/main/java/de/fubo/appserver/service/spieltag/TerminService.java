@@ -6,11 +6,15 @@ import de.fubo.appserver.domain.audit.AuditAktion;
 import de.fubo.appserver.domain.auth.AktiveSitzung;
 import de.fubo.appserver.domain.spieltag.Termin;
 import de.fubo.appserver.domain.spieltag.TerminEintrag;
+import de.fubo.appserver.domain.spieltag.TerminMitTeilnehmern;
 import de.fubo.appserver.domain.spieltag.TerminStatus;
 import de.fubo.appserver.dto.spieltag.TerminAendernRequest;
 import de.fubo.appserver.dto.spieltag.TerminAngelegt;
 import de.fubo.appserver.repository.spieltag.TerminRepository;
 import de.fubo.appserver.service.audit.AuditService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,15 +47,33 @@ import java.util.Objects;
 @Service
 public class TerminService {
 
+    private static final Logger LOG = LoggerFactory.getLogger(TerminService.class);
+
     /** Betroffene Entitaet im Audit-Log. */
     private static final String ENTITAET = "termin";
 
+    /**
+     * Frist bis zum automatischen Abschluss eines Termins (A18, Ergaenzung vom 30.08.2026).
+     *
+     * <p><b>Eine Konstante und kein Konfigurationsfeld.</b> A18 legt die 30 Minuten als
+     * Anforderung fest, nicht als Betriebsgroesse - und ein zwoelftes Feld im Voll-Update der
+     * Konfiguration waere fuer den Client-Track eine brechende Vertragsaenderung. Auch der
+     * Test braucht sie nicht verstellbar: Er legt den Termin einfach weit genug in die
+     * Vergangenheit.
+     */
+    private static final int ABSCHLUSS_NACH_MINUTEN = 30;
+
     private final TerminRepository terminRepository;
+    private final TeilnahmeService teilnahmeService;
     private final AuditService auditService;
     private final Clock uhr;
 
-    public TerminService(TerminRepository terminRepository, AuditService auditService, Clock uhr) {
+    public TerminService(TerminRepository terminRepository,
+                         TeilnahmeService teilnahmeService,
+                         AuditService auditService,
+                         Clock uhr) {
         this.terminRepository = terminRepository;
+        this.teilnahmeService = teilnahmeService;
         this.auditService = auditService;
         this.uhr = uhr;
     }
@@ -80,18 +102,27 @@ public class TerminService {
     }
 
     /**
-     * Liefert einen einzelnen Termin (S4, Abschnitt 2.1).
+     * Liefert einen einzelnen Termin samt seiner Teilnehmer (S4, Abschnitte 2.1 und 7.1).
+     *
+     * <p><b>Beide Abfragen in einer Transaktion.</b> Die Teilnehmerliste bekommt keinen
+     * eigenen Endpunkt: Wer einen Termin oeffnet, will die Teilnehmer sehen, und zwei
+     * Aufrufe fuer eine Ansicht sind zwei Gelegenheiten fuer einen inkonsistenten Stand -
+     * zwischen ihnen kann jemand zusagen, und die Zahl im Kopf passte dann nicht mehr zur
+     * Liste darunter.
      *
      * @param terminId gesuchter Termin
      * @param sitzung  aufrufende Sitzung
-     * @return der Termin samt Zusagenzahl, eigener Rueckmeldung und Version
+     * @return Termin und Teilnehmer; die Version ist im Termin enthalten
      * @throws FachlicherFehler {@code 404 INHALT_NICHT_GEFUNDEN}, wenn es die Id nicht gibt
      */
     @Transactional(readOnly = true)
-    public TerminEintrag einzelnLesen(Long terminId, AktiveSitzung sitzung) {
-        return terminRepository.findeEintrag(terminId, sitzung.spielerId(), sitzung.gastName())
+    public TerminMitTeilnehmern einzelnLesen(Long terminId, AktiveSitzung sitzung) {
+        TerminEintrag termin = terminRepository
+                .findeEintrag(terminId, sitzung.spielerId(), sitzung.gastName())
                 .orElseThrow(() -> new FachlicherFehler(Fehlercode.INHALT_NICHT_GEFUNDEN,
                         "Es gibt keinen Termin mit dieser Id."));
+
+        return new TerminMitTeilnehmern(termin, teilnahmeService.uebersicht(terminId));
     }
 
     // ------------------------------------------------------------------ Anlegen
@@ -197,11 +228,16 @@ public class TerminService {
             }
         }
 
+        TerminStatus neuerStatus = pruefeZielstatus(anfrage.status());
+
         // Vor dem Schreiben vergleichen - danach steht der alte Wert nirgends mehr.
         Map<String, Object> geaenderteFelder = unterschiede(termin, anfrage, neuesDatum, neueUhrzeit);
 
         termin.setDatum(neuesDatum);
         termin.setUhrzeit(neueUhrzeit);
+        if (neuerStatus != null) {
+            termin.setStatus(neuerStatus);
+        }
         if (anfrage.ort() != null) {
             // Getrimmt wird hier und nicht im DTO: Dort waere die leere Angabe zu null
             // geworden und damit nicht mehr von "nicht angegeben" zu unterscheiden.
@@ -213,7 +249,15 @@ public class TerminService {
         // erst beim Commit, wo er ausserhalb dieser Transaktion laege.
         terminRepository.saveAndFlush(termin);
 
-        auditService.protokolliere(adminSpielerId, clientIp, AuditAktion.TERMIN_GEAENDERT,
+        // Eine Absage bleibt eine Absage, auch wenn sie ueber das Bearbeitungsformular kommt:
+        // Wer das Protokoll nach abgesagten Terminen durchsieht, soll sie dort finden und
+        // nicht zwischen Ortsaenderungen. Die uebrigen geaenderten Felder stehen in
+        // denselben Details - es ist ein Vorgang, also ein Eintrag.
+        AuditAktion aktion = neuerStatus == TerminStatus.ABGESAGT
+                ? AuditAktion.TERMIN_ABGESAGT
+                : AuditAktion.TERMIN_GEAENDERT;
+
+        auditService.protokolliere(adminSpielerId, clientIp, aktion,
                 ENTITAET, termin.getId(), geaenderteFelder);
     }
 
@@ -272,7 +316,157 @@ public class TerminService {
                         "uhrzeit", termin.getUhrzeit().toString()));
     }
 
+    // ------------------------------------------------------------------ Entfernen
+
+    /**
+     * Entfernt einen Termin endgueltig (A19, Ergaenzung vom 30.08.2026).
+     *
+     * <h2>Nur, solange nichts darauf verweist</h2>
+     * Fuenf Tabellen haengen mit {@code ON DELETE CASCADE} am Termin. Ein ungepruefter
+     * {@code DELETE} raeumte lautlos den halben Spieltag ab - einschliesslich der
+     * Rueckmeldungen, die der einzige Beleg dafuer sind, wer zugesagt hatte, und
+     * einschliesslich der Ergebnisse aus S6. Die Kaskaden sind richtig gesetzt; nur darf sie
+     * niemand ausloesen. Liegt etwas vor, antwortet der Endpunkt
+     * {@code 409 TERMIN_IN_VERWENDUNG} und verweist auf das Absagen - dasselbe Muster wie
+     * bei {@code PROFIL_IN_VERWENDUNG} aus S2b.
+     *
+     * <h2>Wofuer der Vorgang gedacht ist</h2>
+     * Fuer den versehentlich angelegten Termin. <b>Er ist zugleich der einzige Weg zurueck
+     * aus einer versehentlichen Absage:</b> Ein abgesagter Termin belegt seinen Zeitpunkt
+     * weiter, denn {@code uq_termin_zeit} gilt fuer ihn genauso - ohne das Entfernen bliebe
+     * der Zeitpunkt dauerhaft gesperrt. Entfernen und neu anlegen ist deshalb der
+     * vorgesehene Ablauf, und er funktioniert genau dann, wenn noch niemand geantwortet hat.
+     *
+     * <p><b>Der Protokolleintrag ist der einzige Rest.</b> Anders als beim Absagen bleibt
+     * keine Zeile zurueck; die Details nennen deshalb Datum, Uhrzeit und Status.
+     *
+     * @param terminId       zu entfernender Termin
+     * @param adminSpielerId Profil-Id des handelnden Admins, fuer das Protokoll
+     * @param clientIp       Adresse des Aufrufers, fuer das Protokoll
+     * @throws FachlicherFehler {@code 404}, wenn es die Id nicht gibt;
+     *                          {@code 409 TERMIN_IN_VERWENDUNG}, wenn Daten darauf verweisen
+     */
+    @Transactional
+    public void entfernen(Long terminId, Long adminSpielerId, String clientIp) {
+
+        Termin termin = terminRepository.findById(terminId)
+                .orElseThrow(() -> new FachlicherFehler(Fehlercode.INHALT_NICHT_GEFUNDEN,
+                        "Es gibt keinen Termin mit dieser Id."));
+
+        if (terminRepository.istReferenziert(terminId)) {
+            throw new FachlicherFehler(Fehlercode.TERMIN_IN_VERWENDUNG);
+        }
+
+        // Vor dem Loeschen lesen: Danach gibt es die Zeile nicht mehr, und die Entity ist
+        // nach dem Flush ohnehin geloest.
+        Map<String, Object> details = Map.of(
+                "datum", termin.getDatum().toString(),
+                "uhrzeit", termin.getUhrzeit().toString(),
+                "status", termin.getStatus().name());
+
+        terminRepository.delete(termin);
+        terminRepository.flush();
+
+        auditService.protokolliere(adminSpielerId, clientIp, AuditAktion.TERMIN_ENTFERNT,
+                ENTITAET, terminId, details);
+    }
+
+    // ------------------------------------------------------------------ Automatischer Abschluss
+
+    /**
+     * Schliesst geplante Termine ab, deren Beginn {@value #ABSCHLUSS_NACH_MINUTEN} Minuten
+     * zurueckliegt (A18, Ergaenzung vom 30.08.2026).
+     *
+     * <h2>Warum ein geplanter Auftrag und keine Ableitung beim Lesen</h2>
+     * Der Status ist eine gespeicherte Spalte, kein abgeleiteter Wert - S6 haengt daran
+     * ({@code ergebnis} gehoert zu einem abgeschlossenen Termin), und ab S5 auch die Frage,
+     * ob eine Teameinteilung noch aktuell ist. Ein beim Lesen berechneter Status stuende
+     * nirgends, wo eine Fremdschluesselbeziehung ihn sehen kann.
+     *
+     * <h2>Der Auftrag ist eine Aufraeumung, kein Torwaechter</h2>
+     * <b>Keine fachliche Regel haengt an seiner Puenktlichkeit.</b> Ob noch zugesagt werden
+     * darf, entscheidet die Uhrzeit des Termins und nicht sein Status (A7) - zwischen Beginn
+     * und Abschluss liegen 30 Minuten, in denen der Status noch {@code GEPLANT} ist und
+     * trotzdem niemand mehr melden kann. Deshalb genuegt ein Lauf alle fuenf Minuten; der
+     * Uebergang findet zwischen 30 und 35 Minuten nach Beginn statt, und das ist fuer eine
+     * Statusanzeige unsichtbar. Ein Lauf je Minute waere fuer eine Beschriftung
+     * unverhaeltnismaessig.
+     *
+     * <p><b>Nur aus {@code GEPLANT} heraus</b> - ein abgesagter Termin hat nicht
+     * stattgefunden, und ein Abschluss behauptete das Gegenteil.
+     *
+     * <p><b>Kein Eintrag im Audit-Log.</b> Dort stehen Adminaktionen; dies ist eine
+     * Systemhandlung ohne Handelnden, wie der Aufraeumlauf des Protokolls selbst. Sie geht in
+     * die Anwendungsprotokollierung - und nur dann, wenn wirklich etwas geschehen ist, sonst
+     * fuellte sie das Log mit 288 leeren Zeilen am Tag.
+     */
+    @Scheduled(cron = "0 */5 * * * *")
+    @Transactional
+    public void abgelaufeneAbschliessen() {
+        LocalDateTime grenze = LocalDateTime.now(uhr).minusMinutes(ABSCHLUSS_NACH_MINUTEN);
+        int anzahl = terminRepository.abgelaufeneAbschliessen(grenze);
+
+        if (anzahl > 0) {
+            LOG.info("Termine automatisch abgeschlossen: {} (Beginn vor {} oder frueher).",
+                    anzahl, grenze);
+        }
+    }
+
+    // ------------------------------------------------------------------ Teilnehmer-Version
+
+    /**
+     * Zaehlt die Teilnehmer-Version aller kuenftigen Termine hoch, an denen ein Spieler
+     * zugesagt hat (A15; Pflichtpunkt aus S3, Abschnitt 3.5).
+     *
+     * <h2>Warum eine Skillaenderung dazugehoert</h2>
+     * A15 nennt als Ausloeser jede <i>Teilnehmeraenderung</i>. Eine geaenderte Bewertung
+     * aendert nicht, wer mitspielt, wohl aber die Grundlage jeder Teameinteilung: Dieselben
+     * Namen ergeben eine andere Aufteilung. Ohne diesen Ausloeser bliebe eine gespeicherte
+     * Einteilung als aktuell gekennzeichnet, obwohl sie es nicht mehr ist - und das
+     * Generierungskontingent bliebe verbraucht.
+     *
+     * <h2>Warum die Methode hier liegt und nicht in der Profilverwaltung</h2>
+     * Das Wissen, dass Skillwerte auf Termine wirken, gehoert zum Fachbereich
+     * {@code spieltag}. {@code SpielerVerwaltungService} ruft sie auf und muss dafuer weder
+     * die Tabelle noch die Bedingung kennen; der Aufruf laeuft in dessen Transaktion mit
+     * ({@code REQUIRED}), sodass Skillwert und Zaehler gemeinsam stehen oder gemeinsam
+     * zurueckrollen.
+     *
+     * @param spielerId Profil, dessen Skillwerte sich geaendert haben
+     * @return Anzahl betroffener Termine; {@code 0}, wenn der Spieler nirgends zugesagt hat
+     */
+    @Transactional
+    public int teilnehmerVersionErhoehenFuerSpieler(Long spielerId) {
+        return terminRepository.teilnehmerVersionErhoehenFuerSpieler(
+                spielerId, LocalDateTime.now(uhr));
+    }
+
     // ------------------------------------------------------------------ Hilfsmittel
+
+    /**
+     * Prueft den gewuenschten Zielstatus (A19, Ergaenzung vom 30.08.2026).
+     *
+     * <p><b>Nur vorwaerts.</b> {@code GEPLANT} ist als Ziel nicht zugelassen: Eine Absage
+     * ist endgueltig (Festlegung vom 30.08.2026), und ein wieder geoeffneter vergangener
+     * Termin naehme nach A7 ohnehin keine Rueckmeldung mehr an - der Auftrag aus A18 setzte
+     * ihn binnen Minuten zurueck. Wer einen versehentlich abgesagten Termin doch braucht,
+     * entfernt ihn und legt ihn neu an; dass sein Zeitpunkt dabei frei wird, ist der Grund,
+     * aus dem es {@link #entfernen} gibt.
+     *
+     * <p>Die Ablehnung ist ein {@code 400} und kein {@code 409}: Es ist kein Zustand, der
+     * sich mit der Zeit aendert, sondern eine Eingabe, die es nie geben wird.
+     *
+     * @param gewuenscht Zielstatus aus dem Anfragekoerper; darf {@code null} sein
+     * @return der Zielstatus oder {@code null}, wenn keiner angegeben war
+     */
+    private static TerminStatus pruefeZielstatus(TerminStatus gewuenscht) {
+        if (gewuenscht == TerminStatus.GEPLANT) {
+            throw new FachlicherFehler(Fehlercode.EINGABE_UNGUELTIG,
+                    "Ein Termin lässt sich nicht wieder auf GEPLANT setzen. Wer ihn doch "
+                            + "braucht, entfernt ihn und legt ihn neu an.");
+        }
+        return gewuenscht;
+    }
 
     /**
      * Lehnt einen Zeitpunkt ab, der bereits vorbei ist.
@@ -317,6 +511,9 @@ public class TerminService {
         if (anfrage.ort() != null) {
             String bereinigt = anfrage.ort().trim();
             vergleiche(felder, "ort", bestand.getOrt(), bereinigt.isEmpty() ? null : bereinigt);
+        }
+        if (anfrage.status() != null) {
+            vergleiche(felder, "status", bestand.getStatus(), anfrage.status());
         }
         return felder;
     }

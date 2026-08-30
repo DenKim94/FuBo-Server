@@ -3,6 +3,7 @@ package de.fubo.appserver.repository.spieltag;
 import de.fubo.appserver.domain.spieltag.TerminEintrag;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
@@ -67,4 +68,57 @@ public interface TerminRepositoryCustom {
      *         bereits belegt war
      */
     Optional<Long> einfuegenWennFrei(Long serieId, LocalDate datum, LocalTime uhrzeit, String ort);
+
+    /**
+     * Erhoeht {@code teilnehmer_version} eines Termins um eins (A15).
+     *
+     * <p>Der Zaehler steigt bei <b>jeder</b> Teilnehmeraenderung und ist ab S5 der einzige
+     * Ausloeser fuer das Zuruecksetzen des Generierungskontingents und das
+     * Veraltet-Kennzeichen einer Teameinteilung. <b>Eine Luecke laesst sich spaeter nicht
+     * mehr rekonstruieren</b> - deshalb wird er schon in S4 gefuehrt, obwohl ihn hier noch
+     * niemand auswertet.
+     *
+     * @param terminId betroffener Termin
+     * @return Anzahl geaenderter Zeilen; {@code 0}, wenn es die Id nicht gibt
+     */
+    int teilnehmerVersionErhoehen(Long terminId);
+
+    /**
+     * Erhoeht {@code teilnehmer_version} aller <b>kuenftigen</b> Termine, an denen ein
+     * Spieler zugesagt hat (A15, Nachtrag aus S3, Abschnitt 3.5).
+     *
+     * <p>Eine Skillaenderung ist eine Teilnehmeraenderung: Sie aendert nicht, <i>wer</i>
+     * mitspielt, wohl aber die Grundlage jeder Teameinteilung. In S3 war der Vorgang mangels
+     * {@code spieltag}-Dienst nicht umsetzbar und stand dort als vorbereiteter Kommentar.
+     *
+     * <p><b>Nur kuenftige Termine.</b> Eine Skillaenderung macht die Einteilung eines
+     * vergangenen Spiels nicht ungueltig - es ist gespielt worden.
+     *
+     * @param spielerId Profil, dessen Skillwerte sich geaendert haben
+     * @param jetzt     Vergleichszeitpunkt aus der {@code Clock}-Bean
+     * @return Anzahl betroffener Termine
+     */
+    int teilnehmerVersionErhoehenFuerSpieler(Long spielerId, LocalDateTime jetzt);
+
+    /**
+     * Setzt alle geplanten Termine auf {@code ABGESCHLOSSEN}, deren Beginn lange genug
+     * zurueckliegt (A18, Ergaenzung vom 30.08.2026).
+     *
+     * @param grenze spaetester Beginn, der noch abgeschlossen wird - also
+     *               "jetzt minus 30 Minuten"
+     * @return Anzahl abgeschlossener Termine
+     */
+    int abgelaufeneAbschliessen(LocalDateTime grenze);
+
+    /**
+     * Meldet, ob fachliche Daten auf den Termin verweisen (A19).
+     *
+     * <p>Geprueft werden {@code teilnahme}, {@code team_generierung},
+     * {@code generierung_kontingent} und {@code ergebnis}. {@code team_zuteilung} haengt an
+     * der Generierung und ist damit mitgeprueft.
+     *
+     * @param terminId zu pruefender Termin
+     * @return {@code true}, wenn mindestens ein Datensatz auf ihn zeigt
+     */
+    boolean istReferenziert(Long terminId);
 }

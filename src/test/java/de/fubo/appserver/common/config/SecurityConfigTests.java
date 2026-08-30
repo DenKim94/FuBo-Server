@@ -336,6 +336,19 @@ class SecurityConfigTests {
         mockMvc.perform(post("/api/v1/admin/serie/anlegen")
                         .contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isUnauthorized());
+
+        // S4, Pakete 5 bis 7 sowie A19
+        mockMvc.perform(post("/api/v1/admin/termin/entfernen")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(post("/api/v1/admin/teilnahme/gast-stufe")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(post("/api/v1/termine/rueckmeldung")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isUnauthorized());
     }
 
     /**
@@ -381,6 +394,17 @@ class SecurityConfigTests {
                         .contentType(MediaType.APPLICATION_JSON).content("{}")
                         .cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))
                 .andExpect(status().isForbidden());
+
+        // A19 und A17: entfernen und die Gast-Stufe bleiben dem Admin vorbehalten.
+        mockMvc.perform(post("/api/v1/admin/termin/entfernen")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}")
+                        .cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/v1/admin/teilnahme/gast-stufe")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}")
+                        .cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -400,6 +424,20 @@ class SecurityConfigTests {
 
         mockMvc.perform(get("/api/v1/termine/lesen").cookie(new Cookie(COOKIE, gastSitzung())))
                 .andExpect(status().isOk());
+
+        // S4, Paket 5: Die Rueckmeldung liegt ebenfalls ausserhalb von /admin/ und ist damit
+        // fuer beide Rollen erreichbar. Geprueft wird nur die Autorisierung - der leere
+        // Koerper faellt danach durch die Eingabepruefung, und genau das ist der Beleg: Ein
+        // 400 kommt erst zustande, wenn die Filterchain den Aufruf durchgelassen hat.
+        mockMvc.perform(post("/api/v1/termine/rueckmeldung")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}")
+                        .cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post("/api/v1/termine/rueckmeldung")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}")
+                        .cookie(new Cookie(COOKIE, gastSitzung())))
+                .andExpect(status().isBadRequest());
     }
 
     // ------------------------------------------------------------- Konfiguration der Kette

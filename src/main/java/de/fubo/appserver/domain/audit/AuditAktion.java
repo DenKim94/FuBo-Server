@@ -179,5 +179,29 @@ public enum AuditAktion {
      * angelegten und der uebersprungenen Termine; welche es im Einzelnen sind, steht in
      * {@code spieltag.termin} und ueberlebt dort auch die Loeschfrist von 90 Tagen.
      */
-    SERIE_ANGELEGT
+    SERIE_ANGELEGT,
+
+    /**
+     * Der Admin hat einen Termin endgueltig entfernt (A19, 30.08.2026).
+     *
+     * <p><b>Der Eintrag ist der einzige Rest.</b> Anders als beim Absagen bleibt keine Zeile
+     * zurueck, an der sich der Vorgang spaeter ablesen liesse - die Details nennen deshalb
+     * Datum, Uhrzeit und Status des entfernten Termins, nicht nur seine Id.
+     *
+     * <p>Entfernt wird nur, solange nichts auf den Termin verweist; wo Rueckmeldungen oder
+     * Ergebnisse vorliegen, bleibt das Absagen der Weg.
+     */
+    TERMIN_ENTFERNT,
+
+    /**
+     * Der Admin hat die Skill-Stufe eines Gastes an einer Teilnahme geaendert (A17, S4
+     * Abschnitt 6.3).
+     *
+     * <p>Die <b>einzige</b> Adminaktion an einer Teilnahme. Zu- und Absagen der Nutzer werden
+     * nicht protokolliert - sie stehen vollstaendig in {@code spieltag.teilnahme} samt
+     * {@code gemeldet_am}, und ein zweiter Beleg verdoppelte personenbezogene Daten, die nach
+     * 90 Tagen der Loeschfrist zum Opfer fielen, waehrend die Teilnahme bliebe. Diese
+     * Aenderung dagegen ueberschreibt eine Selbsteinschaetzung und gehoert deshalb belegt.
+     */
+    GAST_STUFE_GEAENDERT
 }

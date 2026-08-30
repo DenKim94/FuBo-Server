@@ -14,6 +14,9 @@ import de.fubo.appserver.repository.profil.SkillKategorieRepository;
 import de.fubo.appserver.repository.profil.SpielerRepository;
 import de.fubo.appserver.service.audit.AuditService;
 import de.fubo.appserver.service.auth.SessionService;
+import de.fubo.appserver.service.spieltag.TerminService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -78,25 +81,30 @@ public class SpielerVerwaltungService {
     /** Bezeichnung der betroffenen Entitaet im Audit-Log. */
     private static final String ENTITAET = "spieler";
 
+    private static final Logger LOG = LoggerFactory.getLogger(SpielerVerwaltungService.class);
+
     private final SpielerRepository spielerRepository;
     private final SkillKategorieRepository skillKategorieRepository;
     private final ProfilStammdatenCache profilStammdatenCache;
     private final SessionRepository sessionRepository;
     private final SessionService sessionService;
     private final AuditService auditService;
+    private final TerminService terminService;
 
     public SpielerVerwaltungService(SpielerRepository spielerRepository,
                                     SkillKategorieRepository skillKategorieRepository,
                                     ProfilStammdatenCache profilStammdatenCache,
                                     SessionRepository sessionRepository,
                                     SessionService sessionService,
-                                    AuditService auditService) {
+                                    AuditService auditService,
+                                    TerminService terminService) {
         this.spielerRepository = spielerRepository;
         this.skillKategorieRepository = skillKategorieRepository;
         this.profilStammdatenCache = profilStammdatenCache;
         this.sessionRepository = sessionRepository;
         this.sessionService = sessionService;
         this.auditService = auditService;
+        this.terminService = terminService;
     }
 
     /**
@@ -362,6 +370,25 @@ public class SpielerVerwaltungService {
 
         gepruefteSkills.forEach((kategorie, wert) ->
                 spielerRepository.skillwertSetzen(spielerId, kategorie, wert));
+
+        if (skillsAendern) {
+            // Der Pflichtpunkt aus S3 (Abschnitt 3.5), in S4 nachgeholt: Eine Skillaenderung
+            // ist eine Teilnehmeraenderung im Sinne von A15. Sie aendert nicht, wer
+            // mitspielt, wohl aber die Grundlage jeder Teameinteilung - dieselben Namen
+            // ergeben eine andere Aufteilung. Ohne diesen Ausloeser bliebe eine gespeicherte
+            // Einteilung als aktuell gekennzeichnet, obwohl sie es nicht mehr ist.
+            //
+            // Nur bei Skillwerten: Eine reine Umbenennung aendert an der Einteilung nichts.
+            // Und nur fuer kuenftige Termine - ein vergangenes Spiel ist gespielt worden.
+            //
+            // Und nur beim Bearbeiten: Ein frisch angelegtes Profil hat noch keine Teilnahme,
+            // an der ein Termin haengen koennte - dort liefe die Abfrage ins Leere.
+            int betroffen = terminService.teilnehmerVersionErhoehenFuerSpieler(spielerId);
+            if (betroffen > 0) {
+                LOG.info("Skilländerung an Profil {}: {} künftige Termine als veraltet markiert.",
+                        spielerId, betroffen);
+            }
+        }
 
         profilStammdatenCache.verwerfen();
 

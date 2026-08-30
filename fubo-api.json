@@ -4,7 +4,7 @@
     "title": "FuBo Server API",
     "version": "1.0.0",
     "summary": "Vertrag zwischen FuBo-Server und FuBo-Client.",
-    "description": "Maßgebliche Beschreibung der REST-Schnittstelle des FuBo-Servers.\n\n**Diese Datei ist die Quelle der Wahrheit für den Client-Track.** Server und Client liegen in getrennten Repositories; eine Vertragsänderung wird deshalb immer zuerst hier abgebildet und der Client anschließend nachgezogen.\n\n**Stand:** S2 (Auth und Session), S2b (Zugangsdatenpflege und Spielerverwaltung) und S3 (Profile, Skills, Konfiguration, Gastverwaltung) vollständig; aus S4 die Pakete 1 bis 4 – Termine lesen, Einzeltermin anlegen, ändern und absagen sowie Terminserien.\n\n**Noch nicht enthalten und deshalb hier nicht beschrieben:** die Rückmeldung eines Spielers oder Gastes (`/termine/rueckmeldung`), die Skill-Stufe eines Gastes durch den Admin und die Teilnehmerliste samt Warteschlange – sie folgen mit den S4-Paketen 5 bis 7. Teams und Ergebnisse folgen mit S5 und S6. Spekulative Endpunkte wären ein Vertrag über etwas, das es nicht gibt.\n\n### Versionierung\nJeder fachliche Endpunkt liegt unter `/api/{version}/<bereich>/<ressource>/<aktion>`. Die Version steht als Präfix an Segment-Index 1, die Aktion als eigenes Segment am Ende. Umgesetzt mit `ApiVersionConfigurer#usePathSegment` aus Spring Framework 7.\n\n- `/api/v1/...` und `/api/1/...` werden beide als Version 1 gelesen; nach außen wird durchgängig `v1` verwendet.\n- Eine unbekannte Version (`/api/v99/...`) liefert `400`.\n- Ein fehlendes Versionssegment liefert `404` – ohne das Segment passt der Pfad schlicht auf kein Mapping.\n\n### Authentifizierung\nOpakes Session-Cookie (`FUBO_SESSION`, `HttpOnly`, `Secure`, `SameSite=Lax`, kein Ablaufdatum). Das Frontend kann den Token weder lesen noch prüfen und muss das auch nicht: Die Validierung passiert ausschließlich serverseitig in der Filterchain. Alle Aufrufe erfolgen mit `credentials: 'include'`.\n\n**Die zentrale PIN besteht aus vier Ziffern.** Das Eingabefeld im Frontend darf darauf ausgelegt werden. `POST /auth/pin/pruefen` schreibt der Eingabe trotzdem **kein** Format vor – ein abweichender Bestandswert aus der Erstkonfiguration muss eingebbar bleiben, und eine Mindestlänge im Vertrag wäre eine Auskunft über das Format der echten PIN. Verbindlich ist das Format nur beim *Setzen* über `POST /admin/pin/aendern`.\n\nDer Login ist zweistufig und wird serverseitig erzwungen:\n1. `PIN_VERIFIED` – zentrale PIN geprüft, Identität noch offen.\n2. `PROFILE_AUTHENTICATED` – erst hier existiert eine Rolle. Es führen drei Wege dorthin: Namensauswahl (`USER`), Gast-Login (`GAST`) und Admin-Login mit Passwort (`ADMIN`).\n\n**Das Adminprofil ist ein technisches Konto.** Es steht nicht in der Namensliste, nimmt an keinem Termin teil und wird nie in ein Team eingeteilt; seine Skillwerte stehen auf 0. Der Admin meldet sich deshalb über `POST /api/v1/auth/admin/anmelden` mit seinem Passwort an – die Namensauswahl lehnt das Adminprofil auch dann ab, wenn seine Id bekannt ist.\n\nBei jedem Stufenwechsel und bei jeder Erneuerung wird der Token rotiert (Schutz vor Session Fixation). Die `session.id` bleibt dabei erhalten.\n\n### Sitzungsdauer (Zwei-Timer-Modell)\n`gueltigBis` ist ein gleitendes Leerlauf-Fenster (Vorgabe 15 Minuten) und wandert bei jedem Aufruf nach hinten. `absolutGueltigBis` ist eine harte Obergrenze (Vorgabe 1 Stunde) und wird nie verschoben – auch nicht durch `/auth/session/erneuern`.\n\nHintergrundaufrufe (etwa das Pollen des Belegtstatus) sollen das Leerlauf-Fenster **nicht** verlängern und senden dazu `X-FuBo-Kein-Refresh: true`. Ohne diesen Header würde „15 Minuten Inaktivität\" den offenen Browser-Tab messen statt den Nutzer.\n\n### CORS\nFrontend und API liegen auf Subdomains derselben registrierbaren Domain (`app.<domain>` / `api.<domain>`). Der Server führt eine Allowlist mit `allowCredentials=true`; erlaubte Anfrageheader sind `Content-Type` und `X-FuBo-Kein-Refresh`, freigegebener Antwortheader ist `Retry-After`.\n\n### Datenschutz\nSkillbewertungen verlassen den Server nie in Richtung USER oder GAST (Anforderung A12). Sie erscheinen **ausschliesslich in Antworten unterhalb von `/admin/`** – heute in `GET /admin/user/lesen` – und erreichen `USER` und `GAST` nie; die Teamgenerierung läuft vollständig serverseitig.\n\nBis S2b enthielt kein Antwortobjekt dieser Beschreibung Skillwerte. Seit S3 gilt die genauere Fassung oben: Der Prüfpunkt ist nicht mehr „kommen Skillwerte vor\", sondern „kommen sie ausserhalb von `/admin/` vor\".\n\n### Nicht enthalten\n`GET /actuator/health` bleibt bewusst unversioniert und ist kein Teil der fachlichen API. Der Endpunkt dient dem Container-Healthcheck und wird von nginx nach außen abgeschottet.",
+    "description": "Maßgebliche Beschreibung der REST-Schnittstelle des FuBo-Servers.\n\n**Diese Datei ist die Quelle der Wahrheit für den Client-Track.** Server und Client liegen in getrennten Repositories; eine Vertragsänderung wird deshalb immer zuerst hier abgebildet und der Client anschließend nachgezogen.\n\n**Stand:** S2 (Auth und Session), S2b (Zugangsdatenpflege und Spielerverwaltung), S3 (Profile, Skills, Konfiguration, Gastverwaltung) und **S4 vollständig** – Termine lesen, Einzeltermin anlegen, ändern, absagen und entfernen, Terminserien, Zu- und Absagen von Spielern und Gästen, die Teilnehmerliste samt Warteschlange und die Skill-Stufe eines Gastes.\n\n**Noch nicht enthalten und deshalb hier nicht beschrieben:** der Teamgenerator (S5), die Ergebniserfassung (S6) und der Hallenmodus (S7). Spekulative Endpunkte wären ein Vertrag über etwas, das es nicht gibt.\n\n**Drei Dinge geschehen ohne Zutun des Clients:** Ein Termin wechselt 30 Minuten nach seinem Beginn selbsttätig von `GEPLANT` auf `ABGESCHLOSSEN` (A18); eine erneute Zusage stellt in der Warteschlange hinten an; und eine Änderung an den Skillwerten eines zugesagten Spielers erhöht die `teilnehmerVersion` seiner künftigen Termine.\n\n### Versionierung\nJeder fachliche Endpunkt liegt unter `/api/{version}/<bereich>/<ressource>/<aktion>`. Die Version steht als Präfix an Segment-Index 1, die Aktion als eigenes Segment am Ende. Umgesetzt mit `ApiVersionConfigurer#usePathSegment` aus Spring Framework 7.\n\n- `/api/v1/...` und `/api/1/...` werden beide als Version 1 gelesen; nach außen wird durchgängig `v1` verwendet.\n- Eine unbekannte Version (`/api/v99/...`) liefert `400`.\n- Ein fehlendes Versionssegment liefert `404` – ohne das Segment passt der Pfad schlicht auf kein Mapping.\n\n### Authentifizierung\nOpakes Session-Cookie (`FUBO_SESSION`, `HttpOnly`, `Secure`, `SameSite=Lax`, kein Ablaufdatum). Das Frontend kann den Token weder lesen noch prüfen und muss das auch nicht: Die Validierung passiert ausschließlich serverseitig in der Filterchain. Alle Aufrufe erfolgen mit `credentials: 'include'`.\n\n**Die zentrale PIN besteht aus vier Ziffern.** Das Eingabefeld im Frontend darf darauf ausgelegt werden. `POST /auth/pin/pruefen` schreibt der Eingabe trotzdem **kein** Format vor – ein abweichender Bestandswert aus der Erstkonfiguration muss eingebbar bleiben, und eine Mindestlänge im Vertrag wäre eine Auskunft über das Format der echten PIN. Verbindlich ist das Format nur beim *Setzen* über `POST /admin/pin/aendern`.\n\nDer Login ist zweistufig und wird serverseitig erzwungen:\n1. `PIN_VERIFIED` – zentrale PIN geprüft, Identität noch offen.\n2. `PROFILE_AUTHENTICATED` – erst hier existiert eine Rolle. Es führen drei Wege dorthin: Namensauswahl (`USER`), Gast-Login (`GAST`) und Admin-Login mit Passwort (`ADMIN`).\n\n**Das Adminprofil ist ein technisches Konto.** Es steht nicht in der Namensliste, nimmt an keinem Termin teil und wird nie in ein Team eingeteilt; seine Skillwerte stehen auf 0. Der Admin meldet sich deshalb über `POST /api/v1/auth/admin/anmelden` mit seinem Passwort an – die Namensauswahl lehnt das Adminprofil auch dann ab, wenn seine Id bekannt ist.\n\nBei jedem Stufenwechsel und bei jeder Erneuerung wird der Token rotiert (Schutz vor Session Fixation). Die `session.id` bleibt dabei erhalten.\n\n### Sitzungsdauer (Zwei-Timer-Modell)\n`gueltigBis` ist ein gleitendes Leerlauf-Fenster (Vorgabe 15 Minuten) und wandert bei jedem Aufruf nach hinten. `absolutGueltigBis` ist eine harte Obergrenze (Vorgabe 1 Stunde) und wird nie verschoben – auch nicht durch `/auth/session/erneuern`.\n\nHintergrundaufrufe (etwa das Pollen des Belegtstatus) sollen das Leerlauf-Fenster **nicht** verlängern und senden dazu `X-FuBo-Kein-Refresh: true`. Ohne diesen Header würde „15 Minuten Inaktivität\" den offenen Browser-Tab messen statt den Nutzer.\n\n### CORS\nFrontend und API liegen auf Subdomains derselben registrierbaren Domain (`app.<domain>` / `api.<domain>`). Der Server führt eine Allowlist mit `allowCredentials=true`; erlaubte Anfrageheader sind `Content-Type` und `X-FuBo-Kein-Refresh`, freigegebener Antwortheader ist `Retry-After`.\n\n### Datenschutz\nSkillbewertungen verlassen den Server nie in Richtung USER oder GAST (Anforderung A12). Sie erscheinen **ausschliesslich in Antworten unterhalb von `/admin/`** – heute in `GET /admin/user/lesen` – und erreichen `USER` und `GAST` nie; die Teamgenerierung läuft vollständig serverseitig.\n\nBis S2b enthielt kein Antwortobjekt dieser Beschreibung Skillwerte. Seit S3 gilt die genauere Fassung oben: Der Prüfpunkt ist nicht mehr „kommen Skillwerte vor\", sondern „kommen sie ausserhalb von `/admin/` vor\".\n\n### Nicht enthalten\n`GET /actuator/health` bleibt bewusst unversioniert und ist kein Teil der fachlichen API. Der Endpunkt dient dem Container-Healthcheck und wird von nginx nach außen abgeschottet.",
     "contact": {
       "name": "FuBo-Server",
       "url": "https://github.com/DenKim94/FuBo-Server"
@@ -1967,6 +1967,179 @@
           }
         }
       }
+    },
+    "/api/v1/termine/rueckmeldung": {
+      "post": {
+        "tags": [
+          "Termine"
+        ],
+        "operationId": "rueckmeldung",
+        "summary": "Zu- oder absagen",
+        "description": "Trägt die Rückmeldung des Aufrufers zu einem Termin ein (A7, A8). Erreichbar ab der Stufe `PROFILE_AUTHENTICATED`, **auch für Gäste**.\n\n**Derselbe Endpunkt für beide Rollen.** Der Server entscheidet an der Sitzung, ob `spieler_id` oder `gast_name` gefüllt wird; die Skill-Stufe eines Gastes wird dabei aus der Sitzung in die Teilnahme **kopiert**. Ändert ein Gast seine Selbsteinschätzung, indem er sich neu anmeldet, gilt für bereits abgegebene Zusagen weiterhin die alte Stufe – bis er die Rückmeldung erneut abgibt.\n\n**Eine erneute Zusage stellt hinten an.** `gemeldet_am` wird bei jeder Zusage neu gesetzt, und daraus ergibt sich die Warteschlangenreihenfolge. Wer das nicht weiss, hält es für einen Fehler – tatsächlich verhindert es, dass sich jemand einen vorderen Platz freihält: absagen, wenn man unsicher ist, und kurz vor dem Termin wieder zusagen, vorbei an allen, die inzwischen fest zugesagt haben. **Eine Absage lässt die Zeit unberührt** – wer versehentlich absagt und sofort korrigiert, verliert seinen Platz nicht.\n\n**Bis wann:** bis zum Terminbeginn, und nur solange der Termin `GEPLANT` ist. Beides sind unabhängige Riegel – ein geplanter Termin, der bereits begonnen hat, nimmt ebenfalls nichts mehr an.\n\n**Das Adminprofil kann nicht zusagen.** Es ist ein technisches Konto und wird nie in ein Team eingeteilt; wer selbst mitspielt, braucht ein eigenes Spielerprofil.\n\n**Antwort ist `204`, nicht die neue Teilnehmerliste.** Wer sie anzeigen will, holt sie über `/termine/{terminId}/lesen` – die rechnet ohnehin frisch. Eine Antwort, die beides täte, verführte dazu, den Rückgabewert als Wahrheit zu behandeln, obwohl inzwischen zwei andere zugesagt haben.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeilnahmeRequest"
+              },
+              "examples": {
+                "zusage": {
+                  "summary": "Zusagen",
+                  "value": {
+                    "terminId": 12,
+                    "zusage": true
+                  }
+                },
+                "absage": {
+                  "summary": "Absagen",
+                  "value": {
+                    "terminId": 12,
+                    "zusage": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Übernommen. Kein Inhalt."
+          },
+          "400": {
+            "$ref": "#/components/responses/EingabeUngueltig"
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "404": {
+            "description": "Kein Termin mit dieser Id (`INHALT_NICHT_GEFUNDEN`).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Zwei Fälle:\n\n- `TERMIN_GESCHLOSSEN` – der Termin nimmt keine Rückmeldungen mehr an: Er ist abgesagt, abgeschlossen, oder sein Beginn liegt zurück. Die drei Fälle werden bewusst nicht unterschieden; die Wirkung ist dieselbe, und der Status steht in der Terminliste.\n- `PROFIL_GESCHUETZT` – die Sitzung gehört dem Adminprofil.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/termin/entfernen": {
+      "post": {
+        "tags": [
+          "Termine"
+        ],
+        "operationId": "terminEntfernen",
+        "summary": "Termin entfernen",
+        "description": "Löscht einen Termin endgültig (A19). Verlangt die Rolle `ADMIN`.\n\n**Nur, solange nichts darauf verweist.** Liegen Rückmeldungen, ein Generierungslauf, ein Kontingent oder ein Ergebnis vor, antwortet der Server `409 TERMIN_IN_VERWENDUNG` – dann ist das Absagen der richtige Weg. Fünf Tabellen hängen mit `ON DELETE CASCADE` am Termin; ein ungeprüftes Löschen räumte den halben Spieltag ab, einschließlich der Ergebnisse.\n\n**Wofür der Endpunkt gedacht ist:** für den versehentlich angelegten Termin – und als **einziger Weg zurück aus einer versehentlichen Absage**. Ein abgesagter Termin belegt seinen Zeitpunkt weiter, denn `datum` und `uhrzeit` sind global eindeutig; ohne das Entfernen bliebe der Zeitpunkt dauerhaft gesperrt. Entfernen und neu anlegen ist deshalb der vorgesehene Ablauf, und er gelingt genau dann, wenn noch niemand geantwortet hat.\n\n**Die Oberfläche sollte nachfragen.** Es gibt kein Zurück, und anders als beim Absagen bleibt keine Zeile stehen – nur der Protokolleintrag.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TerminIdRequest"
+              },
+              "example": {
+                "terminId": 12
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Entfernt. Kein Inhalt."
+          },
+          "400": {
+            "$ref": "#/components/responses/EingabeUngueltig"
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
+          },
+          "404": {
+            "description": "Kein Termin mit dieser Id (`INHALT_NICHT_GEFUNDEN`).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`TERMIN_IN_VERWENDUNG` – es liegen Rückmeldungen, Generierungsläufe, Kontingente oder ein Ergebnis vor. Der Termin lässt sich stattdessen absagen.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/teilnahme/gast-stufe": {
+      "post": {
+        "tags": [
+          "Termine"
+        ],
+        "operationId": "gastStufeAendern",
+        "summary": "Skill-Stufe eines Gastes ändern",
+        "description": "Korrigiert die Selbsteinschätzung eines Gastes an einer bestehenden Teilnahme (A17). Verlangt die Rolle `ADMIN`.\n\n**Die einzige Adminaktion an einer Teilnahme.** Eine Rückmeldung ist eine Aussage über die eigene Verfügbarkeit und wird nicht stellvertretend gesetzt – sonst entstünden Zusagen, die niemand gegeben hat, und die Warteschlange verteilte darauf Plätze. A17 gibt dem Admin ausdrücklich die Stufe, und nur sie: Weder Zusage noch Name ändern sich, und `gemeldet_am` bleibt unberührt – die Position in der Warteschlange verschiebt sich nicht.\n\n**Der Vorgang erhöht die `teilnehmerVersion` des Termins** (A15). Der Teilnehmerkreis bleibt, seine Zusammensetzung nach Stärke nicht.\n\n**Auch die Stufe eines abgesagten Gastes lässt sich setzen** – sagt er wieder zu, ohne sich neu anzumelden, gilt sie dann bereits. Meldet er sich dagegen neu an und stuft sich anders ein, überschreibt seine nächste Rückmeldung die Korrektur.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GastStufeRequest"
+              },
+              "example": {
+                "terminId": 12,
+                "gastName": "Testgast 1",
+                "stufe": "STARK"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Übernommen. Kein Inhalt."
+          },
+          "400": {
+            "$ref": "#/components/responses/EingabeUngueltig"
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
+          },
+          "404": {
+            "description": "`INHALT_NICHT_GEFUNDEN` – für diesen Termin liegt keine Teilnahme dieses Gastes vor. Der Name wird zeichengenau verglichen.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2131,7 +2304,8 @@
           "DATEN_VERALTET",
           "INTERNER_FEHLER",
           "TERMIN_BELEGT",
-          "TERMIN_GESCHLOSSEN"
+          "TERMIN_GESCHLOSSEN",
+          "TERMIN_IN_VERWENDUNG"
         ]
       },
       "Stage": {
@@ -2870,7 +3044,7 @@
       },
       "TerminStatus": {
         "type": "string",
-        "description": "Zustand eines Termins (`spieltag.termin.status`).\n\n- `GEPLANT` – der Regelfall. Nur in diesem Zustand lässt sich der Termin ändern oder absagen, und nur hier nimmt er ab S4-Paket 5 Rückmeldungen an.\n- `ABGESAGT` – **endgültig**. Es gibt keinen Weg zurück nach `GEPLANT`: Die Zusagen dazwischen sind unbrauchbar geworden, weil niemand weiß, wer von der Absage schon erfahren hat. Wer den Termin doch braucht, legt ihn neu an – und muss den abgesagten vorher verschieben, weil `datum` und `uhrzeit` global nur einmal vorkommen dürfen.\n- `ABGESCHLOSSEN` – vorgesehen für die Ergebniserfassung in S6. **Heute setzt kein Endpunkt diesen Wert.**",
+        "description": "Zustand eines Termins (`spieltag.termin.status`).\n\n- `GEPLANT` – der Regelfall. Nur in diesem Zustand lässt sich der Termin ändern oder absagen, und nur hier nimmt er Rückmeldungen an.\n- `ABGESAGT` – **endgültig**. Es gibt keinen Weg zurück nach `GEPLANT`: Die Zusagen dazwischen sind unbrauchbar geworden. Wer den Termin doch braucht, **entfernt ihn und legt ihn neu an** – ein abgesagter Termin belegt seinen Zeitpunkt weiter, denn `datum` und `uhrzeit` sind global eindeutig.\n- `ABGESCHLOSSEN` – der Termin hat stattgefunden. **Der Server setzt diesen Wert 30 Minuten nach Terminbeginn selbst** (A18), wenn bis dahin nicht abgesagt wurde; der Admin kann ihn über `/admin/termin/aendern` auch früher setzen. Der Übergang findet beim nächsten Lauf des Aufräumauftrags statt, also zwischen 30 und 35 Minuten nach Beginn.\n\n**Der Status ist nicht der Torwächter für Rückmeldungen.** Ob noch zu- oder abgesagt werden darf, entscheidet die Uhrzeit des Termins (A7): Zwischen Beginn und Abschluss liegen 30 Minuten, in denen der Status noch `GEPLANT` ist und trotzdem niemand mehr melden kann.",
         "enum": [
           "GEPLANT",
           "ABGESAGT",
@@ -2920,19 +3094,19 @@
           "teilnehmerVersion": {
             "type": "integer",
             "format": "int32",
-            "description": "Zähler aller Teilnehmeränderungen dieses Termins (A15). Er steigt ab S4-Paket 5 bei jeder Zu- und Absage und bei jeder Änderung einer Skill-Stufe. **In S4 wird er nur geführt, nicht ausgewertet** – ab S5 setzt er das Generierungskontingent zurück und kennzeichnet eine Teameinteilung als veraltet."
+            "description": "Zähler aller Teilnehmeränderungen dieses Termins (A15). Er steigt bei jeder Zu- und Absage, bei jeder Änderung einer Gast-Stufe und **bei jeder Änderung eines Skillwerts eines zugesagten Spielers** – letzteres nur für künftige Termine. **In S4 wird er nur geführt, nicht ausgewertet**; ab S5 setzt er das Generierungskontingent zurück und kennzeichnet eine Teameinteilung als veraltet."
           },
           "zusagen": {
             "type": "integer",
             "format": "int32",
-            "description": "Anzahl der Zusagen. Absagen zählen nicht mit. **Solange die Rückmeldung (S4-Paket 5) fehlt, steht hier immer `0`.**"
+            "description": "Anzahl der Zusagen. Absagen zählen nicht mit – deshalb `count(*) FILTER (WHERE zusage)` und nicht die Zahl der Rückmeldungen."
           },
           "eigeneRueckmeldung": {
             "type": [
               "boolean",
               "null"
             ],
-            "description": "Die eigene Rückmeldung des Aufrufers – **dreiwertig**: `true` zugesagt, `false` abgesagt, `null` noch nicht gemeldet. Ein `if (eigeneRueckmeldung)` behandelt „noch nicht gemeldet“ wie eine Absage; das Frontend zeigt drei Zustände, nicht zwei.\n\nBei einer Gastsitzung entscheidet der Gastname, bei einer Spielersitzung die Profil-Id. **Solange S4-Paket 5 fehlt, steht hier immer `null`.**"
+            "description": "Die eigene Rückmeldung des Aufrufers – **dreiwertig**: `true` zugesagt, `false` abgesagt, `null` noch nicht gemeldet. Ein `if (eigeneRueckmeldung)` behandelt „noch nicht gemeldet“ wie eine Absage; das Frontend zeigt drei Zustände, nicht zwei.\n\nBei einer Gastsitzung entscheidet der Gastname, bei einer Spielersitzung die Profil-Id."
           }
         },
         "required": [
@@ -2956,14 +3130,18 @@
                 "type": "integer",
                 "format": "int64",
                 "description": "Stand des Datensatzes für das Optimistic Locking. `/admin/termin/aendern` verlangt diesen Wert zurück und lehnt einen veralteten mit `409 DATEN_VERALTET` ab. Der Wert ist kein Geheimnis: Er zählt Schreibvorgänge und verrät nichts über ihren Inhalt."
+              },
+              "teilnehmerliste": {
+                "$ref": "#/components/schemas/Teilnehmerliste"
               }
             },
             "required": [
-              "version"
+              "version",
+              "teilnehmerliste"
             ]
           }
         ],
-        "description": "Die Einzelansicht eines Termins: dieselben Felder wie in der Liste, dazu die `version`.\n\n**Die Teilnehmerliste fehlt hier noch.** Sie gehört zu S4-Paket 7 und kommt als zusätzliches Feld `teilnehmer` dazu – additiv und damit **nicht brechend**. Solange keine Teilnahmen existieren, wäre sie ohnehin leer."
+        "description": "Die Einzelansicht eines Termins: dieselben Felder wie in der Liste, dazu die `version` und die Teilnehmerliste.\n\n**Die Teilnehmerliste hat keinen eigenen Endpunkt.** Wer einen Termin öffnet, will die Teilnehmer sehen, und zwei Aufrufe für eine Ansicht sind zwei Gelegenheiten für einen inkonsistenten Stand – zwischen ihnen kann jemand zusagen, und die Zahl im Kopf passte dann nicht mehr zur Liste darunter."
       },
       "TerminAnlegenRequest": {
         "type": "object",
@@ -3022,7 +3200,7 @@
       },
       "TerminAendernRequest": {
         "type": "object",
-        "description": "Anfragekörper von `/admin/termin/aendern`.\n\n**Feldweise, kein Voll-Update** – anders als bei der Konfiguration. Der Grund für das Voll-Update dort ist die Unterscheidbarkeit von `null` und „nicht angegeben“ bei löschbaren Feldern. Hier gibt es nur ein solches Feld, `ort`, und das lässt sich mit einer leeren Zeichenkette sauber leeren. Weggelassene Felder bleiben unverändert; ein Aufruf ohne jede Änderung wird mit `400` abgelehnt.",
+        "description": "Anfragekörper von `/admin/termin/aendern`.\n\n**Feldweise, kein Voll-Update** – anders als bei der Konfiguration. Der Grund für das Voll-Update dort ist die Unterscheidbarkeit von `null` und „nicht angegeben“ bei löschbaren Feldern. Hier gibt es nur ein solches Feld, `ort`, und das lässt sich mit einer leeren Zeichenkette sauber leeren. Weggelassene Felder bleiben unverändert; ein Aufruf ohne jede Änderung wird mit `400` abgelehnt.\n\n**Seit dem 30.08.2026 lässt sich auch der `status` setzen** (A19) – der Admin sagt einen Termin damit aus demselben Formular heraus ab, in dem er Datum, Uhrzeit und Ort pflegt.",
         "properties": {
           "terminId": {
             "type": "integer",
@@ -3056,6 +3234,17 @@
             ],
             "maxLength": 160,
             "description": "Neuer Ort. **Drei Bedeutungen:** ein Text setzt ihn, `\"\"` leert ihn, `null` beziehungsweise ein fehlendes Feld lässt ihn unverändert."
+          },
+          "status": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TerminStatus"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Neuer Status oder `null` für „unverändert“ (A19).\n\n**Nur vorwärts:** zulässig sind `ABGESAGT` und `ABGESCHLOSSEN`. `GEPLANT` als Ziel liefert `400` – eine Absage ist endgültig, und ein wieder geöffneter vergangener Termin nähme ohnehin keine Rückmeldung mehr an.\n\n`/admin/termin/absagen` bleibt daneben bestehen: Es ist der Kurzweg mit eigener Bestätigungsabfrage und ohne `version`."
           }
         },
         "required": [
@@ -3158,6 +3347,109 @@
           "titel",
           "angelegteTermine",
           "uebersprungeneTermine"
+        ]
+      },
+      "TeilnahmeRequest": {
+        "type": "object",
+        "description": "Anfragekörper der Rückmeldung.\n\n**Ein Endpunkt für beide Richtungen und beide Rollen.** Ein Gast schickt keinen Namen mit – er *ist* schon jemand; der Server entscheidet an der Sitzung, ob `spieler_id` oder `gast_name` gefüllt wird. Ein Name aus dem Anfragekörper wäre ein Weg, unter beliebigen Namen zuzusagen und die Teilnehmerliste mit Phantomen zu füllen.",
+        "properties": {
+          "terminId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "zusage": {
+            "type": "boolean",
+            "description": "`true` sagt zu, `false` sagt ab. Beides ist zulässig, solange der Termin offen ist."
+          }
+        },
+        "required": [
+          "terminId",
+          "zusage"
+        ]
+      },
+      "GastStufeRequest": {
+        "type": "object",
+        "description": "Anfragekörper für die Korrektur einer Gast-Selbsteinschätzung (A17). Verlangt die Rolle `ADMIN`.\n\nDie Teilnahme wird über Termin **und** Gastname angesprochen, nicht über eine eigene Id: Der Admin sieht in der Teilnehmerliste Namen, keine Schlüssel. Der Name wird zeichengenau verglichen – er stammt aus einer Antwort des Servers, ihn zu normalisieren träfe im Zweifel eine andere Zeile.",
+        "properties": {
+          "terminId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "gastName": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "Name des Gastes, wie er in `teilnehmer[].anzeigeName` steht."
+          },
+          "stufe": {
+            "$ref": "#/components/schemas/GastStufe"
+          }
+        },
+        "required": [
+          "terminId",
+          "gastName",
+          "stufe"
+        ]
+      },
+      "TeilnehmerEintrag": {
+        "type": "object",
+        "description": "Ein Eintrag der Teilnehmerliste.\n\n**Eine Liste mit Kennzeichen, nicht zwei getrennte Listen.** Die Reihenfolge ist die *eine* Information, die Zusagen und Warteschlange verbindet – wer nachrückt, steht schon fest. Zwei Arrays zwängen den Client, sie für die Anzeige wieder zusammenzufügen, und beim Nachrücken wanderte ein Eintrag zwischen ihnen hin und her.",
+        "properties": {
+          "position": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Rang in der Meldereihenfolge, beginnend bei 1. Abgeleitet aus `gemeldet_am` und der Id, nie gespeichert – sagt jemand aus der Mitte ab, rücken alle dahinter beim nächsten Abruf auf."
+          },
+          "anzeigeName": {
+            "type": "string",
+            "description": "Profilname oder Gastname. Das Anhängen von „(Gast)“ ist Sache des Frontends (A8)."
+          },
+          "gast": {
+            "type": "boolean",
+            "description": "`true`, wenn hinter dem Eintrag kein Profil steht."
+          },
+          "wartet": {
+            "type": "boolean",
+            "description": "`true`, sobald `position` über `maxTeilnehmer` liegt. Die Grenze ist Konfiguration: Senkt der Admin sie, wandert die Warteschlange sofort mit, ohne dass eine Teilnahme angefasst wird."
+          }
+        },
+        "required": [
+          "position",
+          "anzeigeName",
+          "gast",
+          "wartet"
+        ]
+      },
+      "Teilnehmerliste": {
+        "type": "object",
+        "description": "Die Zusagen eines Termins samt der Kennzahlen, an denen sie zu messen sind (A10, A11).\n\n**Ohne `terminId` und ohne `zusagen`** – beide stehen bereits im umgebenden `TerminDetails`. Zweimal dieselbe Zahl in einer Antwort ist eine Einladung, die falsche zu lesen.\n\n**Absagen erscheinen hier nicht.** Wer abgesagt hat, sieht das an `eigeneRueckmeldung` des Termins.",
+        "properties": {
+          "minTeilnehmer": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Mindestteilnehmerzahl (A10)."
+          },
+          "maxTeilnehmer": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Höchstzahl; ab Position `maxTeilnehmer + 1` wird gewartet (A11)."
+          },
+          "mindestzahlErreicht": {
+            "type": "boolean",
+            "description": "Beantwortet A10 unmittelbar. Gezählt werden **alle** Zusagen, auch die wartenden – wer wartet, hat zugesagt und rückt nach. Die Farbe des Balkens gehört nicht in den Vertrag; der Server liefert die Tatsache."
+          },
+          "teilnehmer": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TeilnehmerEintrag"
+            },
+            "description": "Die Zusagen in Warteschlangenreihenfolge. **Im Frontend nicht umsortieren** – sonst stimmt `position` nicht mehr mit der Anzeige überein."
+          }
+        },
+        "required": [
+          "minTeilnehmer",
+          "maxTeilnehmer",
+          "mindestzahlErreicht",
+          "teilnehmer"
         ]
       }
     }

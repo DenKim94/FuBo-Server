@@ -267,7 +267,7 @@ class SessionAuthFilterTests {
         Long spielerId = (rolle == null || rolle == Rolle.GAST) ? null : 7L;
         String gastName = (rolle == Rolle.GAST) ? "Gast 1" : null;
         OffsetDateTime jetzt = OffsetDateTime.now();
-        return new AktiveSitzung(42L, spielerId, gastName, rolle, stage,
+        return new AktiveSitzung(42L, spielerId, gastName, null, rolle, stage,
                 jetzt.plusMinutes(15), jetzt.plusHours(1));
     }
 

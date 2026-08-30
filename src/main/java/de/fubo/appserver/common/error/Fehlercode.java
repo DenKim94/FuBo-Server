@@ -115,6 +115,20 @@ public enum Fehlercode {
             "Zu diesem Zeitpunkt existiert bereits ein Termin."),
 
     /**
+     * Der Termin laesst sich nicht entfernen, weil fachliche Daten auf ihn verweisen
+     * (A19, S4 Paket 3).
+     *
+     * <p>Geprueft werden Teilnahmen, Generierungslaeufe, Kontingente und Ergebnisse. Alle
+     * vier haengen mit {@code ON DELETE CASCADE} am Termin - ein {@code DELETE} raeumte sie
+     * lautlos mit ab, und die Rueckmeldungen sind der einzige Beleg dafuer, wer zugesagt
+     * hatte. Dasselbe Muster wie bei {@link #PROFIL_IN_VERWENDUNG}: Wo geloescht nicht mehr
+     * geht, ist Absagen der richtige Weg.
+     */
+    TERMIN_IN_VERWENDUNG(HttpStatus.CONFLICT,
+            "Für diesen Termin liegen bereits Rückmeldungen oder Ergebnisse vor. "
+                    + "Er lässt sich stattdessen absagen."),
+
+    /**
      * Der Termin ist nicht mehr offen (S4, Abschnitte 3.4 und 5.2).
      *
      * <p><b>Bewusst allgemein benannt und allgemein formuliert.</b> Der Code deckt jeden

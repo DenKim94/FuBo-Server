@@ -57,7 +57,7 @@ Identifikation über den hinterlegten Namen. Rollen: ADMIN, USER, GAST.
   serverseitig bestimmen).
 - (A18) Termine als Einzeltermin oder befristete Serie (Enddatum Pflicht bei Serie, optionaler Ort).
   - **Ergänzung durch Entwickler:** Der jeweilige Termin ändert seinen Status 30 Minuten nach Beginn des Termins von `GEPLANT` zu `ABGESCHLOSSEN` automatisch, wenn dieser bis dahin nicht abgesagt wurde.
-- (19) **Terminbearbeitung:** Der Admin kann Termine (Einzeltermine) bearbeiten oder entfernen (z.B. Datum, Uhrzeit, Ort oder den Status).
+- (A19) **Terminbearbeitung:** Der Admin kann Termine (Einzeltermine) bearbeiten oder entfernen (z.B. Datum, Uhrzeit, Ort oder den Status).
 
 **Teamgenerierung**
 - (A15) Kontingent je Nutzer und Spieltag (Default konfigurierbar); Rücksetzung ausschließlich über die
@@ -201,10 +201,61 @@ Identifikation über den hinterlegten Namen. Rollen: ADMIN, USER, GAST.
      den aktiven Sitzungen abgeleitet und nicht gespeichert (A6), *damit er nicht veralten kann*;
      jede Anmeldung und jeder Logout ändert ihn, ohne dass ein Profil angefasst wird. Wo eine
      Abfrage beides liefern soll, wird sie geteilt.
+- **Rückmeldung und Warteschlange** (ab S4):
+  1. **Die Identität kommt aus der Sitzung, nie aus dem Anfragekörper.** Ein Gast schickt
+     keinen Namen mit – er *ist* schon jemand; der Dienst entscheidet an der Sitzung, ob
+     `spieler_id` oder `gast_name` gefüllt wird. Sonst könnte ein Gast unter beliebigen Namen
+     zusagen und die Teilnehmerliste mit Phantomen füllen. Dasselbe Prinzip, mit dem
+     `spielerId` nie aus dem Körper kommt.
+  2. **Zugesagt wird bis Terminbeginn und nur bei Status `GEPLANT`** (A7, Ergänzung vom
+     30.08.2026). **Zwei unabhängige Riegel:** Ein abgesagter Termin nimmt auch vor seinem
+     Beginn nichts mehr an, und ein geplanter Termin, der bereits begonnen hat, ebenfalls
+     nicht. Der Statusriegel allein genügt nicht – zwischen Beginn und dem automatischen
+     Abschluss liegen 30 Minuten, in denen der Status noch `GEPLANT` ist.
+  3. **Eine erneute Zusage stellt hinten an:** `gemeldet_am` wird bei jeder Zusage neu
+     gesetzt, eine Absage lässt es unberührt. Ohne diese Regel liesse sich ein vorderer Platz
+     freihalten – absagen, wenn man unsicher ist, und kurz vor dem Termin wieder zusagen,
+     vorbei an allen, die inzwischen fest zugesagt haben.
+  4. **Die Reihenfolge wird abgeleitet, nie gespeichert:** `row_number()` über
+     `ORDER BY gemeldet_am, id`, alles jenseits von `max_teilnehmer` ist Warteschlange. Eine
+     Positionsspalte müsste bei jeder Absage neu durchnummeriert werden, mit Schreiblast und
+     einem Wettlauf bei parallelen Meldungen. **Die `id` als zweites Sortierkriterium ist
+     nicht optional** – `now()` ist innerhalb einer Transaktion konstant, zwei Zeilen aus
+     einem Vorgang trügen denselben Zeitstempel.
+  5. **Das Adminprofil kann nicht zusagen** (`409 PROFIL_GESCHUETZT`). Der Rückmeldeendpunkt
+     liegt ausserhalb von `/admin/`, das Adminprofil trägt aber eine `spielerId` – ohne diese
+     Prüfung stünde es mit Skillwerten von 0 in der Teameinteilung. Der Ausschluss wird an
+     jeder Grenze wiederholt.
+  6. **Die Gast-Stufe wird bei der Zusage kopiert, nicht verwiesen.** Die Sitzung endet, die
+     Teilnahme bleibt, und der Teamgenerator braucht die Stufe zum Zeitpunkt des Spiels. Folge:
+     Meldet sich ein Gast neu an und stuft sich anders ein, gilt für bereits abgegebene
+     Zusagen weiterhin die alte Stufe – bis er die Rückmeldung erneut abgibt.
+  7. **Rückmeldungen werden nicht protokolliert.** Sie stehen vollständig in
+     `spieltag.teilnahme` samt `gemeldet_am`; ein zweiter Beleg verdoppelte personenbezogene
+     Daten und fiele nach 90 Tagen der Löschfrist zum Opfer, während die Teilnahme bliebe.
+     Adminaktionen werden protokolliert, Nutzerhandlungen nicht – die Korrektur einer
+     Gast-Stufe durch den Admin ist deshalb die einzige Ausnahme.
+  8. **Die Teilnehmerliste trägt keine Bewertungen** – weder Skillwerte noch die Stufe eines
+     Gastes. Sie erreicht jede Rolle, auch `GAST` (A12). Damit sieht die Antwort für alle
+     Rollen gleich aus; eine rollenabhängige Liste wäre der teurere Weg, weil sie an jeder
+     Stelle mitgedacht werden müsste.
 - **Teilnehmer-Version:** je Termin ein Zähler, der bei jeder Teilnehmeränderung transaktional
   steigt; einziger Auslöser für die Kontingent-Rücksetzung und das Veraltet-Kennzeichen.
-  **Eine Skilländerung zählt dazu (A15) – Pflichtpunkt für S4**, in S3 mangels `spieltag`-Service
-  nicht umsetzbar und deshalb ausdrücklich vermerkt.
+  **Vier Auslöser** (A15): Zusage, Absage, Änderung der Gast-Stufe – und die **Änderung eines
+  Skillwerts**, für alle künftigen Termine, an denen der Spieler zugesagt hat. Der vierte war
+  in S3 mangels `spieltag`-Service nicht umsetzbar und ist mit S4 nachgeholt; er liegt als
+  `TerminService#teilnehmerVersionErhoehenFuerSpieler` im Fachbereich `spieltag`, damit die
+  Profilverwaltung weder die Tabelle noch die Bedingung kennen muss.
+  - **Der Zähler steigt in derselben Transaktion wie die auslösende Änderung** – sonst gäbe es
+    einen Moment, in dem eine Teameinteilung als aktuell gilt, obwohl der Teilnehmerkreis schon
+    ein anderer ist.
+  - **`termin.version` wird dabei mit hochgezählt**, wie bei jeder per SQL geänderten
+    Versionsspalte. **Daraus folgt eine Regel für den Code:** Im selben Vorgang darf keine
+    verwaltete `Termin`-Entity geladen sein – ihre Version im Speicher wäre danach veraltet,
+    und der nächste Flush scheiterte an einem Sperrkonflikt, den niemand verursacht hat. Der
+    Rückmeldepfad liest den Termin deshalb über die native Abfrage, nicht über `findById`.
+  - **Der automatische Abschluss erhöht ihn nicht.** Er stellt fest, dass gespielt wurde, und
+    ändert den Teilnehmerkreis nicht; ein Ausschlag setzte ab S5 grundlos Kontingente zurück.
 - **Termine** (ab S4):
   1. **Ein Termin wird nie gelöscht, nur auf `ABGESAGT` gesetzt – und die Absage ist
      endgültig.** Fünf Tabellen hängen mit `ON DELETE CASCADE` am Termin: `teilnahme` aus
@@ -233,6 +284,25 @@ Identifikation über den hinterlegten Namen. Rollen: ADMIN, USER, GAST.
      nähme also nie eine Rückmeldung entgegen. Beim Ändern greift die Prüfung nur, wenn der
      Zeitpunkt sich wirklich ändert; die Ortskorrektur an einem vergangenen Termin schadet
      niemandem.
+  5. **Ein Termin wird entfernt, solange nichts auf ihn verweist** (A19, 30.08.2026) – geprüft
+     werden `teilnahme`, `team_generierung`, `generierung_kontingent` und `ergebnis`; sonst
+     `409 TERMIN_IN_VERWENDUNG`. Dasselbe Muster wie bei `PROFIL_IN_VERWENDUNG`: Wo Löschen
+     nicht mehr geht, ist Absagen der Weg. **Damit ist das Entfernen zugleich der einzige Weg
+     zurück aus einer versehentlichen Absage** – ein abgesagter Termin belegt seinen Zeitpunkt
+     weiter, und ohne das Entfernen bliebe er dauerhaft gesperrt.
+  6. **Der Status ist nur vorwärts setzbar** (A19): `ABGESAGT` und `ABGESCHLOSSEN` sind
+     zulässige Ziele, `GEPLANT` nicht. Ein `400`, kein `409` – es ist kein Zustand, der sich
+     mit der Zeit ändert, sondern eine Eingabe, die es nie geben wird. Wird der Status über
+     `aendern` auf `ABGESAGT` gesetzt, heisst der Protokolleintrag trotzdem `TERMIN_ABGESAGT`:
+     Wer das Protokoll nach Absagen durchsieht, soll sie dort finden.
+  7. **Ein geplanter Termin schliesst sich 30 Minuten nach seinem Beginn selbst ab** (A18,
+     30.08.2026), sofern er nicht abgesagt wurde. Der Auftrag läuft alle fünf Minuten; der
+     Übergang findet also zwischen 30 und 35 Minuten nach Beginn statt. **Er ist eine
+     Aufräumung, kein Torwächter:** Keine fachliche Regel hängt an seiner Pünktlichkeit, denn
+     ob noch gemeldet werden darf, entscheidet die Uhrzeit und nicht der Status. Die Frist ist
+     eine Konstante im Dienst und kein Konfigurationsfeld – A18 legt sie als Anforderung fest,
+     und ein zwölftes Pflichtfeld im Voll-Update wäre eine brechende Vertragsänderung. Der Lauf
+     geht in die Anwendungsprotokollierung, nicht ins Audit-Log; er hat keinen Handelnden.
 - **Teamzuteilung als Snapshot:** jeder Lauf speichert die gültigen Skillwerte und seinen Seed.
 - **Gast-Slots:** feste Datensätze, Belegung per bedingtem `UPDATE` (keine gezählte Abfrage);
   `configs.app_config.anz_guests` wirkt über `id <= :maxGaeste`, eine Änderung also sofort.

@@ -23,6 +23,8 @@ import org.springframework.web.context.WebApplicationContext;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -59,6 +61,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class SpielerControllerTests {
 
     private static final String COOKIE = "FUBO_SESSION";
+
+    /**
+     * Uhrzeit der Termine, die diese Klasse fuer den Zaehler-Nachtrag anlegt.
+     *
+     * <p>{@code uq_termin_zeit} ist global: Diese Klasse teilt sich die Datenbank mit
+     * {@code TerminControllerTests} (18:15), {@code TerminVerwaltungControllerTests} (19:45)
+     * und {@code TeilnehmerlisteTests} (17:30) und braucht deshalb eine eigene Uhrzeit.
+     */
+    private static final LocalTime TERMIN_UHRZEIT = LocalTime.of(16, 5);
 
     @Autowired
     private WebApplicationContext kontext;
@@ -726,6 +737,74 @@ class SpielerControllerTests {
     }
 
     // --------------------------------------------------------------------- Hilfsmittel
+
+    // --------------------------------------------------------------------- Teilnehmer-Version
+
+    /**
+     * Eine Skillaenderung erhoeht die {@code teilnehmer_version} kuenftiger Termine (A15).
+     *
+     * <p><b>Der Pflichtpunkt aus S3</b>, Abschnitt 3.5: Dort stand der Vorgang mangels
+     * {@code spieltag}-Dienst nur als Kommentar. Eine geaenderte Bewertung aendert nicht, wer
+     * mitspielt, wohl aber die Grundlage jeder Teameinteilung - dieselben Namen ergeben eine
+     * andere Aufteilung. Ohne diesen Ausloeser bliebe eine gespeicherte Einteilung ab S5 als
+     * aktuell gekennzeichnet, obwohl sie es nicht mehr ist.
+     *
+     * <p>Der Termin liegt bewusst weit in der Zukunft und zu einer eigenen Uhrzeit:
+     * {@code uq_termin_zeit} ist global, und diese Klasse teilt sich die Datenbank mit den
+     * Terminklassen.
+     */
+    @Test
+    void skillaenderungErhoehtDieTeilnehmerVersionKuenftigerTermine() throws Exception {
+        Long spielerId = ersterSpieler();
+        Long terminId = terminMitZusage(LocalDate.now().plusDays(300), spielerId);
+
+        bearbeiten("{\"spielerId\":%d,\"skills\":{\"ANGRIFF\":5}}".formatted(spielerId))
+                .andExpect(status().isNoContent());
+
+        assertThat(teilnehmerVersion(terminId)).isEqualTo(1);
+    }
+
+    /**
+     * Ein vergangener Termin bleibt unberuehrt - er ist gespielt worden.
+     *
+     * <p>Ebenso ein Termin, an dem der Spieler <b>abgesagt</b> hat: Er steht dort nicht in der
+     * Einteilung, seine Staerke aendert daran nichts.
+     */
+    @Test
+    void skillaenderungLaesstVergangeneUndAbgesagteTermineUnberuehrt() throws Exception {
+        Long spielerId = ersterSpieler();
+        Long vergangen = terminMitZusage(LocalDate.now().minusDays(300), spielerId);
+        Long abgesagt = jdbc.queryForObject("""
+                INSERT INTO spieltag.termin (datum, uhrzeit) VALUES (?, ?) RETURNING id
+                """, Long.class, LocalDate.now().plusDays(301), TERMIN_UHRZEIT);
+        jdbc.update("""
+                INSERT INTO spieltag.teilnahme (termin_id, spieler_id, zusage) VALUES (?, ?, false)
+                """, abgesagt, spielerId);
+
+        bearbeiten("{\"spielerId\":%d,\"skills\":{\"ANGRIFF\":6}}".formatted(spielerId))
+                .andExpect(status().isNoContent());
+
+        assertThat(teilnehmerVersion(vergangen)).as("gespielt ist gespielt").isZero();
+        assertThat(teilnehmerVersion(abgesagt)).as("wer abgesagt hat, spielt nicht mit").isZero();
+    }
+
+    // --------------------------------------------------------------------- Hilfsmittel
+
+    /** Legt einen Termin mit einer Zusage dieses Spielers an und liefert die Termin-Id. */
+    private Long terminMitZusage(LocalDate datum, Long spielerId) {
+        Long terminId = jdbc.queryForObject("""
+                INSERT INTO spieltag.termin (datum, uhrzeit) VALUES (?, ?) RETURNING id
+                """, Long.class, datum, TERMIN_UHRZEIT);
+        jdbc.update("""
+                INSERT INTO spieltag.teilnahme (termin_id, spieler_id, zusage) VALUES (?, ?, true)
+                """, terminId, spielerId);
+        return terminId;
+    }
+
+    private int teilnehmerVersion(Long terminId) {
+        return jdbc.queryForObject(
+                "SELECT teilnehmer_version FROM spieltag.termin WHERE id = ?", Integer.class, terminId);
+    }
 
     private ResultActions bearbeiten(String koerper) throws Exception {
         return mockMvc.perform(post("/api/v1/admin/user/bearbeiten")

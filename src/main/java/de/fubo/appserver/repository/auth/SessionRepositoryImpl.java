@@ -1,6 +1,7 @@
 package de.fubo.appserver.repository.auth;
 
 import de.fubo.appserver.domain.auth.AktiveSitzung;
+import de.fubo.appserver.domain.auth.GastStufe;
 import de.fubo.appserver.domain.auth.Rolle;
 import de.fubo.appserver.domain.auth.Stage;
 import org.springframework.jdbc.core.RowMapper;
@@ -47,7 +48,8 @@ class SessionRepositoryImpl implements SessionRepositoryCustom {
                AND widerrufen_am IS NULL
                AND gueltig_bis > now()
                AND absolut_gueltig_bis > now()
-            RETURNING id, spieler_id, gast_name, rolle, stage, gueltig_bis, absolut_gueltig_bis
+            RETURNING id, spieler_id, gast_name, gast_stufe, rolle, stage,
+                      gueltig_bis, absolut_gueltig_bis
             """;
 
     /**
@@ -63,7 +65,8 @@ class SessionRepositoryImpl implements SessionRepositoryCustom {
      * Hintergrundaufruf richtig gewesen. Der naechste Aufruf sieht den Ablauf.
      */
     private static final String SQL_PRUEFEN = """
-            SELECT id, spieler_id, gast_name, rolle, stage, gueltig_bis, absolut_gueltig_bis
+            SELECT id, spieler_id, gast_name, gast_stufe, rolle, stage,
+                   gueltig_bis, absolut_gueltig_bis
               FROM profil.session
              WHERE token_hash = :hash
                AND widerrufen_am IS NULL
@@ -106,10 +109,14 @@ class SessionRepositoryImpl implements SessionRepositoryCustom {
         // und 0 waere eine gueltig aussehende Spieler-Id.
         Long spielerId = rs.getObject("spieler_id", Long.class);
         String rolleText = rs.getString("rolle");
+        // gast_stufe ist NULL-faehig und bei Spieler- und PIN_VERIFIED-Sitzungen leer;
+        // valueOf(null) liefe in eine NullPointerException.
+        String stufeText = rs.getString("gast_stufe");
         return new AktiveSitzung(
                 rs.getLong("id"),
                 spielerId,
                 rs.getString("gast_name"),
+                stufeText == null ? null : GastStufe.valueOf(stufeText),
                 // In der Stufe PIN_VERIFIED ist die Rolle NULL.
                 rolleText == null ? null : Rolle.valueOf(rolleText),
                 Stage.valueOf(rs.getString("stage")),

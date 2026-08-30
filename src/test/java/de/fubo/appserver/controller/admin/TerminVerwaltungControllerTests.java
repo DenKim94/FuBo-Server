@@ -4,6 +4,7 @@ import de.fubo.appserver.database.TestcontainersConfiguration;
 import de.fubo.appserver.domain.auth.Rolle;
 import de.fubo.appserver.domain.auth.Stage;
 import de.fubo.appserver.service.auth.SessionService;
+import de.fubo.appserver.service.spieltag.TerminService;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -78,6 +79,13 @@ class TerminVerwaltungControllerTests {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    /**
+     * Fuer den Auftrag aus A18. Er gehoert fachlich zu denselben Zustandsuebergaengen wie das
+     * Absagen und steht deshalb hier statt in einer eigenen Klasse mit zwei Faellen.
+     */
+    @Autowired
+    private TerminService terminService;
 
     private MockMvc mockMvc;
 
@@ -305,6 +313,209 @@ class TerminVerwaltungControllerTests {
         assertThat(karte(antwort).get("code")).isEqualTo("TERMIN_GESCHLOSSEN");
     }
 
+    // --------------------------------------------------------------------- Status (A19)
+
+    /**
+     * Der Status laesst sich ueber das Bearbeitungsformular setzen (A19, 30.08.2026).
+     *
+     * <p>Der Protokolleintrag heisst dabei {@code TERMIN_ABGESAGT} und nicht
+     * {@code TERMIN_GEAENDERT}: Wer das Protokoll nach abgesagten Terminen durchsieht, soll
+     * sie dort finden und nicht zwischen Ortsaenderungen suchen.
+     */
+    @Test
+    void aendernKannDenTerminAbsagen() throws Exception {
+        Long terminId = angelegterTermin(tag(30));
+
+        aendern(Map.of("terminId", terminId, "version", version(terminId), "status", "ABGESAGT"))
+                .andExpect(status().isNoContent());
+
+        assertThat(terminZeile(terminId).get("status")).isEqualTo("ABGESAGT");
+        assertThat(jdbc.queryForList("""
+                SELECT aktion FROM profil.audit_log
+                 WHERE entitaet = 'termin' AND entitaet_id = ? ORDER BY id
+                """, String.class, terminId))
+                .containsExactly("TERMIN_ANGELEGT", "TERMIN_ABGESAGT");
+    }
+
+    /** Auch der Abschluss laesst sich von Hand setzen - etwa, wenn frueher gespielt wurde. */
+    @Test
+    void aendernKannDenTerminAbschliessen() throws Exception {
+        Long terminId = angelegterTermin(tag(31));
+
+        aendern(Map.of("terminId", terminId, "version", version(terminId),
+                "status", "ABGESCHLOSSEN"))
+                .andExpect(status().isNoContent());
+
+        assertThat(terminZeile(terminId).get("status")).isEqualTo("ABGESCHLOSSEN");
+    }
+
+    /**
+     * Zurueck nach {@code GEPLANT} geht nicht - eine Absage ist endgueltig.
+     *
+     * <p>{@code 400} und nicht {@code 409}: Es ist kein Zustand, der sich mit der Zeit
+     * aendert, sondern eine Eingabe, die es nie geben wird. Wer den Termin doch braucht,
+     * entfernt ihn und legt ihn neu an.
+     */
+    @Test
+    void aendernAufGeplantLiefert400() throws Exception {
+        Long terminId = angelegterTermin(tag(32));
+
+        aendern(Map.of("terminId", terminId, "version", version(terminId), "status", "GEPLANT"))
+                .andExpect(status().isBadRequest());
+
+        assertThat(terminZeile(terminId).get("status")).isEqualTo("GEPLANT");
+    }
+
+    // --------------------------------------------------------------------- Entfernen (A19)
+
+    /** Ohne Verweise verschwindet die Zeile - und der Zeitpunkt wird wieder frei. */
+    @Test
+    void entfernenLoeschtDenTerminUndGibtDenZeitpunktFrei() throws Exception {
+        LocalDate datum = tag(33);
+        Long terminId = angelegterTermin(datum);
+
+        entfernen(terminId).andExpect(status().isNoContent());
+
+        assertThat(jdbc.queryForObject(
+                "SELECT count(*) FROM spieltag.termin WHERE id = ?", Integer.class, terminId))
+                .isZero();
+        anlegen(datum, "Sporthalle Nord")
+                .andExpect(status().isCreated());
+    }
+
+    /**
+     * Ein abgesagter Termin laesst sich entfernen - das ist der einzige Weg zurueck.
+     *
+     * <p>Er belegt seinen Zeitpunkt sonst dauerhaft weiter, denn {@code uq_termin_zeit} gilt
+     * fuer ihn genauso. Absagen ist endgueltig; entfernen und neu anlegen ist die Heilung.
+     */
+    @Test
+    void einAbgesagterTerminLaesstSichEntfernen() throws Exception {
+        Long terminId = angelegterTermin(tag(34));
+        absagen(terminId).andExpect(status().isNoContent());
+
+        entfernen(terminId).andExpect(status().isNoContent());
+    }
+
+    /**
+     * Mit Rueckmeldungen daran wird nicht geloescht, sondern abgesagt.
+     *
+     * <p>Fuenf Tabellen haengen mit {@code ON DELETE CASCADE} am Termin; ein ungepruefter
+     * Aufruf raeumte den halben Spieltag ab, und die Rueckmeldungen sind der einzige Beleg
+     * dafuer, wer zugesagt hatte.
+     */
+    @Test
+    void entfernenMitTeilnahmeLiefert409() throws Exception {
+        Long terminId = angelegterTermin(tag(35));
+        teilnahmeAnlegen(terminId);
+
+        String antwort = entfernen(terminId)
+                .andExpect(status().isConflict())
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(karte(antwort).get("code")).isEqualTo("TERMIN_IN_VERWENDUNG");
+        assertThat(terminZeile(terminId)).isNotNull();
+    }
+
+    /** Eine unbekannte Id liefert {@code 404}. */
+    @Test
+    void entfernenUnbekannterIdLiefert404() throws Exception {
+        entfernen(999999999L).andExpect(status().isNotFound());
+    }
+
+    // --------------------------------------------------------------------- Gast-Stufe (A17)
+
+    /**
+     * Der Admin korrigiert die Selbsteinschaetzung eines Gastes - und nur sie.
+     *
+     * <p>Weder Zusage noch Meldezeit aendern sich; die Position in der Warteschlange bleibt.
+     * Der Vorgang zaehlt aber als Teilnehmeraenderung (A15).
+     */
+    @Test
+    void gastStufeAendernSetztNurDieStufe() throws Exception {
+        Long terminId = angelegterTermin(tag(36));
+        gastTeilnahmeAnlegen(terminId, "Testgast Klara", "SCHWACH");
+        int vorher = teilnehmerVersion(terminId);
+
+        gastStufe(terminId, "Testgast Klara", "STARK").andExpect(status().isNoContent());
+
+        Map<String, Object> zeile = jdbc.queryForMap(
+                "SELECT gast_stufe, zusage FROM spieltag.teilnahme WHERE termin_id = ?", terminId);
+        assertThat(zeile.get("gast_stufe")).isEqualTo("STARK");
+        assertThat(zeile.get("zusage")).as("Die Zusage bleibt unberuehrt").isEqualTo(true);
+        assertThat(teilnehmerVersion(terminId)).isEqualTo(vorher + 1);
+    }
+
+    /** Das Protokoll haelt alten und neuen Wert fest. */
+    @Test
+    void gastStufeAendernProtokolliertBeideWerte() throws Exception {
+        Long terminId = angelegterTermin(tag(37));
+        gastTeilnahmeAnlegen(terminId, "Testgast Lena", "MITTEL");
+
+        gastStufe(terminId, "Testgast Lena", "SCHWACH").andExpect(status().isNoContent());
+
+        assertThat(jdbc.queryForObject("""
+                SELECT details->>'stufeAlt' FROM profil.audit_log
+                 WHERE aktion = 'GAST_STUFE_GEAENDERT' AND entitaet_id = ?
+                """, String.class, terminId))
+                .isEqualTo("MITTEL");
+    }
+
+    /** Ohne passende Teilnahme gibt es nichts zu korrigieren. */
+    @Test
+    void gastStufeOhnePassendeTeilnahmeLiefert404() throws Exception {
+        Long terminId = angelegterTermin(tag(38));
+
+        gastStufe(terminId, "Testgast Mia", "STARK").andExpect(status().isNotFound());
+    }
+
+    // --------------------------------------------------------------------- Auto-Abschluss (A18)
+
+    /**
+     * Ein geplanter Termin schliesst sich 30 Minuten nach seinem Beginn selbst ab (A18).
+     *
+     * <p><b>Der Auftrag wird hier direkt aufgerufen und nicht abgewartet.</b> Er laeuft im
+     * Betrieb alle fuenf Minuten; ein Test, der darauf wartet, waere langsam und von der
+     * Uhr abhaengig. Geprueft wird die Wirkung, nicht der Zeitplan.
+     *
+     * <p>Der Termin liegt einen Tag zurueck - damit ist der Fall unabhaengig davon, zu
+     * welcher Tageszeit der Testlauf stattfindet.
+     */
+    @Test
+    void abgelaufeneTermineWerdenAbgeschlossen() throws Exception {
+        Long vergangen = jdbc.queryForObject("""
+                INSERT INTO spieltag.termin (datum, uhrzeit) VALUES (?, ?) RETURNING id
+                """, Long.class, LocalDate.now().minusDays(1), UHRZEIT);
+        Long kuenftig = angelegterTermin(tag(39));
+
+        terminService.abgelaufeneAbschliessen();
+
+        assertThat(terminZeile(vergangen).get("status")).isEqualTo("ABGESCHLOSSEN");
+        assertThat(terminZeile(kuenftig).get("status"))
+                .as("Was noch kommt, bleibt geplant")
+                .isEqualTo("GEPLANT");
+    }
+
+    /**
+     * Ein abgesagter Termin wird nicht abgeschlossen - er hat nicht stattgefunden.
+     *
+     * <p>Und der Zaehler {@code teilnehmer_version} bleibt unberuehrt: Der Abschluss aendert
+     * den Teilnehmerkreis nicht. Ein Ausschlag setzte ab S5 grundlos Generierungskontingente
+     * zurueck.
+     */
+    @Test
+    void einAbgesagterTerminBleibtAbgesagt() throws Exception {
+        Long terminId = jdbc.queryForObject("""
+                INSERT INTO spieltag.termin (datum, uhrzeit, status)
+                VALUES (?, ?, 'ABGESAGT') RETURNING id
+                """, Long.class, LocalDate.now().minusDays(2), UHRZEIT);
+
+        terminService.abgelaufeneAbschliessen();
+
+        assertThat(terminZeile(terminId).get("status")).isEqualTo("ABGESAGT");
+        assertThat(teilnehmerVersion(terminId)).isZero();
+    }
+
     // --------------------------------------------------------------------- Serie
 
     /**
@@ -516,6 +727,42 @@ class TerminVerwaltungControllerTests {
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         return ((Number) karte(antwort).get("version")).longValue();
+    }
+
+    private ResultActions entfernen(Long terminId) throws Exception {
+        return mockMvc.perform(post("/api/v1/admin/termin/entfernen")
+                .cookie(new Cookie(COOKIE, adminSitzung()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"terminId\":%d}".formatted(terminId)));
+    }
+
+    private ResultActions gastStufe(Long terminId, String gastName, String stufe) throws Exception {
+        return mockMvc.perform(post("/api/v1/admin/teilnahme/gast-stufe")
+                .cookie(new Cookie(COOKIE, adminSitzung()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"terminId\":%d,\"gastName\":\"%s\",\"stufe\":\"%s\"}"
+                        .formatted(terminId, gastName, stufe)));
+    }
+
+    /** Eine Zusage des ersten Demoprofils - genug, damit der Termin als verwendet gilt. */
+    private void teilnahmeAnlegen(Long terminId) {
+        jdbc.update("""
+                INSERT INTO spieltag.teilnahme (termin_id, spieler_id, zusage)
+                VALUES (?, (SELECT id FROM profil.spieler
+                             WHERE rolle = 'USER' AND aktiv ORDER BY name LIMIT 1), true)
+                """, terminId);
+    }
+
+    private void gastTeilnahmeAnlegen(Long terminId, String gastName, String stufe) {
+        jdbc.update("""
+                INSERT INTO spieltag.teilnahme (termin_id, gast_name, gast_stufe, zusage)
+                VALUES (?, ?, ?, true)
+                """, terminId, gastName, stufe);
+    }
+
+    private int teilnehmerVersion(Long terminId) {
+        return jdbc.queryForObject(
+                "SELECT teilnehmer_version FROM spieltag.termin WHERE id = ?", Integer.class, terminId);
     }
 
     private Map<String, Object> terminZeile(Long terminId) {

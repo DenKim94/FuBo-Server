@@ -12,6 +12,13 @@ import java.time.OffsetDateTime;
  * zurueckzugeben waere irrefuehrend: Sie saehe aus wie ein vollstaendiges Objekt, haette
  * aber leere Felder, und ein {@code save()} darauf wuerde Daten ueberschreiben.
  *
+ * <p><b>Ergaenzt am 30.08.2026 um {@code gastStufe} (S4, Paket 6).</b> Bei der Zusage eines
+ * Gastes wird die Stufe in {@code spieltag.teilnahme.gast_stufe} <b>kopiert</b>, nicht
+ * verwiesen: Die Sitzung endet, die Teilnahme bleibt, und der Teamgenerator in S5 braucht die
+ * Stufe zum Zeitpunkt des Spiels. Sie steht deshalb hier und nicht nur in der Datenbankzeile -
+ * der Dienst holt sie aus der Sitzung, nie aus dem Anfragekoerper. Sonst koennte ein Gast sich
+ * selbst zum starken Spieler erklaeren, nachdem der Admin ihn korrigiert hat.
+ *
  * <p><b>Ergaenzt am 22.08.2026 um die beiden Ablaufzeitpunkte.</b> Der Endpunkt
  * {@code GET /auth/session/lesen} liefert sie an das Frontend, das daraus den Countdown und
  * die Schaltflaeche "Sitzung verlaengern" ableitet (Abschnitt 10.7 der Umsetzungsanleitung).
@@ -22,6 +29,7 @@ import java.time.OffsetDateTime;
  * @param id                technischer Schluessel der Sitzung
  * @param spielerId         Profil-Id; {@code null} bei Gastsitzungen und in {@link Stage#PIN_VERIFIED}
  * @param gastName          temporaerer Name eines Gastes; sonst {@code null}
+ * @param gastStufe         Selbsteinschaetzung des Gastes; sonst {@code null}
  * @param rolle             {@code null}, solange die Sitzung in {@link Stage#PIN_VERIFIED} ist
  * @param stage             erreichte Login-Stufe
  * @param gueltigBis        Ende des gleitenden Leerlauf-Fensters; wandert bei Aktivitaet nach hinten
@@ -30,6 +38,7 @@ import java.time.OffsetDateTime;
 public record AktiveSitzung(Long id,
                             Long spielerId,
                             String gastName,
+                            GastStufe gastStufe,
                             Rolle rolle,
                             Stage stage,
                             OffsetDateTime gueltigBis,

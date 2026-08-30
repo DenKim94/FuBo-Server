@@ -2,14 +2,19 @@ package de.fubo.appserver.controller.spieltag;
 
 import de.fubo.appserver.common.config.ApiVersionConfig;
 import de.fubo.appserver.domain.auth.AktiveSitzung;
+import de.fubo.appserver.dto.spieltag.TeilnahmeRequest;
 import de.fubo.appserver.dto.spieltag.TerminDetails;
 import de.fubo.appserver.dto.spieltag.TerminUebersicht;
+import de.fubo.appserver.service.spieltag.TeilnahmeService;
 import de.fubo.appserver.service.spieltag.TerminService;
+import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -42,9 +47,11 @@ import java.util.List;
 public class TerminController {
 
     private final TerminService terminService;
+    private final TeilnahmeService teilnahmeService;
 
-    public TerminController(TerminService terminService) {
+    public TerminController(TerminService terminService, TeilnahmeService teilnahmeService) {
         this.terminService = terminService;
+        this.teilnahmeService = teilnahmeService;
     }
 
     /**
@@ -83,19 +90,45 @@ public class TerminController {
      * <p><b>Der Aufruf vor jeder Aenderung:</b> {@code /admin/termin/aendern} verlangt die
      * Version aus dieser Antwort zurueck - derselbe Ablauf wie bei der Konfiguration.
      *
-     * <p><b>Die Teilnehmerliste kommt mit S4-Paket 7 dazu</b>, als zusaetzliches Feld dieser
-     * Antwort und nicht als zweiter Endpunkt: Wer einen Termin oeffnet, will die Teilnehmer
-     * sehen, und zwei Aufrufe fuer eine Ansicht sind zwei Gelegenheiten fuer einen
-     * inkonsistenten Stand.
+     * <p><b>Die Teilnehmerliste kommt mit</b>, als Feld dieser Antwort und nicht als zweiter
+     * Endpunkt: Wer einen Termin oeffnet, will die Teilnehmer sehen, und zwei Aufrufe fuer
+     * eine Ansicht sind zwei Gelegenheiten fuer einen inkonsistenten Stand.
      *
      * @param terminId gesuchter Termin
      * @param sitzung  aufrufende Sitzung
-     * @return {@code 200} mit dem Termin; {@code 404}, wenn es die Id nicht gibt
+     * @return {@code 200} mit dem Termin samt Teilnehmern; {@code 404} bei unbekannter Id
      */
     @GetMapping(value = "/{terminId}/lesen", version = ApiVersionConfig.VERSION)
     public ResponseEntity<TerminDetails> terminLesen(@PathVariable Long terminId,
                                                      @AuthenticationPrincipal AktiveSitzung sitzung) {
 
         return ResponseEntity.ok(TerminDetails.von(terminService.einzelnLesen(terminId, sitzung)));
+    }
+
+    /**
+     * Nimmt die Zu- oder Absage des Aufrufers entgegen (A7, A8).
+     *
+     * <p><b>Derselbe Endpunkt fuer Spieler und Gaeste.</b> Der Dienst entscheidet an der
+     * Sitzung, welche Spalte gefuellt wird; der Anfragekoerper ist identisch. Ein Gast
+     * schickt keinen Namen mit - er <i>ist</i> schon jemand, und ein Name aus dem Koerper
+     * waere ein Weg, die Teilnehmerliste mit Phantomen zu fuellen.
+     *
+     * <p><b>{@code 204} und kein {@code 200} mit der neuen Teilnehmerliste.</b> Der Client,
+     * der gerade zugesagt hat, braucht die Liste nur, wenn er sie anzeigt - und dann holt er
+     * sie ueber die Einzelansicht, die ohnehin frisch rechnet. Eine Antwort, die beides
+     * taete, verfuehrte dazu, den Rueckgabewert als Wahrheit zu behandeln, obwohl inzwischen
+     * zwei andere Spieler zugesagt haben.
+     *
+     * @param anfrage Termin und Richtung der Meldung
+     * @param sitzung aufrufende Sitzung; liefert Identitaet und Gast-Stufe
+     * @return {@code 204} ohne Inhalt
+     */
+    @PostMapping(value = "/rueckmeldung", version = ApiVersionConfig.VERSION)
+    public ResponseEntity<Void> rueckmeldung(@Valid @RequestBody TeilnahmeRequest anfrage,
+                                             @AuthenticationPrincipal AktiveSitzung sitzung) {
+
+        teilnahmeService.rueckmeldung(anfrage.terminId(), anfrage.zusage(), sitzung);
+
+        return ResponseEntity.noContent().build();
     }
 }
