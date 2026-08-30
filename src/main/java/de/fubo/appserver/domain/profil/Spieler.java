@@ -24,6 +24,13 @@ import java.time.OffsetDateTime;
  * (A12). Waeren sie ein Feld dieser Entity, muesste bei jedem DTO-Bau erneut daran gedacht
  * werden, sie wegzulassen. So kann ein Profil gar nicht versehentlich mit Skillwerten in
  * einer Antwort landen.
+ *
+ * <p><b>Die Bilanz dagegen steht hier</b> (seit {@code V011}, A21). Der Unterschied zu den
+ * Skillwerten ist kein technischer, sondern ein fachlicher: Skillwerte sind vertraulich und
+ * duerfen die API-Grenze nur unterhalb von {@code /admin/} passieren; Siege und Niederlagen
+ * sind das Gegenteil - sie entstehen aus Spielen, die alle Beteiligten miterlebt haben. Eine
+ * eigene Tabelle braeuchte es dafuer nicht: Es sind drei Zahlen mit demselben Lebenszyklus
+ * wie das Profil.
  */
 @Entity
 @Table(name = "spieler", schema = "profil")
@@ -51,6 +58,41 @@ public class Spieler {
     /** Inaktive Profile erscheinen nicht in der Namensliste und koennen sich nicht anmelden. */
     @Column(name = "aktiv", nullable = false)
     private boolean aktiv;
+
+    // ------------------------------------------------------------------- Bilanz (A21)
+
+    /**
+     * Zahl der gewonnenen Spiele; wird ab S6 bei jeder Ergebnisaenderung neu berechnet.
+     *
+     * <p><b>Neu berechnet, nicht fortgeschrieben</b> (Entscheidung vom 30.08.2026). Ein
+     * {@code +1} beim Eintragen und ein {@code -1} beim Korrigieren waeren kuerzer, setzten
+     * aber voraus, dass die Teameinteilung dazwischen unveraendert bleibt. Tut sie es nicht,
+     * traefe die Ruecknahme andere Spieler als der urspruengliche Eintrag - und der Fehler
+     * faellt nie auf, weil es keine zweite Quelle gibt, gegen die sich der Zaehler pruefen
+     * liesse. Die Neuberechnung aus {@code spieltag.ergebnis} und
+     * {@code spieltag.team_zuteilung} macht die Korrektur zum Normalfall statt zum Sonderfall.
+     *
+     * <p><b>Ein Gast taucht hier nie auf.</b> Er hat keine Zeile in {@code profil.spieler};
+     * in {@code spieltag.teilnahme} steht nur sein {@code gast_name}. Gastteilnahmen bleiben
+     * damit ohne Bilanz - das Ergebnis des Termins ist davon unberuehrt.
+     */
+    @Column(name = "anz_siege", nullable = false)
+    private int anzSiege;
+
+    /** Zahl der verlorenen Spiele; Pflege wie bei {@link #anzSiege}. */
+    @Column(name = "anz_niederlagen", nullable = false)
+    private int anzNiederlagen;
+
+    /**
+     * Zahl der unentschiedenen Spiele; Pflege wie bei {@link #anzSiege}.
+     *
+     * <p>Das Unentschieden steht in {@code spieltag.ergebnis.sieger} als {@code 'U'} und ist
+     * damit ein dritter Ausgang, kein fehlender Sieger. {@code deutlich} ist davon
+     * unabhaengig: Ein deutlicher Sieg ist ein Sieg und zaehlt einmal - die Spalte beschreibt
+     * die Hoehe, nicht den Ausgang.
+     */
+    @Column(name = "anz_unentschieden", nullable = false)
+    private int anzUnentschieden;
 
     @Column(name = "erstellt_am", nullable = false)
     private OffsetDateTime erstelltAm;
@@ -89,6 +131,30 @@ public class Spieler {
 
     public void setAktiv(boolean aktiv) {
         this.aktiv = aktiv;
+    }
+
+    public int getAnzSiege() {
+        return anzSiege;
+    }
+
+    public void setAnzSiege(int anzSiege) {
+        this.anzSiege = anzSiege;
+    }
+
+    public int getAnzNiederlagen() {
+        return anzNiederlagen;
+    }
+
+    public void setAnzNiederlagen(int anzNiederlagen) {
+        this.anzNiederlagen = anzNiederlagen;
+    }
+
+    public int getAnzUnentschieden() {
+        return anzUnentschieden;
+    }
+
+    public void setAnzUnentschieden(int anzUnentschieden) {
+        this.anzUnentschieden = anzUnentschieden;
     }
 
     public OffsetDateTime getErstelltAm() {
