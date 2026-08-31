@@ -7,226 +7,155 @@
 > **Repository:** eigenständig mit Wurzel in `server/` (`FuBo-Server`, GitHub, **öffentlich**).
 > **Kein Monorepo** – das Frontend liegt getrennt (`FuBo-Client`). `PRJ_FuBo/` und
 > `PRJ_FuBo/harness/` sind bewusst **nicht** versioniert. Gearbeitet wird auf `dev`.
+>
+> **Dieses Dokument ist am 31.08.2026 auf das Tragende verdichtet worden.** Es beantwortet
+> drei Fragen: *Was steht?*, *Was ist entschieden und darf nicht versehentlich rückgängig
+> gemacht werden?*, *Was fällt dem Nächsten auf die Füsse?* Alles andere ist ausgelagert:
+> - **Verbindliche Regeln** → `AGENT_SERVER.md` (Systemprompt, wird ohnehin gelesen)
+> - **Herleitung und Schritt für Schritt** → `harness/tmp/S<n>_UMSETZUNG.md`
+> - **Historie** → Git und `harness/archive/`; die letzte Langfassung ist
+>   `CONTEXT_HANDOFF_SERVER_2026-08-31_v14_S4-abgeschlossen.md`
+>
+> Was hier steht, steht **nur** hier. Wird eine Festlegung zur Architekturregel, wandert sie
+> nach `AGENT_SERVER.md` und **verschwindet hier** – sonst laufen beide auseinander.
 
 ## Stand: 31.08.2026
 
-**Abgeschlossen und verifiziert: S0, S1, S2, S2b, S3 und S4.** Für S0 bis S3 einschliesslich
-der manuellen Prüflisten; bei S4 stehen zwei Handprüfungen noch aus, die eine laufende
-Anwendung brauchen (Abschnitt 7).
-`./mvnw clean verify` zuletzt grün am 31.08.2026 – **331 Tests in 26 Klassen**, keine Fehler,
-keine Abbrüche, keine übersprungenen Tests; die Anwendung startet auf einer frischen Datenbank
-durch. Der Lauf braucht Docker (Testcontainers, `postgres:17`) und läuft ausschliesslich lokal.
-Der S3-Abschluss stand am 29.08.2026 bei 244 Fällen, der Zwischenstand nach den S4-Paketen 1
-bis 4 am 30.08.2026 bei 300 in 25 Klassen; die fünf Nachträge desselben Tages (Abschnitt 6.2)
-sind darin enthalten.
+**S0 bis S4 sind abgeschlossen und verifiziert.** `./mvnw clean verify` grün am 31.08.2026 mit
+**331 Tests in 26 Klassen**, keine Fehler, keine Abbrüche, keine übersprungenen Tests; die
+Anwendung startet auf einer frischen Datenbank durch. Der Lauf braucht Docker (Testcontainers,
+`postgres:17`) und läuft ausschliesslich lokal.
 
-**S4 ist abgeschlossen.** Die Pakete 1 bis 4 – Termine lesen, Einzeltermin anlegen, ändern und
-absagen, Terminserien – waren am 30.08.2026 verifiziert. Die Pakete 5 bis 10 kamen am
-31.08.2026 dazu: die Rückmeldung von Spielern und Gästen, die Teilnehmerliste samt
-Warteschlange, die Skill-Stufe eines Gastes durch den Admin und alle vier Auslöser der
-`teilnehmer_version` einschliesslich des Pflichtpunkts aus S3. Der Vertrag steht bei
-**32 Endpunkten**.
+**Offen bei S4: zwei Handprüfungen**, die eine laufende Anwendung brauchen – der automatische
+Terminabschluss im Betrieb und die Gast-Stufe über den Sitzungsablauf hinweg (Abschnitt 7).
 
-**Drei Anforderungen sind am 30.08.2026 dazugekommen** (`AGENT.md`, Punkte 18 und 19) und mit
-umgesetzt:
-- **A7** – zugesagt wird bis Terminbeginn und nur bei Status `GEPLANT`. Ein *geplanter* Termin,
-  der bereits begonnen hat, nimmt ebenfalls nichts mehr an.
-- **A18** – ein geplanter Termin wechselt 30 Minuten nach seinem Beginn selbsttätig auf
-  `ABGESCHLOSSEN`. Geplanter Auftrag, Lauf alle fünf Minuten.
-- **A19** – der Admin kann einen Einzeltermin **entfernen** und seinen **Status** setzen.
+**Der Vertrag steht bei 32 Endpunkten**, das Datenmodell bei 18 Tabellen in drei Schemas
+(`V001`–`V011`). Drei neue Fehlercodes aus S4 (`TERMIN_BELEGT`, `TERMIN_GESCHLOSSEN`,
+`TERMIN_IN_VERWENDUNG`), sechs neue Audit-Aktionen.
 
-Der Vertrag ist damit von 23 auf **32 Endpunkte** gewachsen, es gibt drei neue Fehlercodes
-(`TERMIN_BELEGT`, `TERMIN_GESCHLOSSEN`, `TERMIN_IN_VERWENDUNG`) und sechs neue Audit-Aktionen.
-**S4 ist damit vollständig und durch den Testlauf verifiziert**; offen bleiben die zwei
-Handprüfungen aus Abschnitt 7, die eine laufende Anwendung brauchen.
-
-**Die manuellen Prüflisten sind durch** (30.08.2026): die zu S3 (`S3_UMSETZUNG.md`,
-Abschnitt 10.1) und die drei Punkte zur Gastverwaltung, die der Testlauf bauartbedingt nicht
-abdecken kann – verwaister Platz nach Sitzungsablauf, Freigabe eines aktiven Gastes, Senken von
-`anzGuests`. Damit steht auf der Serverseite nichts Offenes mehr aus S0 bis S3.
-
-**Vorbereitet für S6 (30.08.2026): die Bilanz je Spieler.** `profil.spieler` trägt seit `V011`
-`anz_siege`, `anz_niederlagen` und `anz_unentschieden` (A21, Ergänzung des Haupt-Entwicklers).
-**Gefüllt werden sie erst mit der Ergebniserfassung in S6**; bis dahin stehen überall Nullen,
-weil es keinen Endpunkt gibt, der ein Ergebnis entgegennimmt. Der Vertrag bleibt unberührt – ein
-Antwortfeld nachzuziehen ist additiv und damit nicht brechend, anders als bei `auswechselModus`
-gibt es also keinen Grund, es vorzuziehen.
-
-**S3 umfasst** die Profilverwaltung mit Skillwerten, die Skillkategorien, den Anmeldenamen sowie
-seit den Paketen 5 bis 8 die Admin-Konfiguration (lesen und ändern als Voll-Update mit
-Optimistic Locking), die mitgepflegten Gastplätze (offener Punkt 18 aus S2 damit erledigt) und die
-Bestandsaufnahme der Autorisierung. Der Fehlercode `DATEN_VERALTET` und der Tag „Konfiguration"
-sind eingetragen.
-
-**Nachtrag vom 30.08.2026 – Vorgabetext für die Absagevorlage (A23).** `halle_absage_vorlage`
-startet nicht mehr mit `NULL`, sondern mit einem verwendbaren Absagebrief (`V010`). Die Spalte
-bleibt `NULL`-fähig – das Leeren muss möglich bleiben. **Der Vertrag ändert sich dadurch nicht**,
-nur der Startwert; der Client-Track muss nichts nachziehen.
-
-**Nachtrag vom 30.08.2026 – `auswechselModus` (A20b).** Die Konfiguration hat ein elftes
-änderbares Feld: Wer bei ungerader Teilnehmerzahl als Auswechselspieler geführt wird
-(`SCHWAECHSTER_UEBERZAHL` als Vorgabe, sonst `ZULETZT_ANGEMELDET`). **Ausgewertet wird es erst
-vom Teamgenerator in S5** – es entsteht trotzdem jetzt, weil es anwendungsweite Konfiguration
-ist und der Vertrag für den Client-Track sonst ein zweites Mal brechend wüchse. Dazu `V009`,
-die erste Migration seit S2. **Für den Client-Track brechend:** Ein Voll-Update ohne das Feld
-liefert `400`.
-
-**Nachtrag vom 30.08.2026 – Gastverwaltung.** Auf Vorgabe des Haupt-Entwicklers sind zwei
-Adminendpunkte dazugekommen: `GET /admin/gast/lesen` und `POST /admin/gast/freigeben`. Der
-Vertrag steht damit bei **23 Endpunkten**, der Tag „Gastverwaltung" und die Aktion
-`GAST_ABGEMELDET` sind eingetragen. **Verifiziert am 30.08.2026 – 260 Fälle in 23 Klassen.**
-Anlass war ein Betriebsfall: Alle vier Gastplätze waren belegt, ohne dass noch ein Gast
-angemeldet gewesen wäre (Abschnitt 6.2).
-
-**Als Nächstes: der Testlauf zu den Paketen 5 bis 10, danach S5 (Teamgenerator).** Vor dem
-nächsten Bruno-Lauf `adminName` und `neuerAdminName` in den Umgebungen füllen – beim
-Anmeldenamen zählt die Schreibweise. Die Collection hat seit dem 30.08.2026 die Ordner
-`termine` (drei Requests) und `admin/termin` (sechs).
-
-> **Zur Fassung:** Dieses Dokument ist am 29.08.2026 von 836 auf rund 450 Zeilen eingedampft
-> worden. Entscheidungen, die inzwischen **verbindliche Regeln** sind, stehen nur noch in
-> `AGENT_SERVER.md` und werden hier nicht wiederholt; die Schritt-für-Schritt-Erzählung der
-> abgeschlossenen Meilensteine lebt in `harness/archive/` und in den `S<n>_UMSETZUNG.md`
-> weiter. Zuletzt archiviert:
-> `CONTEXT_HANDOFF_SERVER_2026-08-30_v12_S4-startklar.md`. **Zum Abschluss von S3 sind
-> Abschnitt 4 (Vertragshistorie) und 6.4 (Testklassentabelle) eingedampft worden** – was dort
-> stand, lebt in Git, in `S3_UMSETZUNG.md` und in der archivierten Fassung weiter.
+**Als Nächstes S5 (Teamgenerator).** Die Umsetzungsanleitung liegt seit dem 31.08.2026 als
+`harness/tmp/S5_UMSETZUNG.md` vor; die vier Punkte, die aus S4 offen waren, sind dort in
+Abschnitt 0.4 entschieden.
 
 ---
 
 ## 1. Kontext
-Serverseitige Bereitstellung der FuBo-Logik über eine abgesicherte JSON-API: Profile und Skills, Termine
-und Teilnahmen, Teamgenerierung, Ergebniserfassung, Auth/Session und Hallenmodus. Datenhaltung in
-PostgreSQL 17 (drei Schemas). Zugang über zentrale PIN, danach Namensidentität. Rollen ADMIN, USER, GAST.
+
+Serverseitige Bereitstellung der FuBo-Logik über eine abgesicherte JSON-API: Profile und Skills,
+Termine und Teilnahmen, Teamgenerierung, Ergebniserfassung, Auth/Session und Hallenmodus.
+Datenhaltung in PostgreSQL 17 (drei Schemas). Zugang über zentrale PIN, danach Namensidentität.
+Rollen ADMIN, USER, GAST.
 
 ## 2. Techstack & Architektur (Server)
+
 - Java 25, Spring Boot, Maven. PostgreSQL 17 (Schemas `profil`, `spieltag`, `configs`), Flyway.
 - Testcontainers + JUnit; `spring-boot-starter-mail` (Bestätigungs-PIN).
-- Hosting: Raspberry Pi 5, Docker/Docker-Compose, Nginx (Reverse-Proxy), Cloudflared-Tunnel
-  (`assets/Deployment/`). Zweit-Pi mit anderem Setup muss ebenfalls möglich sein.
-- Architekturregeln und das vollständige Datenmodell: `/PRJ_FuBo/harness/AGENT.md` (maßgeblich) und `AGENT_SERVER.md`.
+- Hosting: Raspberry Pi 5, Docker/Compose, Nginx (Reverse-Proxy), Cloudflared-Tunnel
+  (`assets/Deployment/`). Ein Zweit-Pi mit anderem Setup muss möglich bleiben.
+- **Abhängigkeiten:** `actuator`, `data-jpa`, `flyway` (+ `flyway-database-postgresql`),
+  `security`, `validation`, `webmvc`, `mail`, `postgresql`; im Test die `*-test`-Starter,
+  `spring-boot-testcontainers`, `testcontainers-postgresql`. **Kein Cache-Starter** – der
+  `CacheManager` entsteht von Hand aus `spring-context`.
+- **Konfiguration:** `spring.config.import=optional:file:./.env[.properties]`,
+  `jpa.hibernate.ddl-auto=validate`, `open-in-view=false`,
+  `flyway.schemas=profil, spieltag, configs`, `flyway.validate-migration-naming=true`,
+  `server.forward-headers-strategy=NATIVE`, `fubo.zeitzone=Europe/Berlin`, Actuator auf `health`
+  beschränkt. Die Demodaten-Location steht **nur** in `src/test/resources/application.yml`.
+- Architekturregeln und das vollständige Datenmodell: `AGENT.md` (maßgeblich) und
+  `AGENT_SERVER.md`.
 
 ## 3. Wichtige Entscheidungen (serverrelevant)
+
 Vollständige Liste in `CONTEXT_HANDOFF.md`, Abschnitt 3. Serverseitig besonders relevant:
-- Opaker, serverseitig gespeicherter Session-Token im HttpOnly-Cookie; nur SHA-256-Hash in der DB;
-  Zwei-Timer-Modell; zweistufiger Login über `stage` mit Token-Rotation.
-- Eine PostgreSQL-Instanz mit drei Schemas; Skills in eigener Tabelle (`spieler_skill`), Kategorien
-  data-driven in `skill_kategorie`.
-- Skill-Skala 0–6; Torwart mit `gewicht = 0.30` und Wertebereich 0–3 (fließt leicht in die Balance ein,
-  dominiert die Feldbalance aber nicht). `-1`-Ausreißer der Referenzdaten wird beim Import zu `0`.
-- Zwei austauschbare Team-Algorithmen (`EXHAUSTIV`, `HEURISTIK`) mit identischer Zielfunktion und
-  Datengrundlage; Kontingent-Rücksetzung ausschließlich über `teilnehmer_version`; neuer Seed je Lauf.
+
+- Opaker, serverseitig gespeicherter Session-Token im HttpOnly-Cookie; nur SHA-256-Hash in der
+  DB; Zwei-Timer-Modell; zweistufiger Login über `stage` mit Token-Rotation.
+- Eine PostgreSQL-Instanz mit drei Schemas; Skills in eigener Tabelle (`spieler_skill`),
+  Kategorien data-driven in `skill_kategorie`.
+- Skill-Skala 0–6; Torwart mit `gewicht = 0.30` und Wertebereich 0–3. `-1`-Ausreisser der
+  Referenzdaten wird beim Import zu `0`.
+- Zwei austauschbare Team-Algorithmen (`EXHAUSTIV`, `HEURISTIK`) mit identischer Zielfunktion
+  und Datengrundlage; Kontingent-Rücksetzung ausschliesslich über `teilnehmer_version`; neuer
+  Seed je Lauf.
 - Genau ein Admin (partieller Unique-Index); Gast-Obergrenze über feste `gast_slot`-Datensätze.
 - Status ONLINE/OFFLINE wird aus aktiven Sessions abgeleitet.
 
 ## 4. Schnittstelle zum Frontend (Vertrag)
 
-**Der maßgebliche Endpunktkontrakt ist `server/fubo-api.json`** – OpenAPI 3.1 in JSON, auf der
-Wurzel des Server-Repositories und damit mitversioniert (Festlegung des Haupt-Entwicklers vom
-22.08.2026; Ablageort, Format und die beiden Regeln dazu sind in `AGENT_SERVER.md` begründet).
-**Bei Abweichungen ist die Datei maßgeblich, nicht dieses Dokument.**
+**Maßgeblich ist `server/fubo-api.json`** – OpenAPI 3.1 in JSON auf der Repo-Wurzel und damit
+mitversioniert. **Bei Abweichungen gilt die Datei, nicht dieses Dokument.**
 
-**Umfang: 32 Endpunkte** – acht aus S2 (Auth und Sitzung), sieben aus S2b (Zugangsdatenpflege
-und Spielerverwaltung), sechs aus S3, zwei aus dem Nachtrag zur Gastverwaltung vom 30.08.2026
-und neun aus S4 (Endpunkttabelle in Abschnitt 6.1). Aufgenommen wird nur, was umgesetzt ist;
-S5 bis S7 tragen ihre bei Fertigstellung nach.
+**Umfang: 32 Endpunkte** (Tabelle in 6.1). Aufgenommen wird nur, was umgesetzt ist; S5 bis S7
+tragen ihre bei Fertigstellung nach. Kernpunkte: REST/JSON, getrennte Origins mit CORS-Allowlist
+(`allowCredentials`), HttpOnly-Session-Cookie, `401`/`403`-Semantik, DTOs ohne Skillwerte für
+USER und GAST, Belegtstatus zum Pollen, einheitliches Fehler-JSON nach RFC 9457.
 
-Inhaltliche Kernpunkte (Herleitung in `AGENT_SERVER.md`): REST/JSON, getrennte Origins mit
-CORS-Allowlist (`allowCredentials`), HttpOnly-Session-Cookie, `401`/`403`-Semantik, DTOs ohne
-Skillwerte für USER/GAST, Belegtstatus zum Pollen, einheitliches Fehler-JSON nach RFC 9457.
+### 4.1 Was der Client-Track wissen muss
 
-**Was der Client-Track aus S2 bis S3 kennen muss.** Die übrige Vertragshistorie lebt in Git und
-in den `S<n>_UMSETZUNG.md` weiter:
+Jede Zeile ist eine Stelle, an der eine naheliegende Annahme falsch ist.
 
 | Punkt | Bedeutung für den Client |
 |---|---|
 | `X-FuBo-Kein-Refresh: true` | Anfragheader für Hintergrundaufrufe, die die Sitzung nicht verlängern sollen |
 | `Retry-After` und `wartesekunden` | Restwartezeit beim `429` des PIN-Endpunkts; doppelt geführt, weil der Header cross-origin nicht lesbar wäre |
 | `absolutGueltigBis` | zweiter Zeitpunkt in der Sitzungsauskunft. Nähert sich der Countdown ihm, hilft „Verlängern" nicht mehr |
-| `anmeldename` in `AdminLoginRequest` | **brechend** (29.08.2026): Ein Körper mit nur `passwort` liefert `400`. Einzelheiten in 4a |
-| `DATEN_VERALTET` (`409`) | erster neuer Fehlercode seit S2b. Heisst „neu laden und erneut speichern", nicht „Eingabe falsch". Ab S4 auch für Termine, ab S6 für Ergebnisse |
+| `DATEN_VERALTET` (`409`) | heisst „neu laden und erneut speichern", nicht „Eingabe falsch". Gilt für Konfiguration, Termine und ab S6 für Ergebnisse |
+| **Drei brechende Änderungen** | `anmeldename` in `AdminLoginRequest`, vollständige `skills` in `SpielerAnlegenRequest`, `auswechselModus` im Konfigurations-Voll-Update. Alle drei betreffen Formulare, alle drei liefern sonst `400` |
 | `/admin/config/aendern` | **Voll-Update**: vorher `lesen`, dann alle elf Felder samt `version` zurückschicken |
-| `auswechselModus` | **brechend** (30.08.2026): elftes Pflichtfeld der Konfiguration (A20b). Werte `SCHWAECHSTER_UEBERZAHL` (Vorgabe) und `ZULETZT_ANGEMELDET`. Ein Körper ohne das Feld liefert `400`. Das Admin-Formular braucht ein Auswahlfeld; ausgewertet wird der Wert erst ab S5 |
-| `skills` in `SpielerAnlegenRequest` | **brechend** (30.08.2026): Pflichtfeld, vollständig. Ein Körper mit nur `name` liefert `400`. Das Anlegeformular baut seine Felder aus `/admin/skills/lesen`. `bearbeiten` bleibt unverändert |
-| `sitzungGueltig` in `GastPlatzInfo` | **dreiwertig** (30.08.2026): `true` lebende Sitzung, `false` verwaister Platz, `null` freier Platz. Ein `if (sitzungGueltig)` behandelt den freien wie den verwaisten – der Unterschied ist gerade der Punkt |
-| `/admin/gast/freigeben` | genau eines von `slotIds` und `alle`. Leerer Körper `400`, nicht „alle". Der Aufruf **meldet aktive Gäste ab**; die Oberfläche fragt vor dem Sammelabbruch nach |
-| `eigeneRueckmeldung` | **dreiwertig** (30.08.2026, S4): `true` zugesagt, `false` abgesagt, `null` noch nicht gemeldet. Ein `if` über dem Feld zeigt eine Absage an, wo niemand geantwortet hat. Bis Paket 5 steht dort immer `null` |
-| `TerminStatus` | `GEPLANT`, `ABGESAGT`, `ABGESCHLOSSEN`. **Eine Absage ist endgültig** – es gibt keinen Weg zurück nach `GEPLANT`, und das gehört in die Bestätigungsabfrage. `ABGESCHLOSSEN` vergibt heute kein Endpunkt, es entsteht mit S6 |
-| `SerieAngelegt` | Die Antwort auf `/admin/serie/anlegen` ist **nicht bloss „angelegt"**: Sie nennt die erzeugten *und* die übersprungenen Zeitpunkte. Kollisionen lassen die Serie nicht scheitern; die Oberfläche muss die zweite Liste anzeigen |
-| `TerminDetails.version` | Vor jedem `/admin/termin/aendern` einmal `/termine/{terminId}/lesen` – ohne die gelesene `version` antwortet der Server `409 DATEN_VERALTET` |
 | `/admin/termin/aendern` | **feldweise**, anders als die Konfiguration. Weglassen heisst „nicht ändern"; `ort: ""` leert den Ort. Ein Körper ohne jedes zu ändernde Feld liefert `400` |
-| Termine für Gäste | `/termine/lesen`, `/termine/{terminId}/lesen` und `/termine/rueckmeldung` sind ab `PROFILE_AUTHENTICATED` erreichbar, **auch für `GAST`** (Weggabelung F). Bewertungen tragen sie nicht |
-| `/termine/rueckmeldung` | **Ein Endpunkt für beide Richtungen und beide Rollen.** Ein Gast schickt keinen Namen mit – der Körper kennt kein Namensfeld. Antwort ist `204`, nicht die neue Teilnehmerliste |
-| Warteschlange | **Eine erneute Zusage stellt hinten an.** Wer das nicht weiss, hält es für einen Fehler; es verhindert, dass sich jemand über eine Absage-Zusage-Schleife einen vorderen Platz freihält. Eine Absage lässt die Meldezeit unberührt |
-| `teilnehmerliste` | Feld von `TerminDetails`, **kein eigener Endpunkt**. Eine Liste mit `wartet: true/false`, bereits sortiert – **im Frontend nicht umsortieren**, sonst passt `position` nicht mehr zur Anzeige |
-| `ABGESCHLOSSEN` | **Der Server setzt den Status 30 Minuten nach Terminbeginn selbst** (A18). Er ist aber nicht der Torwächter für Rückmeldungen – das ist die Uhrzeit des Termins |
-| `/admin/termin/entfernen` | Löscht endgültig, aber nur ohne Verweise (`409 TERMIN_IN_VERWENDUNG`). **Der einzige Weg zurück aus einer versehentlichen Absage** – ein abgesagter Termin belegt seinen Zeitpunkt weiter |
-| `status` in `TerminAendernRequest` | nur vorwärts: `ABGESAGT` und `ABGESCHLOSSEN`. `GEPLANT` liefert `400` |
+| `sitzungGueltig` in `GastPlatzInfo` | **dreiwertig**: `true` lebende Sitzung, `false` verwaister Platz, `null` freier Platz. Ein `if (sitzungGueltig)` behandelt den freien wie den verwaisten – der Unterschied ist gerade der Punkt |
+| `eigeneRueckmeldung` | **dreiwertig**: `true` zugesagt, `false` abgesagt, `null` noch nicht gemeldet |
+| `/admin/gast/freigeben` | genau eines von `slotIds` und `alle`. Leerer Körper `400`, nicht „alle". Der Aufruf **meldet aktive Gäste ab**; vorher nachfragen |
+| `TerminStatus` | `GEPLANT`, `ABGESAGT`, `ABGESCHLOSSEN`. **Eine Absage ist endgültig** – kein Weg zurück nach `GEPLANT`. Das gehört in die Bestätigungsabfrage |
+| `/admin/termin/entfernen` | löscht endgültig, aber nur ohne Verweise (`409 TERMIN_IN_VERWENDUNG`). **Der einzige Weg zurück aus einer versehentlichen Absage** – ein abgesagter Termin belegt seinen Zeitpunkt weiter |
+| `SerieAngelegt` | nennt die erzeugten **und** die übersprungenen Zeitpunkte. Kollisionen lassen die Serie nicht scheitern; die zweite Liste muss angezeigt werden |
+| `TerminDetails.version` | vor jedem `/admin/termin/aendern` einmal lesen – sonst `409 DATEN_VERALTET` |
+| Termine für Gäste | `/termine/lesen`, `/termine/{terminId}/lesen` und `/termine/rueckmeldung` sind ab `PROFILE_AUTHENTICATED` erreichbar, **auch für `GAST`**. Bewertungen tragen sie nicht |
+| `/termine/rueckmeldung` | **ein Endpunkt für beide Richtungen und beide Rollen.** Ein Gast schickt keinen Namen mit – der Körper kennt kein Namensfeld. Antwort ist `204` |
+| Warteschlange | **Eine erneute Zusage stellt hinten an.** Verhindert, dass sich jemand über eine Absage-Zusage-Schleife einen vorderen Platz freihält. Eine Absage lässt die Meldezeit unberührt |
+| `teilnehmerliste` | Feld von `TerminDetails`, **kein eigener Endpunkt**. Bereits sortiert – **im Frontend nicht umsortieren**, sonst passt `position` nicht zur Anzeige |
+| `ABGESCHLOSSEN` | **setzt der Server 30 Minuten nach Terminbeginn selbst** (A18). Torwächter für Rückmeldungen ist aber die Uhrzeit, nicht der Status |
 
-## 4a. Offene Übergabe an den Client-Track
+### 4.2 Offene Übergabe: das Admin-Anmeldeformular
 
-Das Anmeldeformular des Admins braucht ein zweites Eingabefeld. Der Client-Track zieht nach,
-sobald `fubo-api.json` bei ihm angekommen ist. Drei Punkte gehören dabei ins Frontend:
+Es braucht ein zweites Eingabefeld. Drei Punkte gehören dabei ins Frontend:
 
-1. **Ein Feld „Anmeldename", Pflicht, maximal 60 Zeichen.** Der Server trimmt Randleerzeichen
-   selbst – das muss das Frontend nicht nachbauen –, prüft die **Schreibweise aber
-   zeichengenau**. Also kein `toLowerCase()` beim Absenden und kein Hinweis, die
-   Schreibweise sei egal.
-2. **Keine getrennte Fehlermeldung für „Name unbekannt".** Der Server liefert für falschen
-   Namen und falsches Passwort denselben Code; eine Unterscheidung im Frontend hätte nichts,
-   woran sie sich festmachen könnte, und würde die Absicht unterlaufen.
-3. **Keine Vorbelegung, kein Autovervollständigen aus einer Liste.** Der Anmeldename ist über
-   keinen Endpunkt abrufbar; ein Auswahlfeld gäbe es nur, wenn ihn jemand ins Frontend
-   schriebe.
+1. **Feld „Anmeldename", Pflicht, höchstens 60 Zeichen.** Der Server trimmt Randleerzeichen
+   selbst, prüft die Schreibweise aber **zeichengenau** – also kein `toLowerCase()` beim
+   Absenden und kein Hinweis, die Schreibweise sei egal.
+2. **Keine getrennte Meldung für „Name unbekannt".** Falscher Name und falsches Passwort
+   liefern denselben Code; eine Unterscheidung im Frontend unterliefe die Absicht.
+3. **Keine Vorbelegung, kein Autovervollständigen.** Der Anmeldename ist über keinen Endpunkt
+   abrufbar; ein Auswahlfeld gäbe es nur, wenn ihn jemand ins Frontend schriebe.
 
-## 5. Meilensteine & Aufwandsschätzung (Server)
-Mid-Level-Entwickler, KI-gestützt, ca. 6,5 h/Woche.
+## 5. Meilensteine (Server)
 
-| MS | Inhalt                                                                                                                                                                                                                                                                                                                          | Aufwand (h) |
-|---|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---|
-| S0 | Backend-Setup: Spring Boot, Maven, Modulstruktur, `.gitignore`, Docker/Compose-Eintrag – **abgeschlossen**                                                                                                                                                                                                                      | 8 |
-| S1 | Datenmodell: 3 Schemas, alle Tabellen/Constraints, Flyway-Migrationen, Seed (Kategorien, `gast_vorlage`, anonymisierte Beispielprofile), lokale Datenversorgung, Testcontainers-Grundgerüst – **abgeschlossen**                                                                                                                 | 15 |
-| S2 | Auth & Session: Security-Filterchain, PIN-Login + Brute-Force-Schutz, `stage`-Erzwingung, opaker Token/HttpOnly, Zwei-Timer-Modell, Namensliste/-belegung, Gast-Login, Admin-Login, Bootstrap, Sitzungsendpunkte, Online-Status, API-Vertrag – **abgeschlossen und verifiziert (148 Tests)**, Anleitung `harness/tmp/S2_UMSETZUNG.md` | 23 |
-| S2b | Zugangsdatenpflege und Spielerverwaltung: Passwort-Reset per E-Mail (5-stellige PIN, Rate-Limit, Sitzungswiderruf), Passwortänderung im angemeldeten Zustand, Änderung der zentralen PIN, Anlegen/Entfernen/Sperren von Spielerprofilen, Aufräumjob – **abgeschlossen und verifiziert (29.08.2026)**. Anleitung `harness/tmp/S2b_UMSETZUNG.md` | 10 |
-| S3 | Profile & Skills API: Admin-CRUD, Rollen/Autorisierung, `configs` (Import der Referenzdaten entfällt – siehe Abschnitt 7.3) – **abgeschlossen und verifiziert (29.08.2026, 244 Tests)**. Anleitung `harness/tmp/S3_UMSETZUNG.md`                                                        | 11 |
-| S4 | Termine & Teilnahme API: Einzel/Serie, Teilnahme, `teilnehmer_version`, Min/Max + Warteschlange, Gast-Flow/`gast_slot` – **abgeschlossen und verifiziert (31.08.2026, 331 Tests in 26 Klassen)**; zwei Handprüfungen stehen noch aus. Dazu A7, A18 und A19 vom 30.08.2026. Anleitung `harness/tmp/S4_UMSETZUNG.md`, **Schrittsumme 17 h** plus rund 3 h für die drei Nachträge | 16 |
-| S5 | Teamgenerator: `EXHAUSTIV` + `HEURISTIK`, Zielfunktion inkl. Torwart-Gewicht, Kontingent/Seed/Snapshot, Auswechselspieler, Tests                                                                                                                                                                                                | 18 |
-| S6 | Ergebnis & Audit API: „erster Eintrag gilt", Admin-Korrektur, `audit_log`                                                                                                                                                                                                                                                       | 8 |
-| S7 | Hallenmodus: E-Mail-Absage, 48-Stunden-Regel, serverseitige Deaktivierung                                                                                                                                                                                                                                                       | 6 |
-| S8 | Härtung, Integrationstests, Deployment (Docker/nginx/Cloudflared), API-Doku/OpenAPI – Entwurf liegt vor: `harness/tmp/S8_DEPLOYMENT.md`                                                                                                                                                                                         | 14 |
+Mid-Level-Entwickler, KI-gestützt, ca. 6,5 h/Woche. **Die Summe der Einzelschritte war jedes Mal
+verlässlicher als die Top-down-Schätzung** (S2: 18 → 23, S2b: 6 → 10, S4: 16 → 17 plus 3,
+S5: 18 → 20,5 vorgeschlagen).
 
-**Korrektur der S2-Schätzung (08.08.2026):** Die Aufschlüsselung in `S2_UMSETZUNG.md` summiert sich auf
-**23 h** statt der ursprünglich veranschlagten 18 h. Die Abweichung entsteht vor allem in der
-Filterchain (4 h), beim Brute-Force-Schutz (3 h) und beim API-Vertrag zum Frontend (1 h) – alle drei
-waren in der Top-down-Schätzung zu grob angesetzt. Die Summe der Einzelschritte ist verlässlicher als die Gesamtschätzung, deshalb steht hier
-der höhere Wert. S1 wurde entsprechend von 14 auf 15 h angehoben, S3 von 12 auf 11 h gesenkt, da der
-Import der Referenzdaten dort entfällt.
+| MS | Inhalt | Stand | h |
+|---|---|---|---|
+| S0 | Setup: Spring Boot, Maven, Modulstruktur, Compose | **abgeschlossen** | 8 |
+| S1 | Datenmodell: 3 Schemas, Flyway, Seed, Testcontainers | **abgeschlossen** | 15 |
+| S2 | Auth & Session: Filterchain, PIN-Login, Brute-Force, Zwei-Timer, Gast-/Admin-Login, Vertrag | **verifiziert (148 Tests)** | 23 |
+| S2b | Zugangsdatenpflege und Spielerverwaltung, Aufräumjob | **verifiziert (29.08.2026)** | 10 |
+| S3 | Profile & Skills API, Rollen, `configs` | **verifiziert (29.08.2026, 244 Tests)** | 11 |
+| S4 | Termine & Teilnahme: Einzel/Serie, Teilnahme, `teilnehmer_version`, Min/Max + Warteschlange, Gast-Flow; dazu A7, A18, A19 | **verifiziert (31.08.2026, 331 Tests in 26 Klassen)**; zwei Handprüfungen offen | 16 (17 + 3) |
+| S5 | Teamgenerator: `EXHAUSTIV` + `HEURISTIK`, Zielfunktion inkl. Torwart-Gewicht, Kontingent/Seed/Snapshot, Auswechselspieler | Anleitung liegt vor, Schrittsumme **20,5 h** | 18 |
+| S6 | Ergebnis & Audit API: „erster Eintrag gilt", Admin-Korrektur, Bilanz-Zähler | offen | 8 |
+| S7 | Hallenmodus: E-Mail-Absage, 48-Stunden-Regel | offen | 6 |
+| S8 | Härtung, Deployment (Docker/nginx/Cloudflared), API-Doku – Entwurf: `harness/tmp/S8_DEPLOYMENT.md` | offen | 14 |
 
-**Korrektur der S2b-Schätzung (22.08.2026):** Die Aufschlüsselung in `S2b_UMSETZUNG.md` summiert
-sich auf **10 h** statt 6 h. Der Unterschied entsteht durch zwei Punkte, die in keiner
-Meilensteinliste standen und sonst heimatlos blieben: die Passwortänderung im angemeldeten Zustand
-und die Änderung der zentralen PIN durch den Admin (A3). Beide gehören zur Zugangsdatenpflege und
-brauchen dieselben Bausteine; sie in S3 unterzubringen hiesse, die zentrale PIN bis dahin nur über
-die Datenbank ändern zu können. Wie schon bei S2 gilt: Die Summe der Einzelschritte ist
-verlässlicher als die Gesamtschätzung.
+Anleitungen: `harness/tmp/S<n>_UMSETZUNG.md`.
 
-**Summe Server ≈ 129 h → ca. 20 Kalenderwochen** bei 6,5 h/Woche (Spanne ±15 %). Kritischer Pfad: S2
-und S5. **Abhängigkeit: S2b setzt einen SMTP-Zugang voraus** (Anbieter, Absenderadresse,
-Zugangsdaten) – ohne ihn ist der Meilenstein weder umsetzbar noch testbar. Vorschlag und
-Alternativen in `S2b_UMSETZUNG.md`, Abschnitt 0.3.
-
-## 6. Aktueller Code-Zustand (Stand 31.08.2026, Branch `dev`)
+## 6. Code-Zustand (31.08.2026, Branch `dev`)
 
 ### 6.1 Was steht
 
-**S0 bis S4 sind abgeschlossen und verifiziert** – zuletzt S4 am 31.08.2026 mit 331 Tests in
-26 Klassen. Zuletzt kamen die Rückmeldung samt Gast-Flow, die Teilnehmerliste mit
-Warteschlange, die Skill-Stufe eines Gastes und die drei Nachträge A7, A18 und A19 dazu.
-Offen sind bei S4 nur zwei Handprüfungen, die eine laufende Anwendung brauchen.
-
 ```
 server/                        Repo-Wurzel (remote: FuBo-Server, oeffentlich)
-  fubo-api.json                Endpunktkontrakt, 32 Endpunkte (Abschnitt 4)
+  fubo-api.json                Endpunktkontrakt, 32 Endpunkte
   compose.dev.yml              postgres:17
   .env / .env.example          DB-Zugang, FUBO_INITIAL_PIN, ADMIN_*, SMTP_*
   scripts/                     seed-lokal.sh + anonymisierter 30er-Datensatz
@@ -239,186 +168,113 @@ server/                        Repo-Wurzel (remote: FuBo-Server, oeffentlich)
     dto/ auth profil admin spieltag   utils
 ```
 
-**Der Fachbereich `spieltag` (S4, Pakete 1 bis 4):**
+**Fachbereich `spieltag` (S4):**
 
 ```
-domain/spieltag/      Termin, Terminserie   (Entities)
-                      TerminStatus          (Aufzaehlung)
-                      TerminEintrag         (Wertobjekt der Uebersichtsabfrage)
-                      Teilnehmereintrag, Teilnehmeruebersicht,
-                      TerminMitTeilnehmern  (Wertobjekte der Teilnehmerliste)
+domain/spieltag/      Termin, Terminserie (Entities); TerminStatus;
+                      TerminEintrag, Teilnehmereintrag, Teilnehmeruebersicht,
+                      TerminMitTeilnehmern (Wertobjekte)
 repository/spieltag/  TerminRepository      JPA + JdbcClient-Fragment
                       TerminserieRepository JPA, ohne eigene Abfragen
                       TeilnahmeRepository   nur JdbcClient, ohne Entity
-service/spieltag/     TerminService         lesen, anlegen, aendern, absagen, entfernen,
-                                            Auto-Abschluss, Zaehler-Nachtrag
-                      SerienService         anlegen samt Materialisierung
-                      TeilnahmeService      rueckmeldung, gastStufeAendern, uebersicht
-dto/spieltag/         TerminUebersicht, TerminDetails, TerminAnlegenRequest,
-                      TerminAngelegt, TerminAendernRequest, TerminIdRequest,
-                      SerieAnlegenRequest, SerieAngelegt, TeilnahmeRequest,
-                      GastStufeRequest, Teilnehmerliste, TeilnehmerEintrag
-controller/spieltag/  TerminController              lesen und rueckmelden
-controller/admin/     TerminVerwaltungController    anlegen, aendern, absagen, entfernen,
-                                                    Serie, Gast-Stufe
+service/spieltag/     TerminService    lesen, anlegen, aendern, absagen, entfernen,
+                                       Auto-Abschluss, Zaehler-Nachtrag
+                      SerienService    anlegen samt Materialisierung (max. 52 Termine)
+                      TeilnahmeService rueckmeldung, gastStufeAendern, uebersicht
+controller/spieltag/  TerminController           lesen und rueckmelden
+controller/admin/     TerminVerwaltungController anlegen, aendern, absagen, entfernen,
+                                                 Serie, Gast-Stufe
 ```
 
-**`TeilnahmeRepository` hat bewusst keine Entity.** Die Tabelle wird angehaengt, bedingt
-aktualisiert und aggregiert gelesen - genau die Faelle, fuer die `AGENT_SERVER.md` das
-erlaubt. Eine Entity mit `@Version` waere hier sogar nachteilig: Optimistic Locking meldet den
-Konflikt erst beim Schreiben und verlangt eine Wiederholung, waehrend `ON CONFLICT` den
-Wettlauf zweier gleichzeitiger Meldungen ohne Wiederholung entscheidet.
+**`TeilnahmeRepository` hat bewusst keine Entity.** Die Tabelle wird angehängt, bedingt
+aktualisiert und aggregiert gelesen – die Fälle, für die `AGENT_SERVER.md` das erlaubt. Eine
+Entity mit `@Version` wäre hier nachteilig: Optimistic Locking meldet den Konflikt erst beim
+Schreiben, während `ON CONFLICT` den Wettlauf zweier gleichzeitiger Meldungen ohne
+Wiederholung entscheidet.
 
 **Zum Paketschnitt:** Der Verwaltungscontroller liegt in `controller/admin`, seine DTOs in
-`dto/spieltag`. Das ist kein Widerspruch – `admin` ist ein Zugriffs-, kein Datenbereich, genau
-wie bei den Profilen. Die Regel, nach der Skill-DTOs unter `dto/admin` bleiben, greift hier
-nicht: Termine tragen keine Bewertungen.
+`dto/spieltag`. Kein Widerspruch – `admin` ist ein Zugriffs-, kein Datenbereich. Die Regel, nach
+der Skill-DTOs unter `dto/admin` bleiben, greift hier nicht: Termine tragen keine Bewertungen.
 
-**Abhängigkeiten:** `actuator`, `data-jpa`, `flyway` (+ `flyway-database-postgresql`),
-`security`, `validation`, `webmvc`, `mail`, `postgresql`; im Test die `*-test`-Starter,
-`spring-boot-testcontainers`, `testcontainers-postgresql`. **Kein Cache-Starter** – der
-`CacheManager` entsteht von Hand aus `spring-context`.
+**Datenmodell: 18 Tabellen, `V001`–`V011`.** S2b und S3 kamen ohne Migration aus. Die drei
+letzten ergänzen nur Spalten (alle 30.08.2026): `V009` `auswechsel_modus` (A20b), `V010` den
+Vorgabetext für `halle_absage_vorlage` (A23), `V011` die drei Bilanz-Zähler in `profil.spieler`
+(A21). **S5 braucht nach heutigem Stand keine Migration** – `V006` legt `team_generierung`,
+`team_zuteilung` und `generierung_kontingent` bereits vollständig an.
 
-**Konfiguration:** `spring.config.import=optional:file:./.env[.properties]`,
-`jpa.hibernate.ddl-auto=validate`, `open-in-view=false`, `flyway.schemas=profil, spieltag,
-configs`, `flyway.validate-migration-naming=true`, `server.forward-headers-strategy=NATIVE`,
-Actuator auf `health` beschränkt. Die Demodaten-Location steht **nur** in
-`src/test/resources/application.yml`.
+**Die 32 Endpunkte, nach Bereichen.** Zweck, Körper und Antworten stehen in
+`fubo-api.json` – hier nur die Landkarte, damit eine Änderung nicht an zwei Stellen gepflegt
+werden muss:
 
-**Datenmodell: 18 Tabellen in drei Schemas, `V001`–`V011`.** S2b und S3 kamen ohne Migration
-aus; `V009` ist die erste seit S2. Alle drei neuen ergänzen nur Spalten und legen keine Tabelle
-an: `V009` `auswechsel_modus` in `configs.app_config` (A20b), `V010` den Vorgabetext für
-`halle_absage_vorlage` (A23), `V011` die drei Bilanz-Zähler in `profil.spieler` (A21) – alle vom
-30.08.2026.
+| Bereich | Pfade unter `/api/v1` | Anzahl |
+|---|---|---:|
+| Anmeldung und Sitzung (S2) | `auth/pin/pruefen`, `auth/users/lesen`, `auth/user/waehlen`, `auth/gast/anmelden`, `auth/admin/anmelden`, `auth/session/{lesen,erneuern,beenden}` | 8 |
+| Zugangsdaten (S2b) | `auth/passwort/{zuruecksetzen,bestaetigen}`, `admin/{passwort,pin,name}/aendern` | 5 |
+| Spielerverwaltung (S2b, S3) | `admin/user/{anlegen,bearbeiten,entfernen,blockieren,lesen}`, `admin/skills/lesen` | 6 |
+| Konfiguration (S3) | `admin/config/{lesen,aendern}` | 2 |
+| Gastverwaltung (30.08.) | `admin/gast/{lesen,freigeben}` | 2 |
+| Termine lesen und melden (S4) | `termine/lesen`, `termine/{terminId}/lesen`, `termine/rueckmeldung` | 3 |
+| Terminverwaltung (S4) | `admin/termin/{anlegen,aendern,absagen,entfernen}`, `admin/serie/anlegen`, `admin/teilnahme/gast-stufe` | 6 |
 
-**Die 32 Endpunkte** (massgeblich bleibt `fubo-api.json`):
-
-| Methode | Pfad unter `/api/v1` | Zweck |
-|---|---|---|
-| `POST` | `/auth/pin/pruefen` | Zentrale PIN prüfen, Sitzung in `PIN_VERIFIED` |
-| `GET` | `/auth/users/lesen` | Namensliste mit Belegtstatus, **ohne** Skillwerte |
-| `POST` | `/auth/user/waehlen` | Profil wählen (zweite Stufe) |
-| `POST` | `/auth/gast/anmelden` | Als Gast anmelden (zweite Stufe) |
-| `POST` | `/auth/admin/anmelden` | Anmeldename **und** Passwort (zweite Stufe) |
-| `GET` | `/auth/session/lesen` | Zustand der eigenen Sitzung |
-| `POST` | `/auth/session/erneuern` | Sitzung verlängern, Token rotiert |
-| `POST` | `/auth/session/beenden` | Abmelden |
-| `POST` | `/auth/passwort/zuruecksetzen` | Reset anfordern, PIN per E-Mail |
-| `POST` | `/auth/passwort/bestaetigen` | PIN einlösen, neues Passwort |
-| `POST` | `/admin/passwort/aendern` | Passwort im angemeldeten Zustand |
-| `POST` | `/admin/pin/aendern` | Zentrale PIN, widerruft **alle** Sitzungen |
-| `POST` | `/admin/name/aendern` | Anmeldename, Sitzung **bleibt** |
-| `POST` | `/admin/user/anlegen` | Profil anlegen |
-| `POST` | `/admin/user/bearbeiten` | Name und/oder Skillwerte |
-| `POST` | `/admin/user/entfernen` | Profil endgültig entfernen |
-| `POST` | `/admin/user/blockieren` | Sperren und freigeben |
-| `GET` | `/admin/user/lesen` | Alle Profile **mit** Skillwerten |
-| `GET` | `/admin/skills/lesen` | Skillkategorien und Wertebereiche |
-| `GET` | `/admin/config/lesen` | Admin-Konfiguration samt `version` |
-| `POST` | `/admin/config/aendern` | Voll-Update (elf Felder); `409 DATEN_VERALTET` bei veralteter `version` |
-| `GET` | `/admin/gast/lesen` | Alle Gastplätze samt Zustand der Sitzung dahinter |
-| `POST` | `/admin/gast/freigeben` | Plätze räumen **und** die Gäste abmelden; `204` |
-| `GET` | `/termine/lesen` | Termine ab einem Stichtag, mit Zusagenzahl und eigener Rückmeldung |
-| `GET` | `/termine/{terminId}/lesen` | Ein Termin samt `version`; Teilnehmerliste folgt mit Paket 7 |
-| `POST` | `/admin/termin/anlegen` | Einzeltermin; `201` mit der Id, `409 TERMIN_BELEGT` |
-| `POST` | `/admin/termin/aendern` | Datum, Uhrzeit, Ort – feldweise, mit `version`; `204` |
-| `POST` | `/admin/termin/absagen` | Status auf `ABGESAGT`, endgültig; `204` |
-| `POST` | `/admin/serie/anlegen` | Serie samt ihrer Termine; `201` mit beiden Listen |
-| `POST` | `/termine/rueckmeldung` | Zu- oder Absage; für Spieler **und** Gäste; `204` |
-| `POST` | `/admin/termin/entfernen` | endgültig löschen, nur ohne Verweise; `204` |
-| `POST` | `/admin/teilnahme/gast-stufe` | Selbsteinschätzung eines Gastes korrigieren; `204` |
-
-Die ersten acht stammen aus S2, die folgenden fünf aus S2b, die nächsten acht aus S2b und S3,
-die beiden darauf aus dem Nachtrag vom 30.08.2026 und die letzten neun aus S4. Alles unterhalb von `/api/*/admin/**` verlangt `ROLE_ADMIN`; die Reset-Endpunkte und die
-drei Login-Wege sind ausschliesslich in `PIN_VERIFIED` erreichbar. **Auch S4 hat der
-Filterchain nichts hinzugefügt** – die vier Adminendpunkte liegen unter `/admin/` und erben die
-Regel, die beiden Leseendpunkte liegen bewusst *nicht* dort und fallen damit unter
-`anyRequest().hasAnyRole("USER", "ADMIN", "GAST")`. Genau das setzt Weggabelung F um: Ein Gast
-sieht Termine. **Der Ort der Endpunkte ist damit die Autorisierungsentscheidung** – wer einen
-Terminendpunkt unter `/admin/` anlegte, sperrte Gäste aus, ohne eine Regel zu ändern. Die neuen Pfade stehen trotzdem namentlich in
-`SecurityConfigTests`: Die Platzhalterprüfung bliebe grün, wenn jemand für einen echten
+**Der Ort eines Endpunkts ist die Autorisierungsentscheidung.** Alles unter `/api/*/admin/**`
+verlangt `ROLE_ADMIN`; die Reset-Endpunkte und die drei Login-Wege sind ausschliesslich in
+`PIN_VERIFIED` erreichbar; alles Übrige fällt unter
+`anyRequest().hasAnyRole("USER", "ADMIN", "GAST")`. **S4 hat der Filterchain nichts
+hinzugefügt** – die Leseendpunkte für Termine liegen bewusst *nicht* unter `/admin/`, und genau
+das lässt Gäste Termine sehen. Wer einen Terminendpunkt unter `/admin/` anlegte, sperrte Gäste
+aus, ohne eine Regel zu ändern. **Die Pfade stehen trotzdem namentlich in
+`SecurityConfigTests`:** Die Platzhalterprüfung bliebe grün, wenn jemand für einen echten
 Endpunkt eine offenere Regel **davor** setzte – Spring Security wertet die Matcher der Reihe
-nach aus, und die erste passende gewinnt.
+nach aus, die erste passende gewinnt.
 
-### 6.2 Festlegungen mit Datum
+### 6.2 Festlegungen, die nur hier stehen
 
-**Die meisten Entscheidungen dieser Meilensteine sind inzwischen verbindliche Regeln in
-`AGENT_SERVER.md`** – Adminprofil als technisches Konto, Anmeldename, Skill-Geheimhaltung,
-Zwischenspeicher, Audit-Log, Start-Bootstrap, Zugangsdatenpflege, Spielerverwaltung. Sie stehen
-hier nicht noch einmal; die Herleitung liegt in den archivierten Fassungen und in den
-`S<n>_UMSETZUNG.md`. Was hier bleibt, sind die Festlegungen, die **keine** Architekturregel
-sind, sondern Weggabelungen mit Datum:
+Verbindliche Architekturregeln sind in `AGENT_SERVER.md` und werden hier nicht wiederholt. Was
+bleibt, sind Weggabelungen: Entscheidungen, die auch anders hätten ausfallen können und die
+sich nachträglich nur mit einer Vertragsänderung korrigieren liessen. Die vollständige Liste mit
+Datum und Herleitung steht in der Archivfassung `…_v14_S4-abgeschlossen.md`.
 
-| Datum | Festlegung | Grund |
-|---|---|---|
-| 09.08. | Auth-Pfade heissen `users`/`user`, nicht `namen`/`name` | Code schlägt Anleitung – dort hängt die Autorisierung samt Tests |
-| 09.08. | Frontend und API auf Subdomains **derselben** registrierbaren Domain | sonst cross-site: `SameSite=None`, CSRF-Pflicht, blockierte Cookies |
-| 22.08. | Kontrakt als `server/fubo-api.json` (OpenAPI 3.1, JSON, Repo-Wurzel) | Vorgabe des Haupt-Entwicklers; Begründung in Abschnitt 4 |
-| 23.08. | Reset unter `/auth/…` statt `/admin/…` | wer sein Passwort vergisst, trägt `ROLE_ADMIN` nicht |
-| 23.08. | Zentrale PIN vierstellig | mündliche Weitergabe, Eingabefeld mit vier Kästchen |
-| 29.08. | Anmeldename = Profilname, keine eigene Spalte | zweiter Name für dasselbe Konto wäre Ballast |
-| 29.08. | Bestehender Fehlercode `ADMIN_PASSWORT_FALSCH` bleibt | kein Vertragsbruch; `detail` darf sich ohne Vertragsänderung ändern |
-| 29.08. | Zwischenspeicher anwendungsweit, nicht je Sitzung | es gibt genau einen Admin |
-| 29.08. | Übersichtsabfrage in zwei geteilt (Abweichung von der Anleitung) | der Belegtstatus darf nicht gecacht werden |
-| 29.08. | Adminprofil-Umbenennung über `/admin/name/aendern` statt `bearbeiten` | Weggabelung C der S3-Anleitung damit überholt |
-| 29.08. | Namensänderung widerruft **keine** Sitzung | Vorgabe des Haupt-Entwicklers |
-| 29.08. | Konfiguration als **Voll-Update** mit `version` (Weggabelungen D und E) | `null` bliebe feldweise ununterscheidbar von „nicht angegeben"; ohne Version überschreibt der zuletzt gespeicherte Tab lautlos |
-| 29.08. | `anzGuests` höchstens 22, `sessionLeerlaufMinuten` höchstens 1440, `sessionMaximalStunden` höchstens 24 | Riegel gegen Tippfehler; seit S3 legt eine Erhöhung wirklich Gastplätze an, und die beiden Sitzungsfelder sind sicherheitsrelevant |
-| 29.08. | `ConfigService#aktualisieren` nimmt das DTO entgegen, nicht elf Einzelwerte | sieben `short`-Argumente in Folge: zwei vertauschte kompilieren fehlerfrei und schreiben still das Falsche |
-| 30.08. | Skillwerte beim **Anlegen** sind Pflicht und vollständig; die `MITTEL`-Vorgabe entfällt | eine Vorgabe ist eine Behauptung über einen Spieler, die niemand aufgestellt hat – sie fiel nicht auf und ging trotzdem in die Teameinteilung ein |
-| 30.08. | `bearbeiten` bleibt bei der Teilmenge | ein bestehendes Profil hat schon vollständige Werte; einen einzelnen zu korrigieren soll nicht heissen, alle fünf zu senden |
-| 30.08. | Die Gastübersicht hängt an den **Plätzen**, nicht an den Sitzungen | eine Sitzungsliste zeigte den verwaisten Platz nie an – genau den, der den nächsten Gast aussperrt |
-| 30.08. | Freigeben **widerruft** die Sitzung, es räumt nicht nur die Zeile | ein Platz ohne Sitzung wäre neu vergeben, während der alte Gast weiterarbeitet |
-| 30.08. | Adressierung über `slotIds` **oder** `alle: true`; leerer Körper `400` | ein Sammelabbruch soll kein Versehen sein können – er wirft im Zweifel vier angemeldete Gäste heraus |
-| 30.08. | `auswechselModus` schon jetzt, obwohl der Generator erst in S5 entsteht | anwendungsweite Konfiguration; nachgezogen wüchse der Vertrag ein zweites Mal brechend, und der Client-Track müsste das Admin-Formular zweimal anfassen |
-| 30.08. | Genau zwei Werte, kein „kein Auswechselspieler" | A20b nennt zwei Kandidaten und macht nur die Wahl zwischen ihnen einstellbar; ein dritter Wert liesse offen, was bei ungerader Zahl dann geschieht. Nachträglich ergänzbar, ohne den Vertrag zu brechen |
-| 30.08. | „Schwächster" nach dem Skill-Snapshot des Laufs, nicht nach dem aktuellen Profilstand | sonst wechselte der Auswechselspieler einer gespeicherten Einteilung rückwirkend, sobald ein Skillwert korrigiert wird |
-| 30.08. | Vorgabetext der Absagevorlage in `V010`, **nicht** in `halleAbsageVorlageBereinigt()` | im Schreibpfad wäre er eine Regel bei jedem Speichern – der Admin könnte die Vorlage nie wieder leeren, und genau das begründet das Voll-Update |
-| 30.08. | Die Vorlage nennt Datum, Uhrzeit und Ort **nicht** | Platzhalter brauchten eine Ersetzung samt Syntax im Vertrag; bis S7 sie hat, stünden die Klammern wörtlich in der Mail. Die Angaben gehören in Betreff und Datenblock |
-| 30.08. | Bilanz-Zähler **neu berechnen** statt fortschreiben (A21) | `+1`/`-1` setzt voraus, dass die Teameinteilung zwischen Eintrag und Korrektur unverändert bleibt; tut sie es nicht, trifft die Rücknahme andere Spieler – und es gibt keine zweite Quelle, an der das auffiele |
-| 30.08. | Die drei Zähler stehen auf `profil.spieler`, nicht in einer eigenen Tabelle | drei Zahlen mit demselben Lebenszyklus wie das Profil; eine Tabelle mit 1:1-Beziehung wäre Ballast |
-| 30.08. | Gastteilnahmen bekommen **keine** Bilanz | ein Gast hat keine Profilzeile, und ein Zähler an `gast_slot` summierte die Ergebnisse verschiedener Personen – der Platz wird wiederverwendet |
-| 30.08. | **Höchstens 52 Termine je Serie** (offener Punkt 7 der S4-Anleitung, Vorgabe des Haupt-Entwicklers) | ein Jahr wöchentlich deckt jeden realistischen Fall ab und fängt den Tippfehler „2036" statt „2026" ab. Als Konstante im `SerienService`, **nicht** in der Konfiguration: Dort wäre es ein zwölftes Pflichtfeld im Voll-Update und damit eine brechende Vertragsänderung – für eine Grenze, die niemand verstellen will |
-| 30.08. | **Die Zeitzone der Anwendung steht in `fubo.zeitzone`** (Vorgabe `Europe/Berlin`), die `Clock`-Bean läuft darin statt in UTC | `termin.datum` und `.uhrzeit` sind `DATE` und `TIME` **ohne** Zeitzone, also Ortszeit. „Liegt dieser Termin in der Vergangenheit" ist damit erstmals eine Frage nach der Wanduhr und nicht nach einem Abstand – mit der bisherigen UTC-Uhr wäre die Antwort im Sommer zwei Stunden falsch. Die Zone des Rechners zu nehmen genügt nicht: In einem Container ist sie per Voreinstellung UTC |
-| 30.08. | Die Einzelansicht liefert die Teilnehmerliste **noch nicht** – sie kommt mit Paket 7 als zusätzliches Feld | der Vertrag beschreibt nur, was umgesetzt ist. Ein Feld nachzutragen ist additiv und damit nicht brechend; ein Feld zu beschreiben, das immer leer wäre, wäre ein Vertrag über nichts |
-| 30.08. | Beim Anlegen entscheidet **`ON CONFLICT DO NOTHING RETURNING id`** über die Kollision, nicht eine vorgelagerte Abfrage (Abweichung von Abschnitt 3.3 der Anleitung) | Die Anleitung schlägt „prüfen *und* Constraint behalten" vor. Das erreicht dasselbe Ziel, lässt zwischen Prüfung und Einfügen aber ein Fenster offen – und dann bricht der `INSERT` doch am Constraint, mit genau dem `500`, den die Prüfung verhindern sollte. Beim **Ändern** bleibt es bei der Vorabprüfung: Ein `UPDATE` kennt kein `ON CONFLICT` |
-| 30.08. | Geprüft wird der **Zeitpunkt**, nicht nur der Tag (Schärfung von Abschnitt 3.2) | Die Anleitung nennt „datum nicht in der Vergangenheit", begründet die Regel aber mit Weggabelung C: zugesagt wird bis Terminbeginn. Ein Termin heute um 8 Uhr, angelegt um 20 Uhr, nähme nie eine Rückmeldung entgegen |
-| 30.08. | Beim **Ändern** greift die Vergangenheitsprüfung nur, wenn Datum oder Uhrzeit sich wirklich ändern | sonst liesse sich der Ort eines längst vergangenen Termins nicht mehr berichtigen, obwohl das niemandem schadet. Verschieben *in* die Vergangenheit bleibt gesperrt |
-| 30.08. | Auch eine **Serie** wird abgelehnt, wenn ihr erster Termin schon vorbei ist | die Anleitung erwähnt das für Serien nicht; sie auszunehmen hiesse, denselben Zustand über einen zweiten Weg doch zu erlauben |
-| 30.08. | `TERMIN_GESCHLOSSEN` ist **allgemein** formuliert („Dieser Termin ist nicht mehr offen") | der Code deckt drei Fälle ab: abgesagt, abgeschlossen und – ab Paket 5 – Beginn vorbei. Für den Aufrufer ist die Wirkung dieselbe. Wo eine genauere Meldung hilft, setzt der Dienst sie über `detail`; das ist Anzeigetext und darf sich ohne Vertragsänderung ändern |
-| 30.08. | **A7, A18 und A19 ergänzt** (`AGENT.md`, Punkte 18 und 19) | Vorgabe des Haupt-Entwicklers. A7 schärft die Zeitgrenze der Rückmeldung, A18 fordert den automatischen Abschluss, A19 das Bearbeiten und Entfernen einzelner Termine |
-| 30.08. | **Entfernt wird nur, solange nichts auf den Termin verweist** (`409 TERMIN_IN_VERWENDUNG`) | Entscheidung des Haupt-Entwicklers zu A19. Fünf Tabellen hängen mit `ON DELETE CASCADE` am Termin; ein ungeprüftes Löschen räumte den halben Spieltag ab, und die Rückmeldungen sind der einzige Beleg dafür, wer zugesagt hatte. Dasselbe Muster wie bei `PROFIL_IN_VERWENDUNG` |
-| 30.08. | **Die Absage bleibt endgültig**, der Status ist nur vorwärts setzbar | Entscheidung des Haupt-Entwicklers zu A19. Der Vertragstext „endgültig" gilt damit weiter, den der Client-Track schon hat. **Beide Antworten greifen ineinander:** Das Entfernen ist der Weg zurück aus einer versehentlichen Absage – ohne es bliebe der Zeitpunkt dauerhaft gesperrt |
-| 30.08. | Die Frist aus A18 ist eine **Konstante im Dienst**, kein Konfigurationsfeld; der Auftrag läuft alle fünf Minuten | A18 legt die 30 Minuten als Anforderung fest, nicht als Betriebsgröße – ein zwölftes Pflichtfeld im Voll-Update wäre eine brechende Vertragsänderung. Der Takt genügt, weil keine fachliche Regel an der Pünktlichkeit hängt: Ob noch gemeldet werden darf, entscheidet die Uhrzeit und nicht der Status |
-| 30.08. | Wird der Status über `aendern` auf `ABGESAGT` gesetzt, heisst der Protokolleintrag **`TERMIN_ABGESAGT`** | Sonst fänden sich Absagen je nach benutztem Endpunkt unter zwei Namen. Es bleibt ein Eintrag – ein Vorgang, eine Zeile; die übrigen geänderten Felder stehen in denselben Details |
-| 30.08. | Die Teilnehmerliste ist ein **Feld von `TerminDetails`**, ohne `terminId` und ohne `zusagen` | Beide stehen bereits im umgebenden Objekt. Zweimal dieselbe Zahl in einer Antwort ist eine Einladung, die falsche zu lesen – und eine Gelegenheit, dass sie auseinanderlaufen |
-| 30.08. | **Das Adminprofil kann nicht zusagen** (`409 PROFIL_GESCHUETZT`) | Steht in keiner Anleitung. Der Rückmeldeendpunkt liegt ausserhalb von `/admin/`, das Adminprofil trägt aber eine `spielerId` – ohne die Prüfung stünde das technische Konto mit Skillwerten von 0 in der Teameinteilung. Der Ausschluss wird an jeder Grenze wiederholt |
-| 30.08. | Die Stufenänderung erhöht die `teilnehmer_version` **nur dieses einen Termins** | Die Anleitung skizziert in 8.1 ein Update über alle Termine desselben Gastnamens. Der Endpunkt spricht aber eine einzelne Teilnahme an, und Gastnamen sind je Termin eindeutig, nicht darüber hinaus – ein gleicher Name an einem anderen Termin kann eine andere Person sein |
-| 30.08. | Der Zeitvergleich des Zähler-Nachtrags läuft über die `Clock`-Bean, nicht über `current_date`/`current_time` | Die Anleitung schlägt die Datenbankfunktionen vor; sie richten sich nach der Zeitzone der *Datenbanksitzung*, und die steht im Container auf UTC. Anwendung und Datenbank hätten damit zwei Vorstellungen davon, was „künftig" heisst |
-| 30.08. | `handleTypeMismatch` im `GlobalExceptionHandler` | Erstmals mit S4 erreichbar: `/termine/{terminId}/lesen` trägt einen `Long` im Pfad, `/termine/lesen` ein `LocalDate` als Parameter. Ohne die Überschreibung antwortete die Basisklasse mit `400` **ohne** das Feld `code` – zwei Fehlerformate für das Frontend |
+| Festlegung | Grund |
+|---|---|
+| Frontend und API auf Subdomains **derselben** registrierbaren Domain | sonst cross-site: `SameSite=None`, CSRF-Pflicht, blockierte Cookies |
+| Kontrakt als `server/fubo-api.json` (OpenAPI 3.1, JSON, Repo-Wurzel) | Vorgabe des Haupt-Entwicklers |
+| Anmeldename = Profilname, keine eigene Spalte | ein zweiter Name für dasselbe Konto wäre Ballast |
+| Konfiguration als **Voll-Update** mit `version`; Termine dagegen **feldweise** | bei der Konfiguration bliebe `null` feldweise ununterscheidbar von „nicht angegeben", und ohne Version überschriebe der zuletzt gespeicherte Tab lautlos. Beim Termin sind es drei Felder, von denen meist eines geändert wird |
+| Skillwerte beim **Anlegen** Pflicht und vollständig, beim **Bearbeiten** Teilmenge | eine Vorgabe wäre eine Behauptung über einen Spieler, die niemand aufgestellt hat – sie fiele nicht auf und ginge trotzdem in die Teameinteilung ein |
+| Die Gastübersicht hängt an den **Plätzen**, nicht an den Sitzungen | eine Sitzungsliste zeigte den verwaisten Platz nie an – genau den, der den nächsten Gast aussperrt |
+| Freigeben **widerruft** die Sitzung, es räumt nicht nur die Zeile | ein Platz ohne Sitzung wäre neu vergeben, während der alte Gast weiterarbeitet |
+| Bilanz-Zähler **neu berechnen** statt fortschreiben (A21) | `+1`/`-1` setzt voraus, dass die Teameinteilung zwischen Eintrag und Korrektur unverändert bleibt; tut sie es nicht, trifft die Rücknahme andere Spieler – und keine zweite Quelle, an der das auffiele |
+| Gastteilnahmen bekommen **keine** Bilanz | ein Gast hat keine Profilzeile; ein Zähler an `gast_slot` summierte die Ergebnisse verschiedener Personen |
+| **Höchstens 52 Termine je Serie**, als Konstante im `SerienService` | fängt den Tippfehler „2036" statt „2026" ab. Nicht in der Konfiguration: dort wäre es ein zwölftes Pflichtfeld im Voll-Update und damit brechend |
+| **Zeitzone der Anwendung in `fubo.zeitzone`** (`Europe/Berlin`), `Clock`-Bean läuft darin statt in UTC | `termin.datum`/`.uhrzeit` sind `DATE`/`TIME` **ohne** Zone, also Ortszeit. „Liegt das in der Vergangenheit" ist eine Frage nach der Wanduhr; mit UTC wäre die Antwort im Sommer zwei Stunden falsch. Die Rechnerzone genügt nicht – im Container ist sie UTC |
+| Beim Anlegen entscheidet **`ON CONFLICT DO NOTHING RETURNING id`**, nicht eine vorgelagerte Abfrage | „prüfen und Constraint behalten" lässt ein Fenster offen, und dann bricht der `INSERT` doch am Constraint – mit genau dem `500`, den die Prüfung verhindern sollte. Beim **Ändern** bleibt es bei der Vorabprüfung: ein `UPDATE` kennt kein `ON CONFLICT` |
+| Geprüft wird der **Zeitpunkt**, nicht nur der Tag | ein Termin heute um 8 Uhr, angelegt um 20 Uhr, nähme nie eine Rückmeldung entgegen |
+| Beim Ändern greift die Vergangenheitsprüfung nur, wenn Datum oder Uhrzeit sich **wirklich** ändern | sonst liesse sich der Ort eines vergangenen Termins nicht mehr berichtigen. Verschieben *in* die Vergangenheit bleibt gesperrt |
+| **Entfernt wird nur ohne Verweise** (`409 TERMIN_IN_VERWENDUNG`), und die **Absage bleibt endgültig** | Beide Antworten greifen ineinander: Fünf Tabellen hängen mit `ON DELETE CASCADE` am Termin, ein ungeprüftes Löschen räumte den halben Spieltag ab – und das Entfernen ist zugleich der einzige Weg zurück aus einer versehentlichen Absage, weil ein abgesagter Termin seinen Zeitpunkt weiter belegt |
+| Die A18-Frist ist eine **Konstante im Dienst**, der Auftrag läuft alle fünf Minuten | ein zwölftes Pflichtfeld wäre brechend; der Takt genügt, weil keine fachliche Regel an der Pünktlichkeit hängt – ob gemeldet werden darf, entscheidet die Uhrzeit, nicht der Status |
+| **Das Adminprofil kann nicht zusagen** (`409 PROFIL_GESCHUETZT`) | der Rückmeldeendpunkt liegt ausserhalb von `/admin/`, das Adminprofil trägt aber eine `spielerId` – ohne die Prüfung stünde das technische Konto mit Skillwerten von 0 in der Teameinteilung |
+| „Schwächster Auswechselspieler" nach dem **Skill-Snapshot des Laufs**, nicht nach dem aktuellen Profilstand | sonst wechselte der Auswechselspieler einer gespeicherten Einteilung rückwirkend, sobald ein Skillwert korrigiert wird |
+| `TERMIN_GESCHLOSSEN` ist **allgemein** formuliert | der Code deckt drei Fälle ab: abgesagt, abgeschlossen, Beginn vorbei. Für den Aufrufer ist die Wirkung dieselbe; Genaueres steht in `detail` und darf sich ohne Vertragsänderung ändern |
 
-**Die sechs Weggabelungen für S4** sind am 30.08.2026 entschieden – durchgängig entlang der
-Empfehlung aus `S4_UMSETZUNG.md`, Abschnitt 0.4. Sie stehen hier, weil sie den Vertrag oder das
-Verhalten der Warteschlange binden und sich nachträglich nur mit einer Vertragsänderung
-korrigieren lassen:
+**Die sechs Weggabelungen aus S4** (30.08.2026, durchgängig entlang der Empfehlung): Serie
+**überspringt** Kollisionen und meldet sie namentlich · erneute Zusage stellt **hinten an** ·
+Rückmeldung bis **Terminbeginn** und nur bei `GEPLANT` · **eine** Teilnehmerliste mit
+`wartet`-Kennzeichen · der Admin trägt **keine** fremden Teilnahmen ein, Ausnahme Gast-Stufe ·
+Gäste dürfen Termine **sehen und zusagen**. Herleitung in `S4_UMSETZUNG.md`, Abschnitt 0.4.
 
-| # | Entscheidung | Grund |
-|---|---|---|
-| A | Eine Serie **überspringt** kollidierende Termine und meldet sie namentlich, statt ganz zu scheitern | `uq_termin_zeit UNIQUE (datum, uhrzeit)` ist *global* – bei einer Zwölf-Wochen-Serie genügt ein einziger bestehender Einzeltermin. Den Admin den Konflikt vorher selbst finden zu lassen, wäre Arbeit, die der Server erledigen kann |
-| B | Wer absagt und später wieder zusagt, rutscht **ans Ende** der Warteschlange | `gemeldet_am` wird bei jeder Zusage neu gesetzt. Sonst hielte eine Absage den Platz – und das Kontingent wäre über eine Absage-Zusage-Schleife umgehbar |
-| C | Zu- und Absage bis **Terminbeginn**, und nur solange der Termin `GEPLANT` ist | zwei unabhängige Riegel: die Uhrzeit und der Status. Ein abgesagter Termin nimmt keine Rückmeldungen mehr, auch nicht vor seinem Beginn |
-| D | Die Teilnehmerübersicht ist **eine** Liste mit `wartet: true/false` | zwei getrennte Listen zwängen den Client, die Warteschlangenreihenfolge selbst wiederherzustellen; die Liste kommt bereits sortiert |
-| E | Der Admin trägt **keine** fremden Teilnahmen ein – Ausnahme: die Skill-Stufe eines Gastes (A17) | eine Rückmeldung ist eine Aussage über die eigene Verfügbarkeit; sie stellvertretend zu setzen erzeugt Daten, die niemand zugesagt hat |
-| F | Gäste dürfen Termine **sehen und zusagen** | sonst wäre der Gast-Login aus A8 ohne Zweck |
+**Die vier Weggabelungen für S5** sind am 31.08.2026 entschieden und stehen in
+`S5_UMSETZUNG.md`, Abschnitt 0.4: Sperren nimmt Zusagen zurück · die Warteschlange wird **nicht**
+eingeteilt · ein Gast ohne Stufe zählt als `MITTEL` · `teams_fixiert` wird bei Terminbeginn
+automatisch gesetzt.
 
-**Zwei Abweichungen aus S1, die im Datenmodell sichtbar sind:** `min_teilnehmer = 6`,
-`anz_team_generator = 1`, `session_maximal_stunden = 1` (statt 8/2/8), und `session.stage`
-heisst in der zweiten Stufe `PROFILE_AUTHENTICATED`, weil auch Gäste sie erreichen.
-`spieltag.termin.fk_termin_serie` hat bewusst kein `ON DELETE` – eine Serie lässt sich nicht
-löschen, solange Termine daran hängen; nicht mehr benötigte Termine gehen über den Status
-`GEPLANT` und die Fachlogik.
+**Abweichungen aus S1, die im Datenmodell sichtbar sind:** `min_teilnehmer = 6`,
+`anz_team_generator = 1`, `session_maximal_stunden = 1` (statt 8/2/8); `session.stage` heisst in
+der zweiten Stufe `PROFILE_AUTHENTICATED`, weil auch Gäste sie erreichen.
+`spieltag.termin.fk_termin_serie` hat bewusst kein `ON DELETE`.
 
 ### 6.3 Fallstricke, die weiter gelten
+
+Jeder Punkt hat schon mindestens einmal Zeit gekostet.
 
 **Konfiguration und Start**
 
@@ -426,85 +282,74 @@ löschen, solange Termine daran hängen; nicht mehr benötigte Termine gehen üb
   Wert.** Spring Boots `Binder` reicht unauflösbare Platzhalter wörtlich durch – anders als
   `@Value`. `--env-file` gilt nur für Docker Compose, nicht für die JVM; deshalb
   `spring.config.import`.
-- **Die `.env` ist eine Properties-Datei und hat drei Leser mit drei Parsern.** Daraus zwei
-  Symptome, die beide schon zugeschlagen haben: Anführungszeichen landen im Wert und kosteten am
-  29.08.2026 einen `550`-Fehler beim Mailversand; ein `source .env` liess `seed-lokal.sh` am `<`
-  von `SMTP_ABSENDER` scheitern (`syntax error near unexpected token 'newline'`, 30.08.2026).
-  Regel und Begründung stehen in `AGENT_SERVER.md`.
-- **`target/classes` vergisst nichts.** Nach dem Umbenennen oder Löschen einer Ressource immer
-  `./mvnw clean` – das gilt auch nach jeder Änderung an `application.yml`.
+- **Die `.env` ist eine Properties-Datei mit drei Lesern und drei Parsern.** Anführungszeichen
+  landen im Wert (kostete einen `550` beim Mailversand); ein `source .env` scheitert am `<` von
+  `SMTP_ABSENDER`. Regel in `AGENT_SERVER.md`.
+- **`target/classes` vergisst nichts.** Nach dem Umbenennen oder Löschen einer Ressource und
+  nach jeder Änderung an `application.yml`: `./mvnw clean`.
 
 **Flyway und JPA**
 
-- **Flyway überspringt falsch benannte Migrationen stillschweigend** (doppelter Unterstrich!).
-  `validate-migration-naming: true` ist deshalb gesetzt und bleibt es.
+- **Flyway überspringt falsch benannte Migrationen stillschweigend** (doppelter Unterstrich).
+  `validate-migration-naming: true` bleibt gesetzt.
 - **Beispielcode gehört nicht in Migrationen.** Ein `:name` aus einer Anleitung ist für
   PostgreSQL ein Syntaxfehler (`42601`).
 - **`ddl-auto=validate` prüft Spaltenexistenz und JDBC-Typcode, nicht die Zuordnung.**
   `CHAR(n)` braucht `@JdbcTypeCode(SqlTypes.CHAR)`; vertauschte gleichartige Spalten fallen
   nicht auf. Mapping-Fehler äussern sich als Kaskade von `UnsatisfiedDependencyException` –
   **nur die erste Logzeile benennt die Ursache.**
-- **Tabellennamen immer aus den `CREATE TABLE`-Zeilen lesen, nie aus einem Constraint-Namen.**
+- **Tabellennamen aus den `CREATE TABLE`-Zeilen lesen, nie aus einem Constraint-Namen.**
   `fk_terminserie_spieler` gehört zu `spieltag.terminserie`, `fk_kontingent_spieler` zu
-  `spieltag.generierung_kontingent` – zwei falsch abgeleitete Namen in
-  `SpielerRepository#istReferenziert` kosteten am 23.08.2026 einen Testlauf.
-- **Wo JPA schreibt und natives SQL liest, muss geflusht werden** (`saveAndFlush`). Ohne das
-  bleibt die Änderung bis zum Ende der Transaktion unsichtbar.
-- **`@Modifying`-Abfragen mit `clearAutomatically` lösen Entities vom Persistence-Context.**
-  Was danach gebraucht wird (Id, Name), vorher in lokale Variablen holen.
+  `spieltag.generierung_kontingent`.
+- **Wo JPA schreibt und natives SQL liest, muss geflusht werden** (`saveAndFlush`).
+- **`@Modifying` mit `clearAutomatically` löst Entities vom Persistence-Context.** Was danach
+  gebraucht wird (Id, Name), vorher in lokale Variablen holen.
+- **Ein natives `UPDATE` auf eine Versionsspalte verträgt sich nicht mit einer im selben Vorgang
+  geladenen Entity.** `TeilnahmeService` liest den Termin deshalb nativ, nicht über `findById`.
 
 **Tests**
 
 - **Alles, was den Kontextstart überlebt, überlebt auch die Test-Transaktion.** Betrifft den
   `ApplicationRunner` des Bootstraps (deshalb stehen `ADMIN_*` und `fubo.mail.*` in
-  `src/test/resources/application.yml`), den `BruteForceService` und seit S3 den
+  `src/test/resources/application.yml`), den `BruteForceService` und den
   `ProfilStammdatenCache` – alle drei werden in `@BeforeEach` zurückgesetzt.
 - **`REQUIRES_NEW` und `@Transactional` am Test vertragen sich nicht.** Die eigene Transaktion
-  sieht die Testdaten unter READ COMMITTED nicht. Betroffene Klassen tragen kein
-  `@Transactional` und räumen von Hand auf.
+  sieht die Testdaten unter READ COMMITTED nicht.
 - **Eine Änderung an `FuboProperties` bricht drei Testklassen**, die den Record von Hand bauen
-  (`SessionAuthFilterTests`, `SessionCookieFactoryTests`, `BruteForceServiceTests`).
+  (`SessionAuthFilterTests`, `SessionCookieFactoryTests`, `BruteForceServiceTests`). Dieselben
+  drei sind die Gegenprobe ohne Spring-Kontext: Sind sie grün, liegt ein Kontextfehler nicht am
+  Anwendungscode.
 - **`sitzungsIdZu(token)` nur mit noch gültigem Token aufrufen** – jeder Stufenwechsel rotiert
   ihn. Die `session.id` vorher auflösen und behalten.
 - **`SMALLINT` kommt über `queryForMap` als `Integer` zurück**, über
-  `queryForObject(..., Short.class)` als `Short`. Beide Wege sind richtig, nur nicht
-  miteinander vergleichbar.
-- **Antworten über Jackson auswerten, nicht mit `contains` auf dem rohen JSON** – ein
-  Zeichenkettenvergleich trifft auch eine andere Zeile und meldet eine falsche Zuordnung als
-  Erfolg.
-- **`uq_termin_zeit UNIQUE (datum, uhrzeit)` ist global und trifft auch die Tests.** Zwei
-  Testklassen, die beide „morgen um 20:00" anlegen, kollidieren – auch wenn jede für sich
-  zurückgerollt wird, laufen sie nicht zwingend nacheinander. **Jede Klasse braucht ihren
-  eigenen Zeitstreifen**, und zwar in *beiden* Achsen: `TerminControllerTests` arbeitet um
-  40 Tage herum zur Uhrzeit 18:15, `TerminVerwaltungControllerTests` ab 120 Tagen zur Uhrzeit
-  19:45. Der Serientest braucht den weitesten Abstand, weil er über Wochen hinweg Zeilen
-  anlegt.
+  `queryForObject(..., Short.class)` als `Short`. Nicht miteinander vergleichbar.
+- **Antworten über Jackson auswerten, nicht mit `contains` auf dem rohen JSON.**
+- **`uq_termin_zeit UNIQUE (datum, uhrzeit)` ist global und trifft auch die Tests.** Jede Klasse
+  braucht ihren eigenen Zeitstreifen in **beiden** Achsen. Vergeben: `TerminControllerTests`
+  40 Tage/18:15, `TerminVerwaltungControllerTests` 120 Tage/19:45, `TeilnehmerlisteTests`
+  200 Tage/17:30, `SpielerControllerTests` 300 Tage/16:05. Wer eine fünfte anlegt, vergibt die
+  nächste.
 - **Termine für Lesetests entstehen per SQL, nicht über den Adminendpunkt.** Der Lesepfad soll
-  unabhängig vom Schreibpfad prüfbar bleiben – und ein Termin in der *Vergangenheit* lässt sich
-  über den Endpunkt gar nicht anlegen. Dasselbe gilt für Teilnahmen: Der Endpunkt dafür entsteht
-  erst mit Paket 5.
-- **`now()` ist innerhalb einer Transaktion konstant – und das trifft die Tests der
-  Warteschlange.** Alle über Endpunkte angelegten Zusagen eines Testfalls tragen denselben
-  Zeitstempel; die Reihenfolge fällt dann auf die `id` zurück, und die Sortierung nach
-  `gemeldet_am` wäre gar nicht geprüft. `TeilnehmerlisteTests` legt die Zeilen deshalb per SQL
-  mit eigenen Zeitpunkten an, `TerminControllerTests` setzt die Meldezeit vor dem zweiten
-  Schritt von Hand zurück.
+  unabhängig vom Schreibpfad prüfbar bleiben – und ein Termin in der Vergangenheit lässt sich
+  über den Endpunkt gar nicht anlegen.
+- **`now()` ist innerhalb einer Transaktion konstant.** Alle über Endpunkte angelegten Zusagen
+  eines Testfalls tragen denselben Zeitstempel; die Reihenfolge fällt dann auf die `id` zurück
+  und die Sortierung nach `gemeldet_am` wäre gar nicht geprüft. Meldezeiten deshalb per SQL
+  setzen oder vor dem zweiten Schritt von Hand zurückstellen.
 - **Wer `configs.app_config` per SQL ändert, muss es vor dem ersten HTTP-Aufruf tun.** Jeder
   Aufruf lädt über den Sitzungsfilter die Konfigurationszeile in den Persistence-Context; eine
-  spätere Änderung per SQL bliebe für den nächsten Lesezugriff derselben Transaktion
-  unsichtbar. **Der Test wäre grün und prüfte nichts.** Reihenfolge in `TeilnehmerlisteTests`:
-  Konfiguration setzen, Daten anlegen, genau einmal lesen.
-- **`ck_app_config_teilnehmer` verlangt `max >= min`.** Eine Höchstzahl unter der Mindestzahl
-  lässt sich nicht setzen – „Mindestzahl nur durch Wartende erreicht" braucht deshalb
-  `min = max` und mehr Zusagen als beide.
-- **Vier Testklassen teilen sich `uq_termin_zeit`.** Jede hat ihre eigene Uhrzeit:
-  `TerminControllerTests` 18:15, `TeilnehmerlisteTests` 17:30, `TerminVerwaltungControllerTests`
-  19:45, `SpielerControllerTests` 16:05 (für den Zähler-Nachtrag). Wer eine fünfte anlegt,
-  vergibt die nächste.
-- **Zeitgrenzen mit Abstand prüfen, nicht am Rand.** Die Termine der Testklassen liegen Wochen
-  von „jetzt" entfernt; damit spielt es keine Rolle, ob die Zeitzone der Anwendung und die des
-  Rechners auseinanderlaufen. `fubo.zeitzone` steht trotzdem ausdrücklich in
+  spätere Änderung bliebe für denselben Vorgang unsichtbar. **Der Test wäre grün und prüfte
+  nichts.** Reihenfolge: Konfiguration setzen, Daten anlegen, genau einmal lesen.
+- **`ck_app_config_teilnehmer` verlangt `max >= min`.** „Mindestzahl nur durch Wartende
+  erreicht" braucht deshalb `min = max` und mehr Zusagen als beide.
+- **Zeitgrenzen mit Abstand prüfen, nicht am Rand.** `fubo.zeitzone` steht ausdrücklich auch in
   `src/test/resources/application.yml` – in einem CI-Container stünde die Systemzeit auf UTC.
+- **Ein rückwärts zählender Testdaten-Parameter dreht die Erwartung** (31.08.2026, kostete einen
+  Lauf): `zusageAnlegen(…, vorMinuten)` setzt `gemeldet_am = now() - vorMinuten`, die
+  **grössere** Zahl meldet sich also **früher** und steht weiter oben. Jede solche Zahl trägt am
+  Aufruf einen Kommentar mit der erwarteten *Position*. **Erkennungsmerkmal, wenn mehrere Fälle
+  einer Klasse mit gespiegelter Reihenfolge fallen:** Ist der Fall, der die Sortierung
+  unmittelbar prüft, grün, liegt der Fehler im Test und nicht in der Abfrage.
 
 **Sicherheit und Betrieb**
 
@@ -513,90 +358,26 @@ löschen, solange Termine daran hängen; nicht mehr benötigte Termine gehen üb
   `application/problem+json`, `/actuator/health` ohne Cookie `200`.
 - **Der Brute-Force-Zähler ist zwischen PIN- und Admin-Login geteilt.** Fünf Vertipper beim
   Adminpasswort sperren auch den PIN-Login; die Meldung lautet dann `PIN_GESPERRT`.
-- **`max-versuche-ip` und `fubo.reset.max-versuche` stehen beide auf 5**, deshalb greift im
-  Betrieb die IP-Sperre vor dem Vorgangszähler. Das ist die gewünschte Staffelung.
+- **`max-versuche-ip` und `fubo.reset.max-versuche` stehen beide auf 5**, deshalb greift die
+  IP-Sperre vor dem Vorgangszähler. Das ist die gewünschte Staffelung.
 - **Git über die Ordnerfreigabe hinterlässt Sperrdateien.** Nach jedem schreibenden Befehl
-  `find .git \( -name 'tmp_obj_*' -o -name '*.lock' \) -delete`, sonst blockiert `HEAD.lock`
-  den nächsten Commit. **Ohne Löschrecht auf dem Ordner geht das nicht** (30.08.2026): Git
-  legt `index.lock` an und kann sie nicht mehr entfernen – jeder weitere Befehl scheitert an
-  der Datei, die der vorige hinterlassen hat. Umbenennen hilft nur einmal, weil der nächste
-  Befehl sofort eine neue anlegt. Der Ausweg ist die Löschfreigabe für den Projektordner; sie
-  gilt je Sitzung.
+  `find .git \( -name 'tmp_obj_*' -o -name '*.lock' \) -delete`, sonst blockiert `HEAD.lock` den
+  nächsten Commit. **Ohne Löschrecht auf dem Ordner geht das nicht** – Git legt `index.lock` an
+  und kann sie nicht mehr entfernen. Umbenennen hilft nur einmal. Der Ausweg ist die
+  Löschfreigabe für den Projektordner; sie gilt je Sitzung.
 
 **Bruno**
 
-- **Ein `pre-request`-Skript kann den sichtbaren Körper überschreiben** (30.08.2026). Bei
-  „Konfiguration aendern" tat es das: Es baute den Körper vollständig aus `konfigJson` und trug
-  seine eigene Änderung ein. Ein oben eingetipptes `halleEmail` erreichte den Server nie und
-  kam beim Lesen als `null` zurück – das sah nach einem Fehler der Anwendung aus, obwohl der
-  Wert Bruno nicht verlassen hatte. **Kommt ein Feld unverändert zurück, zuerst das Skript
-  lesen.** Seit dem 30.08.2026 gewinnt der Körper, und das Skript ergänzt nur die Version und
-  fehlende Felder.
+- **Ein `pre-request`-Skript kann den sichtbaren Körper überschreiben.** Bei „Konfiguration
+  aendern" tat es das: Ein oben eingetipptes `halleEmail` erreichte den Server nie und kam beim
+  Lesen als `null` zurück – das sah nach einem Fehler der Anwendung aus. **Kommt ein Feld
+  unverändert zurück, zuerst das Skript lesen.** Seit dem 30.08.2026 gewinnt der Körper.
 - **Der Cookie-Speicher gilt je Host.** Vier Gastanmeldungen gegen `localhost` überschreiben
-  einander; drei Sitzungstoken sind danach unerreichbar und wegen des gespeicherten SHA-256
-  auch nicht zu rekonstruieren. Dieselbe Falle in einer curl-Schleife mit `-c` (Jar
-  *schreiben*) statt `-b` (Jar *senden*). Der Ausweg ist `/admin/gast/freigeben`.
+  einander; die übrigen Sitzungstoken sind danach unerreichbar und wegen des gespeicherten
+  SHA-256 nicht zu rekonstruieren. Dieselbe Falle in einer curl-Schleife mit `-c` (Jar
+  *schreiben*) statt `-b` (Jar *senden*). Ausweg: `/admin/gast/freigeben`.
 
 ### 6.4 Verifikation
-
-**`./mvnw clean verify` zuletzt grün am 31.08.2026 – 331 Tests in 26 Klassen**, keine Fehler,
-keine Abbrüche, keine übersprungenen Tests. Die Anwendung startet auf einer frischen Datenbank
-durch. Der Lauf braucht Docker (Testcontainers, `postgres:17`) und läuft ausschliesslich lokal.
-**Damit ist S4 vollständig verifiziert** – die Pakete 1 bis 4 standen am 30.08.2026 bei 300
-Fällen in 25 Klassen, die Pakete 5 bis 10 bringen 31 dazu. Der vorab gezählte Erwartungswert
-traf wieder exakt.
-
-**Der erste Lauf war nicht grün, und der Fehler lag in den Tests.** Drei Fälle in
-`TeilnehmerlisteTests` fielen mit exakt gespiegelter Reihenfolge. Der Helfer
-`zusageAnlegen(…, vorMinuten)` zählt rückwärts: Die **grössere** Zahl hat sich **früher**
-gemeldet und steht bei `ORDER BY gemeldet_am` weiter oben. In drei Fällen stand die Erwartung
-verdreht. **Das Erkennungsmerkmal:** Der Fall, der die Sortierung unmittelbar prüft
-(`dieReihenfolgeFolgtDerMeldezeit`), war grün – wäre die Abfrage falsch, hätte er als Erster
-fallen müssen. Seitdem trägt jede Zahl am Aufruf einen Kommentar mit der erwarteten
-*Position*, nicht mit der Zahl.
-
-| Klasse | Fälle | Anteil |
-|---|---:|---|
-| `TerminControllerTests` | 25 (+10) | Lesepfad, Rückmeldung, Gast-Flow |
-| `TerminVerwaltungControllerTests` | 32 (+12) | Schreibpfad, Status, Entfernen, Gast-Stufe, Auto-Abschluss |
-| `TeilnehmerlisteTests` (neu) | 7 | Reihenfolge, Warteschlange, Mindestzahl |
-| `SpielerControllerTests` | 39 (+2) | der Zähler-Nachtrag aus S3 |
-| `SecurityConfigTests` | 26 (unverändert) | die neuen Pfade stehen **innerhalb** der Bündelfälle |
-
-**`SecurityConfigTests` bleibt bei 26** – die neuen Pfade stehen dort als Zusicherungen
-*innerhalb* der bestehenden Bündelfälle, nicht als eigene Methoden. Wer die Fallzahl als Mass
-für die Abdeckung liest, unterschätzt diese Klasse deshalb systematisch.
-
-Der Lauf vom 29.08.2026 schloss S3 mit **244** Fällen ab; die drei zusätzlichen stammen aus der
-Anforderungsänderung am Anlegen-Endpunkt (6.2). In `SpielerControllerTests` sind dabei zwei
-Fälle entfallen und fünf hinzugekommen: 34 → 37.
-
-Ein zweiter Lauf am selben Tag brachte die Gastverwaltung auf **260**: 12 Fälle in der neuen
-`GastVerwaltungControllerTests` und einer in `AuditServiceTests` (6 → 7) für den
-`Collection`-Zweig des Serialisierers. **`SecurityConfigTests` bleibt bei seiner Fallzahl**,
-obwohl die beiden neuen Pfade dort geprüft werden: Sie sind Zusicherungen *innerhalb* der
-bestehenden Bündelfälle für `401` und `403`, keine eigenen Methoden. Wer die Fallzahl als Mass
-für die Abdeckung liest, unterschätzt diese Klasse deshalb systematisch.
-
-Der dritte Lauf brachte **264**: drei Fälle für `auswechselModus` (A20b) – unbekannter Wert,
-fehlender Wert, `V009`-Migration – und einer für die Absagevorlage (A23), der prüft, dass sie
-sich trotz Vorgabetext wieder leeren lässt.
-
-**Die manuellen Prüflisten sind am 30.08.2026 erfolgreich abgearbeitet worden:** die zu S3
-(`S3_UMSETZUNG.md`, Abschnitt 10.1), die zu S2b (`S2b_UMSETZUNG.md`, Abschnitt 12.1) und die
-drei Punkte zur Gastverwaltung. Sie bleiben in den Anleitungen stehen – nicht als offene
-Aufgabe, sondern als Vorlage: Was sie prüfen, kann kein Testlauf abdecken, weil er in einer
-zurückgerollten Transaktion läuft und keine Sitzung wirklich ablaufen lassen kann. Nach jeder
-Änderung an Sitzungen, Gastplätzen oder Konfiguration sind sie wieder die richtige Gegenprobe.
-
-Die drei Punkte zur Gastverwaltung stehen in keiner Anleitung und deshalb hier – die
-Bruno-Requests dazu liegen unter `admin/gast/`:
-
-| Prüfpunkt | Erwartung |
-|---|---|
-| Als Gast anmelden, `sessionLeerlaufMinuten` auf 1 setzen, warten, dann `/admin/gast/lesen` | `belegt: true` mit `sitzungGueltig: false` – der Zustand, der den nächsten Gast aussperrt |
-| Über `baseUrlOhneCookie` einen zweiten Gast anmelden, dessen Platz freigeben, dann mit seinem Cookie `/auth/session/lesen` | `401`, nicht `200` – die Freigabe widerruft die Sitzung |
-| `anzGuests` von 4 auf 2 senken, bei vier belegten Plätzen | Plätze 3 und 4 mit `wirksam: false` und weiterhin `belegt: true`; gelöscht wird nichts |
 
 ```bash
 docker info > /dev/null                                    # muss durchlaufen
@@ -604,99 +385,100 @@ docker compose -f compose.dev.yml --env-file .env up -d
 ./mvnw clean verify
 ```
 
-**Verlauf:** 148 Tests in 16 Klassen (22.08.), 184 (23.08.), 227 in 21 Klassen und 244 in
-22 Klassen (beide 29.08.), 247, 260, 264 und 265 in 23 Klassen (alle 30.08.2026 – die letzten
-beiden für A20b/A23 und für die Bilanz aus `V011`), **300 in 25 Klassen** (S4, Pakete 1 bis 4,
-ebenfalls 30.08.2026) und **331 in 26 Klassen** (S4, Pakete 5 bis 10, 31.08.2026). **Der vorab
-gezählte Erwartungswert traf jedes Mal exakt** –
-`grep -c '^\s*@Test\s*$'` je Klasse. Nach dem Lauf gilt die Zahl aus den Berichten, nicht die
-fortgeschriebene; die Klassenzahl war einmal falsch, weil sie geschätzt statt gezählt wurde:
+**Zuletzt grün am 31.08.2026 – 331 Tests in 26 Klassen.** Verlauf: 148 in 16 Klassen (22.08.),
+184 (23.08.), 227 in 21 und 244 in 22 (beide 29.08.), 247/260/264/265 in 23 (30.08.), 300 in 25
+(S4, Pakete 1–4, 30.08.), 331 in 26 (S4, Pakete 5–10, 31.08.).
+
+**Der vorab gezählte Erwartungswert traf jedes Mal exakt** – `grep -c '^\s*@Test\s*$'` je
+Klasse. **Die Klassenzahl war einmal falsch, weil sie fortgeschrieben statt gezählt wurde.**
+Beide Zahlen deshalb immer gleich ermitteln, nach dem Lauf aus den Berichten:
 
 ```bash
 awk -F'[:,]' '/^Tests run:/ {t+=$2; k++} END {print k" Klassen, "t" Faelle"}' \
     target/surefire-reports/*.txt
 ```
 
-**Scheitert ein Lauf, zuerst die Surefire-Berichte lesen, nicht die Maven-Zusammenfassung.**
-Bei einem Kontextfehler meldet Spring Test jeden betroffenen Fall einzeln, aber nur der *erste*
-Bericht je Kontextkonfiguration nennt die Ursache – alle anderen tragen
-`ApplicationContext failure threshold (1) exceeded`. 115 Fehler bedeuten dann eine Ursache.
-Kürzester Weg: `grep -h 'Caused by' target/surefire-reports/*.txt | tail -1`. Gegenprobe über
-die drei Klassen ohne Spring-Kontext (`SessionAuthFilterTests`, `SessionCookieFactoryTests`,
-`BruteForceServiceTests`): Sind die grün, liegt es nicht am Anwendungscode. Am 23.08.2026
-lautete die Antwort `Could not find a valid Docker environment`.
+**`SecurityConfigTests` bleibt bei 26**, obwohl mit jedem Meilenstein Pfade dazukommen: Sie
+stehen als Zusicherungen *innerhalb* der bestehenden Bündelfälle. Wer die Fallzahl als Mass für
+die Abdeckung liest, unterschätzt diese Klasse systematisch.
 
-**Was der Testlauf nicht abdeckt, decken die manuellen Prüflisten ab** – jeder Fall läuft in
-einer Transaktion, die zurückgerollt wird, und sagt deshalb nichts über die Wirkung im
-laufenden Betrieb. Die Liste zu S3 steht in `harness/tmp/S3_UMSETZUNG.md`, Abschnitt 10.1, die
-zu S2b in `S2b_UMSETZUNG.md`, Abschnitt 12.1. Die Bruno-Collection führt durch beide.
+**Scheitert ein Lauf, zuerst die Surefire-Berichte lesen, nicht die Maven-Zusammenfassung.** Bei
+einem Kontextfehler meldet Spring Test jeden betroffenen Fall einzeln, aber nur der *erste*
+Bericht je Kontextkonfiguration nennt die Ursache – alle anderen tragen
+`ApplicationContext failure threshold (1) exceeded`. 115 Fehler bedeuten dann **eine** Ursache.
+Kürzester Weg: `grep -h 'Caused by' target/surefire-reports/*.txt | tail -1`.
+
+**Was der Testlauf nicht abdecken kann, decken die manuellen Prüflisten ab** – jeder Fall läuft
+in einer zurückgerollten Transaktion und kann keine Sitzung wirklich ablaufen lassen. Die Listen
+stehen in `S2b_UMSETZUNG.md` (12.1), `S3_UMSETZUNG.md` (10.1) und `S4_UMSETZUNG.md` (11.1); die
+zu S2b und S3 sind am 30.08.2026 abgearbeitet. Sie bleiben stehen – nicht als offene Aufgabe,
+sondern als Vorlage nach jeder Änderung an Sitzungen, Gastplätzen oder Konfiguration.
+
+Drei Punkte zur Gastverwaltung stehen in keiner Anleitung, die Bruno-Requests unter
+`admin/gast/`:
+
+| Prüfpunkt | Erwartung |
+|---|---|
+| Als Gast anmelden, `sessionLeerlaufMinuten` auf 1, warten, `/admin/gast/lesen` | `belegt: true` mit `sitzungGueltig: false` – der Zustand, der den nächsten Gast aussperrt |
+| Zweiten Gast über `baseUrlOhneCookie` anmelden, Platz freigeben, mit seinem Cookie `/auth/session/lesen` | `401`, nicht `200` – die Freigabe widerruft die Sitzung |
+| `anzGuests` von 4 auf 2 senken bei vier belegten Plätzen | Plätze 3 und 4 mit `wirksam: false` und weiter `belegt: true`; gelöscht wird nichts |
 
 ## 7. Nächste Schritte
 
-1. **Die Handprüfungen aus `S4_UMSETZUNG.md`, Abschnitt 11.1, nachholen.** Die
-   Bruno-Collection führt mit den Ordnern `termine` und `admin/termin` hindurch. **Zwei
-   Punkte kann der Testlauf grundsätzlich nicht abdecken**, weil jeder Fall in einer
-   zurückgerollten Transaktion läuft:
+1. **Die zwei Handprüfungen zu S4 nachholen.** Alles Übrige aus `S4_UMSETZUNG.md`,
+   Abschnitt 11.1, ist über die Bruno-Ordner `termine` und `admin/termin` gangbar; diese beiden
+   brauchen eine laufende Anwendung:
    - **Der automatische Abschluss im Betrieb.** Der Test ruft den Auftrag direkt auf; dass der
      Zeitplan greift, zeigt erst eine laufende Anwendung. Einen Termin per SQL in die
      Vergangenheit setzen und fünf Minuten warten.
    - **Die Gast-Stufe über den Sitzungsablauf hinweg.** Sie wird bei der Zusage kopiert; dass
-     sie eine abgelaufene Gastsitzung überdauert, ist in einer zurückgerollten Transaktion
-     nicht zu sehen.
-2. **Danach S5 (Teamgenerator).** S4 liefert ihm die Teilnehmerliste und den Zähler
-   `teilnehmer_version` – **beide werden ab dort erstmals ausgewertet**: Der Zähler setzt das
-   Generierungskontingent zurück und kennzeichnet eine Einteilung als veraltet.
-   `generierung_kontingent` trägt ihn in seinem Unique-Constraint.
-   **Drei Punkte, die dabei nicht untergehen dürfen:**
-   - **`termin.teams_fixiert` ist noch unbenutzt.** Die Spalte ist da, die Bedeutung fehlt; sie
-     gehört zum offenen Punkt „Einteilung einfrieren".
-   - **Profile ohne vollständige Skillwerte** (offener Punkt 20 aus S2): Seit dem 30.08.2026
-     lehnt `/admin/user/anlegen` sie ab, der Bestand aus einem Datenimport bleibt aber offen.
-   - **Ein gesperrtes Profil behält seine Zusagen.** `blockieren` widerruft die Sitzungen, lässt
-     die Teilnahme aber stehen – der Generator würde es einteilen. Vor S5 zu klären.
-3. **Client-Track über die drei brechenden Vertragsänderungen informieren** (Abschnitt 4 und
-   4a). Alle drei betreffen Formulare, alle drei liefern sonst `400`: `anmeldename` im
-   Admin-Login, vollständige `skills` beim Anlegen eines Profils, `auswechselModus` im
+     sie eine abgelaufene Gastsitzung überdauert, ist in einer zurückgerollten Transaktion nicht
+     zu sehen.
+2. **S5 umsetzen** nach `harness/tmp/S5_UMSETZUNG.md`. Vier Entscheidungen stehen (0.4), vier
+   Weggabelungen sind beim Schreiben des jeweiligen Abschnitts zu klären (0.5). **Zwei
+   Nachträge aus S4 gehören dazu** und sind leicht zu übersehen: Sperren nimmt die Zusagen
+   zurück (Reihenfolge beachten – erst die Version erhöhen, dann die Zusage zurücknehmen), und
+   `teams_fixiert` wird vom bestehenden A18-Auftrag bei Terminbeginn gesetzt.
+3. **Client-Track über die drei brechenden Vertragsänderungen informieren** (4.1): `anmeldename`
+   im Admin-Login, vollständige `skills` beim Anlegen eines Profils, `auswechselModus` im
    Voll-Update der Konfiguration.
+
 **Offene Punkte, die keine Aufgabe für heute sind:**
 
-- **Punkt 20 (S5):** Wie behandelt der Teamgenerator Profile ohne gepflegte Skillwerte? Die
-  Bewertung des Haupt-Entwicklers steht: unvollständige Werte sollen eine Fehlermeldung erzeugen.
-  **Seit dem 30.08.2026 gilt das an der Eingangstür** – `/admin/user/anlegen` lehnt eine
-  unvollständige Angabe ab, statt sie mit Vorgabewerten aufzufüllen. Damit bleibt nur noch eine
-  Quelle für Lücken: Profile aus einem Datenimport, den kein Endpunkt kontrolliert.
-  `/admin/user/lesen` macht sie sichtbar (kürzere Skillkarte), `bearbeiten` füllt sie.
-  **Für S5 bleibt die Frage, was der Generator mit einer solchen Lücke tut** – die Eingangsprüfung
-  ersetzt sie nicht, weil sie den Bestand nicht rückwirkend heilt.
-- **`AGENT.md` nennt für `terminserie.ort` und `termin.ort` 120 Zeichen, `V005` legt 160 an.**
-  Code schlägt Anleitung, Migrationen sind unveränderlich. Beim Abschluss von S4 ins
-  Änderungsprotokoll aufnehmen.
+- **Die Zeitzone der Datenbanksitzung ist nicht gesetzt.** Ohne Folge, solange alle
+  Zeitvergleiche über die `Clock`-Bean laufen. Sobald eine Abfrage `current_date` oder
+  `current_time` benutzt, gehört `TimeZone` in die Datenbankkonfiguration oder der Wert als
+  Parameter in die Abfrage.
+- **`termin.teams_fixiert`** bekommt mit S5 seine erste Bedeutung – und bleibt dabei
+  grösstenteils redundant zu den bestehenden Statusprüfungen. Begründung in `S5_UMSETZUNG.md`,
+  10.2.
 - **Betriebsaufgabe ohne Code:** Custom Domain `app.<domain>` in Cloudflare Pages einrichten.
   Ohne sie funktioniert die Anmeldung produktiv nicht – `pages.dev` steht auf der Public Suffix
   List und wäre gegenüber `api.<domain>` cross-site, mit `SameSite=None; Secure`, zwingendem
-  CSRF-Schutz und einem Cookie, das Safari und der Chrome-Inkognito-Modus blockieren. Lokale
-  Entwicklung und Tests sind nicht betroffen. Ebenfalls offen: der Umgang mit
-  Pages-Preview-Deployments, in denen der Login bauartbedingt nicht funktioniert.
+  CSRF-Schutz und einem Cookie, das Safari und der Chrome-Inkognito-Modus blockieren. Ebenfalls
+  offen: Pages-Preview-Deployments, in denen der Login bauartbedingt nicht funktioniert.
 - **Deployment (S8):** Entwurf mit Dockerfile, Compose-Ergänzung, nginx-Block, Backup und
   Rollout liegt in `harness/tmp/S8_DEPLOYMENT.md`.
 
-**Profildaten** (Vorgehen steht): Reale Daten liegen ausserhalb des **Server-Repositories** –
-derzeit in `PRJ_FuBo/db_prod_data/`, also in dem unversionierten Teil des Projektordners. Pfad in
-`FUBO_LOCAL_SEED`, Einspielen über `scripts/seed-lokal.sh`. Der anonymisierte 30er-Satz liegt
-in `scripts/data/`, der 12er-Demosatz läuft automatisch in Dev und Test.
+**Profildaten** (Vorgehen steht): Reale Daten liegen ausserhalb des Server-Repositories – derzeit
+in `PRJ_FuBo/db_prod_data/`. Pfad in `FUBO_LOCAL_SEED`, Einspielen über `scripts/seed-lokal.sh`.
+Der anonymisierte 30er-Satz liegt in `scripts/data/`, der 12er-Demosatz läuft automatisch in Dev
+und Test.
 
 ## 8. Weitere Anweisungen
 
-- **Repository:** Wurzel `server/`, gearbeitet wird auf **`dev`**, `main` bleibt der
-  freigegebene Stand. Commit-Nachrichten nach Conventional Commits **ohne** Scope, Umlaute
-  transliteriert. **Ohne ausdrückliche Anweisung nichts nach `main` mergen oder pushen.**
+- **Repository:** Wurzel `server/`, gearbeitet wird auf **`dev`**, `main` bleibt der freigegebene
+  Stand. Commit-Nachrichten nach Conventional Commits **ohne** Scope, Umlaute transliteriert.
+  **Ohne ausdrückliche Anweisung nichts nach `main` mergen und nichts pushen.**
+- **Nicht committen, solange ein Testlauf aussteht.** Ein Commit ist Denis' Abschluss eines
+  verifizierten Pakets.
 - **Getrennte Repositories:** Server und Client lassen sich nicht gemeinsam committen.
-  Vertragsänderungen deshalb **immer zuerst** in `server/fubo-api.json`, der Client-Track zieht
+  Vertragsänderungen deshalb **immer zuerst** in `server/fubo-api.json`; der Client-Track zieht
   danach nach.
 - **`.env` nie einchecken.** Dokumentation in deutscher Sprache, **keine realen Personennamen**
-  in Code, Testdaten oder Dokumentation.
-- **Nach Abschluss eines Arbeitspakets:** kurz verifizieren, diesen Handoff fortschreiben und
-  die Vorfassung unter `harness/archive/` ablegen; zusätzlich
-  `/PRJ_FuBo/harness/CONTEXT_HANDOFF.md` (Gesamtstand) nachziehen. Verbindliche Regeln, die
-  sich aus der Umsetzung ergeben, gehören in `AGENT_SERVER.md` – **nicht** zusätzlich hierher,
-  sonst laufen beide auseinander. `/PRJ_FuBo/harness/` liegt ausserhalb dieses Repositories.
+  in Code, Testdaten oder Dokumentation – besonders nicht in Migrationen, die unveränderlich
+  sind und dauerhaft in der Git-Historie stehen.
+- **Nach Abschluss eines Arbeitspakets:** verifizieren, diesen Handoff fortschreiben, die
+  Vorfassung unter `harness/archive/` ablegen und `/PRJ_FuBo/harness/CONTEXT_HANDOFF.md`
+  nachziehen. Verbindliche Regeln aus der Umsetzung gehören in `AGENT_SERVER.md` – **nicht**
+  zusätzlich hierher, sonst laufen beide auseinander.
