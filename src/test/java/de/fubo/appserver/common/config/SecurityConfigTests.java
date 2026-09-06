@@ -349,6 +349,18 @@ class SecurityConfigTests {
         mockMvc.perform(post("/api/v1/termine/rueckmeldung")
                         .contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isUnauthorized());
+
+        // S5: Die beiden Generierungsendpunkte unterscheiden sich NUR im /admin/-Praefix.
+        // Genau deshalb stehen sie hier namentlich - ein Tippfehler im Praefix faellt bei
+        // aehnlichen Pfaden schlechter auf als bei verschiedenen, und die
+        // Platzhalterpruefung /api/*/admin/** bemerkt ihn nicht.
+        mockMvc.perform(post("/api/v1/teams/generieren")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(post("/api/v1/admin/teams/generieren")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isUnauthorized());
     }
 
     /**
@@ -405,6 +417,14 @@ class SecurityConfigTests {
                         .contentType(MediaType.APPLICATION_JSON).content("{}")
                         .cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))
                 .andExpect(status().isForbidden());
+
+        // A24: Der manuelle Lauf ist eine Adminbefugnis. Der offene Endpunkt daneben
+        // (/api/v1/teams/generieren) steht bewusst allen Rollen offen - siehe
+        // userUndGastDuerfenGeschuetzteEndpunkteAufrufen.
+        mockMvc.perform(post("/api/v1/admin/teams/generieren")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}")
+                        .cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -435,6 +455,20 @@ class SecurityConfigTests {
                 .andExpect(status().isBadRequest());
 
         mockMvc.perform(post("/api/v1/termine/rueckmeldung")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}")
+                        .cookie(new Cookie(COOKIE, gastSitzung())))
+                .andExpect(status().isBadRequest());
+
+        // S5, A15: Generieren darf jeder Angemeldete, auch ein GAST - der Endpunkt liegt
+        // bewusst NICHT unter /admin/. Begrenzt wird ueber das Kontingent, nicht ueber die
+        // Rolle. Der leere Koerper faellt danach durch die Eingabepruefung, und genau das ist
+        // der Beleg: Ein 400 kommt erst zustande, wenn die Filterchain durchgelassen hat.
+        mockMvc.perform(post("/api/v1/teams/generieren")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}")
+                        .cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post("/api/v1/teams/generieren")
                         .contentType(MediaType.APPLICATION_JSON).content("{}")
                         .cookie(new Cookie(COOKIE, gastSitzung())))
                 .andExpect(status().isBadRequest());

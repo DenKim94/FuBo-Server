@@ -788,7 +788,79 @@ class SpielerControllerTests {
         assertThat(teilnehmerVersion(abgesagt)).as("wer abgesagt hat, spielt nicht mit").isZero();
     }
 
+    // --------------------------------------------------------------------- Sperren und Zusagen
+
+    /**
+     * Das Sperren nimmt die Zusagen kuenftiger Termine zurueck (S5 Abschnitt 10.1, Nachtrag
+     * aus S4).
+     *
+     * <p>Ohne das stuende ein Gesperrter weiter auf der Teilnehmerliste und ginge in die
+     * naechste Teameinteilung ein - die Sperre wirkte im Adminbereich und nicht auf dem Platz.
+     *
+     * <p>Die Zahl steht im bestehenden Protokolleintrag und nicht in einem eigenen: Es ist
+     * eine Folge des Sperrens, keine eigene Handlung.
+     */
+    @Test
+    void sperrenNimmtDieZusagenKuenftigerTermineZurueck() throws Exception {
+        Long spielerId = ersterSpieler();
+        Long terminId = terminMitZusage(LocalDate.now().plusDays(302), spielerId);
+
+        blockieren(spielerId, true).andExpect(status().isNoContent());
+
+        assertThat(zusage(terminId, spielerId)).isFalse();
+        assertThat(jdbc.queryForObject("""
+                SELECT details->>'zusagenZurueckgenommen' FROM profil.audit_log
+                 WHERE aktion = 'PROFIL_BLOCKIERT' AND entitaet_id = ?
+                """, String.class, spielerId))
+                .isEqualTo("1");
+    }
+
+    /**
+     * Die {@code teilnehmer_version} steigt dabei - und zwar <b>bevor</b> die Zusage faellt.
+     *
+     * <p><b>Die Reihenfolge ist die ganze Schwierigkeit des Nachtrags.</b>
+     * {@code teilnehmerVersionErhoehenFuerSpieler} sucht ueber
+     * {@code EXISTS (... AND tn.zusage)}; steht die Zusage schon auf {@code false}, findet es
+     * nichts mehr. Falsch herum ist der Code lauffaehig und wirkungslos: Die Kontingente
+     * blieben verbraucht, bestehende Einteilungen faelschlich aktuell - und dieser Fall waere
+     * der einzige, der es bemerkt.
+     */
+    @Test
+    void sperrenErhoehtDieTeilnehmerVersionVorDerAbsage() throws Exception {
+        Long spielerId = ersterSpieler();
+        Long terminId = terminMitZusage(LocalDate.now().plusDays(303), spielerId);
+
+        blockieren(spielerId, true).andExpect(status().isNoContent());
+
+        assertThat(teilnehmerVersion(terminId)).isEqualTo(1);
+    }
+
+    /**
+     * Ein vergangener Termin bleibt unberuehrt - er ist gespielt worden.
+     *
+     * <p>Dieselbe Abgrenzung wie beim Zaehler-Nachtrag aus S4: Wer einmal mitgespielt hat,
+     * hinterlaesst Belege, und eine nachtraegliche Absage machte aus dem Beleg eine
+     * Behauptung.
+     */
+    @Test
+    void sperrenLaesstVergangeneTermineUnberuehrt() throws Exception {
+        Long spielerId = ersterSpieler();
+        Long terminId = terminMitZusage(LocalDate.now().minusDays(304), spielerId);
+
+        blockieren(spielerId, true).andExpect(status().isNoContent());
+
+        assertThat(zusage(terminId, spielerId)).as("gespielt ist gespielt").isTrue();
+        assertThat(teilnehmerVersion(terminId)).isZero();
+    }
+
     // --------------------------------------------------------------------- Hilfsmittel
+
+    /** Die Rueckmeldung eines Spielers an einem Termin. */
+    private boolean zusage(Long terminId, Long spielerId) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT zusage FROM spieltag.teilnahme WHERE termin_id = ? AND spieler_id = ?
+                """, Boolean.class, terminId, spielerId));
+    }
 
     /** Legt einen Termin mit einer Zusage dieses Spielers an und liefert die Termin-Id. */
     private Long terminMitZusage(LocalDate datum, Long spielerId) {

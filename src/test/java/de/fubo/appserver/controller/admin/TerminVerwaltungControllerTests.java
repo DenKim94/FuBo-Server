@@ -516,6 +516,59 @@ class TerminVerwaltungControllerTests {
         assertThat(teilnehmerVersion(terminId)).isZero();
     }
 
+    // --------------------------------------------------------------------- Fixierung (S5, 10.2)
+
+    /**
+     * Derselbe Auftrag setzt bei Terminbeginn {@code teams_fixiert} (A18, S5 Abschnitt 10.2).
+     *
+     * <p><b>Zwei Anweisungen, ein Auftrag.</b> Eine zweite {@code @Scheduled}-Methode waere
+     * ein zweiter Takt fuer dieselbe Sache - und der zweite Ort, an dem jemand die Frist
+     * verstellt. Die Fixierung greift damit bis zu fuenf Minuten nach Anpfiff; das ist
+     * hinnehmbar, weil sie eine Aufraeumung ist und kein Torwaechter.
+     *
+     * <p>Der Termin liegt drei Tage zurueck: Damit ist der Fall unabhaengig von der Tageszeit
+     * des Testlaufs, und er kollidiert nicht mit den beiden Terminen der Abschlussfaelle.
+     */
+    @Test
+    void derAuftragFixiertDieTeamsBeiTerminbeginn() throws Exception {
+        Long begonnen = jdbc.queryForObject("""
+                INSERT INTO spieltag.termin (datum, uhrzeit) VALUES (?, ?) RETURNING id
+                """, Long.class, LocalDate.now().minusDays(3), UHRZEIT);
+        Long kuenftig = angelegterTermin(tag(41));
+
+        terminService.abgelaufeneAbschliessen();
+
+        assertThat(terminZeile(begonnen).get("teams_fixiert")).isEqualTo(true);
+        assertThat(terminZeile(kuenftig).get("teams_fixiert"))
+                .as("Was noch kommt, bleibt offen")
+                .isEqualTo(false);
+        assertThat(teilnehmerVersion(begonnen))
+                .as("Die Fixierung aendert den Teilnehmerkreis nicht")
+                .isZero();
+    }
+
+    /**
+     * Wird ein fixierter Termin in die Zukunft verschoben, faellt die Fixierung zurueck
+     * (Restfall aus 10.2).
+     *
+     * <p>A19 erlaubt dem Admin das Verschieben. Bliebe das Flag stehen, waere der Generator
+     * fuer einen kuenftigen Termin dauerhaft gesperrt - mit einem {@code 409}, dessen Grund
+     * in der Vergangenheit liegt.
+     */
+    @Test
+    void verschiebenInDieZukunftSetztDieFixierungZurueck() throws Exception {
+        Long terminId = angelegterTermin(tag(42));
+        jdbc.update("""
+                UPDATE spieltag.termin SET teams_fixiert = true, version = version + 1 WHERE id = ?
+                """, terminId);
+
+        aendern(Map.of("terminId", terminId, "version", version(terminId),
+                "datum", tag(43).toString()))
+                .andExpect(status().isNoContent());
+
+        assertThat(terminZeile(terminId).get("teams_fixiert")).isEqualTo(false);
+    }
+
     // --------------------------------------------------------------------- Serie
 
     /**
