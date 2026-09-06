@@ -4,7 +4,7 @@
     "title": "FuBo Server API",
     "version": "1.0.0",
     "summary": "Vertrag zwischen FuBo-Server und FuBo-Client.",
-    "description": "Maßgebliche Beschreibung der REST-Schnittstelle des FuBo-Servers.\n\n**Diese Datei ist die Quelle der Wahrheit für den Client-Track.** Server und Client liegen in getrennten Repositories; eine Vertragsänderung wird deshalb immer zuerst hier abgebildet und der Client anschließend nachgezogen.\n\n**Stand:** S2 (Auth und Session), S2b (Zugangsdatenpflege und Spielerverwaltung), S3 (Profile, Skills, Konfiguration, Gastverwaltung) und **S4 vollständig** – Termine lesen, Einzeltermin anlegen, ändern, absagen und entfernen, Terminserien, Zu- und Absagen von Spielern und Gästen, die Teilnehmerliste samt Warteschlange und die Skill-Stufe eines Gastes.\n\n**Noch nicht enthalten und deshalb hier nicht beschrieben:** der Teamgenerator (S5), die Ergebniserfassung (S6) und der Hallenmodus (S7). Spekulative Endpunkte wären ein Vertrag über etwas, das es nicht gibt.\n\n**Drei Dinge geschehen ohne Zutun des Clients:** Ein Termin wechselt 30 Minuten nach seinem Beginn selbsttätig von `GEPLANT` auf `ABGESCHLOSSEN` (A18); eine erneute Zusage stellt in der Warteschlange hinten an; und eine Änderung an den Skillwerten eines zugesagten Spielers erhöht die `teilnehmerVersion` seiner künftigen Termine.\n\n### Versionierung\nJeder fachliche Endpunkt liegt unter `/api/{version}/<bereich>/<ressource>/<aktion>`. Die Version steht als Präfix an Segment-Index 1, die Aktion als eigenes Segment am Ende. Umgesetzt mit `ApiVersionConfigurer#usePathSegment` aus Spring Framework 7.\n\n- `/api/v1/...` und `/api/1/...` werden beide als Version 1 gelesen; nach außen wird durchgängig `v1` verwendet.\n- Eine unbekannte Version (`/api/v99/...`) liefert `400`.\n- Ein fehlendes Versionssegment liefert `404` – ohne das Segment passt der Pfad schlicht auf kein Mapping.\n\n### Authentifizierung\nOpakes Session-Cookie (`FUBO_SESSION`, `HttpOnly`, `Secure`, `SameSite=Lax`, kein Ablaufdatum). Das Frontend kann den Token weder lesen noch prüfen und muss das auch nicht: Die Validierung passiert ausschließlich serverseitig in der Filterchain. Alle Aufrufe erfolgen mit `credentials: 'include'`.\n\n**Die zentrale PIN besteht aus vier Ziffern.** Das Eingabefeld im Frontend darf darauf ausgelegt werden. `POST /auth/pin/pruefen` schreibt der Eingabe trotzdem **kein** Format vor – ein abweichender Bestandswert aus der Erstkonfiguration muss eingebbar bleiben, und eine Mindestlänge im Vertrag wäre eine Auskunft über das Format der echten PIN. Verbindlich ist das Format nur beim *Setzen* über `POST /admin/pin/aendern`.\n\nDer Login ist zweistufig und wird serverseitig erzwungen:\n1. `PIN_VERIFIED` – zentrale PIN geprüft, Identität noch offen.\n2. `PROFILE_AUTHENTICATED` – erst hier existiert eine Rolle. Es führen drei Wege dorthin: Namensauswahl (`USER`), Gast-Login (`GAST`) und Admin-Login mit Passwort (`ADMIN`).\n\n**Das Adminprofil ist ein technisches Konto.** Es steht nicht in der Namensliste, nimmt an keinem Termin teil und wird nie in ein Team eingeteilt; seine Skillwerte stehen auf 0. Der Admin meldet sich deshalb über `POST /api/v1/auth/admin/anmelden` mit seinem Passwort an – die Namensauswahl lehnt das Adminprofil auch dann ab, wenn seine Id bekannt ist.\n\nBei jedem Stufenwechsel und bei jeder Erneuerung wird der Token rotiert (Schutz vor Session Fixation). Die `session.id` bleibt dabei erhalten.\n\n### Sitzungsdauer (Zwei-Timer-Modell)\n`gueltigBis` ist ein gleitendes Leerlauf-Fenster (Vorgabe 15 Minuten) und wandert bei jedem Aufruf nach hinten. `absolutGueltigBis` ist eine harte Obergrenze (Vorgabe 1 Stunde) und wird nie verschoben – auch nicht durch `/auth/session/erneuern`.\n\nHintergrundaufrufe (etwa das Pollen des Belegtstatus) sollen das Leerlauf-Fenster **nicht** verlängern und senden dazu `X-FuBo-Kein-Refresh: true`. Ohne diesen Header würde „15 Minuten Inaktivität\" den offenen Browser-Tab messen statt den Nutzer.\n\n### CORS\nFrontend und API liegen auf Subdomains derselben registrierbaren Domain (`app.<domain>` / `api.<domain>`). Der Server führt eine Allowlist mit `allowCredentials=true`; erlaubte Anfrageheader sind `Content-Type` und `X-FuBo-Kein-Refresh`, freigegebener Antwortheader ist `Retry-After`.\n\n### Datenschutz\nSkillbewertungen verlassen den Server nie in Richtung USER oder GAST (Anforderung A12). Sie erscheinen **ausschliesslich in Antworten unterhalb von `/admin/`** – heute in `GET /admin/user/lesen` – und erreichen `USER` und `GAST` nie; die Teamgenerierung läuft vollständig serverseitig.\n\nBis S2b enthielt kein Antwortobjekt dieser Beschreibung Skillwerte. Seit S3 gilt die genauere Fassung oben: Der Prüfpunkt ist nicht mehr „kommen Skillwerte vor\", sondern „kommen sie ausserhalb von `/admin/` vor\".\n\n### Nicht enthalten\n`GET /actuator/health` bleibt bewusst unversioniert und ist kein Teil der fachlichen API. Der Endpunkt dient dem Container-Healthcheck und wird von nginx nach außen abgeschottet.",
+    "description": "Maßgebliche Beschreibung der REST-Schnittstelle des FuBo-Servers.\n\n**Diese Datei ist die Quelle der Wahrheit für den Client-Track.** Server und Client liegen in getrennten Repositories; eine Vertragsänderung wird deshalb immer zuerst hier abgebildet und der Client anschließend nachgezogen.\n\n**Stand:** S2 (Auth und Session), S2b (Zugangsdatenpflege und Spielerverwaltung), S3 (Profile, Skills, Konfiguration, Gastverwaltung), **S4 vollständig** und **S5 vollständig** – der Teamgenerator: die Einteilung eines Termins anstoßen und lesen, der Auswechselspieler bei ungerader Teilnehmerzahl und der manuelle Lauf des Admins ohne Termin (A24); dazu S4 – Termine lesen, Einzeltermin anlegen, ändern, absagen und entfernen, Terminserien, Zu- und Absagen von Spielern und Gästen, die Teilnehmerliste samt Warteschlange und die Skill-Stufe eines Gastes.\n\n**Noch nicht enthalten und deshalb hier nicht beschrieben:** die Ergebniserfassung (S6) und der Hallenmodus (S7). Spekulative Endpunkte wären ein Vertrag über etwas, das es nicht gibt.\n\n**Vier Dinge geschehen ohne Zutun des Clients:** Ein Termin wird bei seinem Beginn selbsttätig fixiert und wechselt 30 Minuten später von `GEPLANT` auf `ABGESCHLOSSEN` (A18) – ab der Fixierung liefert `POST /teams/generieren` ein `409 TEAMS_FIXIERT`, und wird der Termin danach in die Zukunft verschoben, fällt die Fixierung zurück; eine erneute Zusage stellt in der Warteschlange hinten an; eine Änderung an den Skillwerten eines zugesagten Spielers erhöht die `teilnehmerVersion` seiner künftigen Termine; und **das Sperren eines Profils nimmt dessen Zusagen für künftige Termine zurück** – die Teilnehmerliste wird dadurch kürzer, ohne dass jemand abgesagt hätte.\n\n### Versionierung\nJeder fachliche Endpunkt liegt unter `/api/{version}/<bereich>/<ressource>/<aktion>`. Die Version steht als Präfix an Segment-Index 1, die Aktion als eigenes Segment am Ende. Umgesetzt mit `ApiVersionConfigurer#usePathSegment` aus Spring Framework 7.\n\n- `/api/v1/...` und `/api/1/...` werden beide als Version 1 gelesen; nach außen wird durchgängig `v1` verwendet.\n- Eine unbekannte Version (`/api/v99/...`) liefert `400`.\n- Ein fehlendes Versionssegment liefert `404` – ohne das Segment passt der Pfad schlicht auf kein Mapping.\n\n### Authentifizierung\nOpakes Session-Cookie (`FUBO_SESSION`, `HttpOnly`, `Secure`, `SameSite=Lax`, kein Ablaufdatum). Das Frontend kann den Token weder lesen noch prüfen und muss das auch nicht: Die Validierung passiert ausschließlich serverseitig in der Filterchain. Alle Aufrufe erfolgen mit `credentials: 'include'`.\n\n**Die zentrale PIN besteht aus vier Ziffern.** Das Eingabefeld im Frontend darf darauf ausgelegt werden. `POST /auth/pin/pruefen` schreibt der Eingabe trotzdem **kein** Format vor – ein abweichender Bestandswert aus der Erstkonfiguration muss eingebbar bleiben, und eine Mindestlänge im Vertrag wäre eine Auskunft über das Format der echten PIN. Verbindlich ist das Format nur beim *Setzen* über `POST /admin/pin/aendern`.\n\nDer Login ist zweistufig und wird serverseitig erzwungen:\n1. `PIN_VERIFIED` – zentrale PIN geprüft, Identität noch offen.\n2. `PROFILE_AUTHENTICATED` – erst hier existiert eine Rolle. Es führen drei Wege dorthin: Namensauswahl (`USER`), Gast-Login (`GAST`) und Admin-Login mit Passwort (`ADMIN`).\n\n**Das Adminprofil ist ein technisches Konto.** Es steht nicht in der Namensliste, nimmt an keinem Termin teil und wird nie in ein Team eingeteilt; seine Skillwerte stehen auf 0. Der Admin meldet sich deshalb über `POST /api/v1/auth/admin/anmelden` mit seinem Passwort an – die Namensauswahl lehnt das Adminprofil auch dann ab, wenn seine Id bekannt ist.\n\nBei jedem Stufenwechsel und bei jeder Erneuerung wird der Token rotiert (Schutz vor Session Fixation). Die `session.id` bleibt dabei erhalten.\n\n### Sitzungsdauer (Zwei-Timer-Modell)\n`gueltigBis` ist ein gleitendes Leerlauf-Fenster (Vorgabe 15 Minuten) und wandert bei jedem Aufruf nach hinten. `absolutGueltigBis` ist eine harte Obergrenze (Vorgabe 1 Stunde) und wird nie verschoben – auch nicht durch `/auth/session/erneuern`.\n\nHintergrundaufrufe (etwa das Pollen des Belegtstatus) sollen das Leerlauf-Fenster **nicht** verlängern und senden dazu `X-FuBo-Kein-Refresh: true`. Ohne diesen Header würde „15 Minuten Inaktivität\" den offenen Browser-Tab messen statt den Nutzer.\n\n### CORS\nFrontend und API liegen auf Subdomains derselben registrierbaren Domain (`app.<domain>` / `api.<domain>`). Der Server führt eine Allowlist mit `allowCredentials=true`; erlaubte Anfrageheader sind `Content-Type` und `X-FuBo-Kein-Refresh`, freigegebener Antwortheader ist `Retry-After`.\n\n### Datenschutz\nSkillbewertungen verlassen den Server nie in Richtung USER oder GAST (Anforderung A12). Sie erscheinen **ausschliesslich in Antworten unterhalb von `/admin/`** – heute in `GET /admin/user/lesen` – und erreichen `USER` und `GAST` nie; die Teamgenerierung läuft vollständig serverseitig.\n\nBis S2b enthielt kein Antwortobjekt dieser Beschreibung Skillwerte. Seit S3 gilt die genauere Fassung oben: Der Prüfpunkt ist nicht mehr „kommen Skillwerte vor\", sondern „kommen sie ausserhalb von `/admin/` vor\".\n\n### Nicht enthalten\n`GET /actuator/health` bleibt bewusst unversioniert und ist kein Teil der fachlichen API. Der Endpunkt dient dem Container-Healthcheck und wird von nginx nach außen abgeschottet.",
     "contact": {
       "name": "FuBo-Server",
       "url": "https://github.com/DenKim94/FuBo-Server"
@@ -62,6 +62,10 @@
     {
       "name": "Termine",
       "description": "Termine lesen, anlegen, ändern und absagen sowie Terminserien (A7, A9, A18). **Der Tag beschreibt den Gegenstand, nicht die Rolle** – die Adminendpunkte stehen deshalb hier und nicht unter einem eigenen Verwaltungstag, wie schon bei „Spielerverwaltung“."
+    },
+    {
+      "name": "Teamgenerierung",
+      "description": "Die Teameinteilung anstoßen (A15, A20a, A20b) und den manuellen Lauf des Admins ohne Termin ausführen (A24). **Gelesen wird die Einteilung eines Termins nicht hier**, sondern als Feld `teams` in `GET /termine/{terminId}/lesen` – wer einen Termin öffnet, will Termin, Teilnehmer und Teams zusammen sehen."
     }
   ],
   "security": [
@@ -2140,6 +2144,202 @@
           }
         }
       }
+    },
+    "/api/v1/teams/generieren": {
+      "post": {
+        "tags": [
+          "Teamgenerierung"
+        ],
+        "operationId": "teamsGenerieren",
+        "summary": "Teams für einen Termin generieren",
+        "description": "Erzeugt die Teameinteilung eines Termins (A15, A20a, A20b).\n\n**Der Endpunkt liegt bewusst nicht unter `/admin/`.** Jeder Angemeldete darf generieren, auch ein `GAST` – das ist A15. Begrenzt wird nicht über die Rolle, sondern über das Kontingent: `anzTeamGenerator` Läufe **je Nutzer, je Termin und je `teilnehmerVersion`**. Sagt jemand zu oder ab, steigt der Zähler und das Kontingent steht wieder offen; zurückgesetzt wird es nie.\n\n**Ein neuer Lauf löst den bisherigen ab.** Es gibt je Termin höchstens eine aktuelle Einteilung; ältere bleiben als Historie in der Datenbank und sind über die API nicht erreichbar.\n\n**`201` und kein `200`:** Es entsteht eine Ressource. Einen `Location`-Header trägt die Antwort trotzdem nicht – die Einteilung hat keine eigene Adresse, sie reist in `GET /termine/{terminId}/lesen` mit.\n\n**Der Seed wird je Lauf neu gezogen.** Bei `anzTeamGenerator > 1` liefert derselbe Teilnehmerkreis deshalb eine andere, gleich gute Einteilung – das ist der Zweck der Einstellung und kein Fehler.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TerminIdRequest"
+              },
+              "example": {
+                "terminId": 12
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Die Einteilung wurde erzeugt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Teameinteilung"
+                },
+                "example": {
+                  "erzeugtAm": "2026-09-12T18:03:11+02:00",
+                  "erzeugtVon": "Beispielspieler 01",
+                  "veraltet": false,
+                  "auswechselspieler": "Beispielspieler 07",
+                  "teamA": [
+                    {
+                      "anzeigeName": "Beispielspieler 01",
+                      "gast": false,
+                      "auswechselspieler": false
+                    },
+                    {
+                      "anzeigeName": "Testgast 1",
+                      "gast": true,
+                      "auswechselspieler": false
+                    }
+                  ],
+                  "teamB": [
+                    {
+                      "anzeigeName": "Beispielspieler 03",
+                      "gast": false,
+                      "auswechselspieler": false
+                    },
+                    {
+                      "anzeigeName": "Beispielspieler 05",
+                      "gast": false,
+                      "auswechselspieler": false
+                    },
+                    {
+                      "anzeigeName": "Beispielspieler 07",
+                      "gast": false,
+                      "auswechselspieler": true
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/EingabeUngueltig"
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "404": {
+            "description": "`INHALT_NICHT_GEFUNDEN` – es gibt keinen Termin mit dieser Id.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Der Lauf ist nicht möglich. Der Grund steht in `code`:\n\n- `TERMIN_GESCHLOSSEN` – der Termin ist abgesagt oder abgeschlossen.\n- `TEAMS_FIXIERT` – der Termin hat begonnen; die Einteilung steht fest (A18). Der Server setzt das Kennzeichen selbst, spätestens fünf Minuten nach Anpfiff.\n- `ZU_WENIG_TEILNEHMER` – die Zusagen erreichen `minTeilnehmer` nicht; `detail` nennt Ist und Soll.\n- `SKILLWERTE_UNVOLLSTAENDIG` – einem Eingeteilten fehlt der Wert zu einer aktiven Kategorie; `detail` nennt die Namen. Ein Altbestand, der über `/admin/user/bearbeiten` zu beheben ist.\n- `KONTINGENT_ERSCHOEPFT` – für diesen Teilnehmerstand ist die zulässige Anzahl Läufe verbraucht. **Kein `Retry-After`**: Es ist keine Drosselung über die Zeit, sondern ein Zustand, der sich mit dem Teilnehmerkreis ändert.\n- `TEILNEHMER_GEAENDERT` – während des Laufs hat jemand zu- oder abgesagt. Der Aufruf lässt sich unverändert wiederholen; es geht nichts verloren.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/teams/generieren": {
+      "post": {
+        "tags": [
+          "Teamgenerierung"
+        ],
+        "operationId": "teamsManuellGenerieren",
+        "summary": "Teams manuell und ohne Termin generieren",
+        "description": "Rechnet eine Teameinteilung auf einer frei gewählten Teilnehmermenge (A24). Verlangt die Rolle `ADMIN`.\n\n**Zweite Eingangstür, kein zweiter Generator.** Zielfunktion, beide Verfahren und der Auswechselspieler sind dieselben wie am Termin; verzweigt wird allein die Herkunft der Aufstellung. Der Pfad unterscheidet sich vom offenen Endpunkt **nur im `/admin/`-Präfix** – der Ort ist die Autorisierungsentscheidung.\n\n**Das Ergebnis wird nirgends gespeichert.** Es rührt keinen Termin an, löst keine Einteilung ab, erscheint bei keinem anderen Nutzer und ist nach dem Verlassen der Seite weg. **Das gehört sichtbar auf den Bildschirm.**\n\n**Kein Kontingent.** A15 zählt Läufe je Termin und Teilnehmerstand, beides gibt es hier nicht; derselbe Aufruf liefert beliebig oft `200`.\n\n**Keine Vorschau des Spieltags.** Wer den Lauf dafür benutzt, sieht das Ergebnis für eine Gruppe, die er selbst zusammengestellt hat – nicht die des Termins.\n\n**`maxTeilnehmer` begrenzt hier, es schneidet nicht ab** (`409 ZU_VIELE_TEILNEHMER`). Am Termin ist es die Grenze zur Warteschlange; hier gibt es keine, in die jemand rutschen könnte.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManuelleGenerierungRequest"
+              },
+              "example": {
+                "spielerIds": [
+                  3,
+                  7,
+                  12,
+                  19,
+                  21,
+                  24
+                ],
+                "gaeste": [
+                  {
+                    "stufe": "STARK",
+                    "name": "Testgast 1"
+                  },
+                  {
+                    "stufe": "SCHWACH"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Die Einteilung wurde gerechnet. **Es ist nichts entstanden.**",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManuelleEinteilung"
+                },
+                "example": {
+                  "algorithmType": "EXHAUSTIV",
+                  "auswechselModus": "SCHWAECHSTER_UEBERZAHL",
+                  "auswechselspieler": null,
+                  "differenzTeamstaerke": 0.0,
+                  "teamA": [
+                    {
+                      "anzeigeName": "Beispielspieler 03",
+                      "gast": false,
+                      "auswechselspieler": false
+                    },
+                    {
+                      "anzeigeName": "Testgast 1",
+                      "gast": true,
+                      "auswechselspieler": false
+                    }
+                  ],
+                  "teamB": [
+                    {
+                      "anzeigeName": "Beispielspieler 07",
+                      "gast": false,
+                      "auswechselspieler": false
+                    },
+                    {
+                      "anzeigeName": "Gast 2",
+                      "gast": true,
+                      "auswechselspieler": false
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/EingabeUngueltig"
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
+          },
+          "409": {
+            "description": "Die Auswahl ist nicht zu rechnen. Der Grund steht in `code`:\n\n- `PROFIL_GESCHUETZT` – das Adminprofil wurde ausgewählt. Es ist ein technisches Konto und nimmt an keiner Teamgenerierung teil.\n- `ZU_WENIG_TEILNEHMER` – die Summe aus Profilen und Gästen erreicht `minTeilnehmer` nicht; `detail` nennt Ist und Soll.\n- `ZU_VIELE_TEILNEHMER` – die Summe übersteigt `maxTeilnehmer`. **Hier wird nicht abgeschnitten**; wer eine genannte Auswahl still fallen ließe, lieferte Teams, die niemand angefordert hat.\n- `SKILLWERTE_UNVOLLSTAENDIG` – einem ausgewählten Profil fehlt der Wert zu einer aktiven Kategorie; `detail` nennt die Namen.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2305,7 +2505,13 @@
           "INTERNER_FEHLER",
           "TERMIN_BELEGT",
           "TERMIN_GESCHLOSSEN",
-          "TERMIN_IN_VERWENDUNG"
+          "TERMIN_IN_VERWENDUNG",
+          "ZU_WENIG_TEILNEHMER",
+          "ZU_VIELE_TEILNEHMER",
+          "SKILLWERTE_UNVOLLSTAENDIG",
+          "KONTINGENT_ERSCHOEPFT",
+          "TEILNEHMER_GEAENDERT",
+          "TEAMS_FIXIERT"
         ]
       },
       "Stage": {
@@ -3133,6 +3339,15 @@
               },
               "teilnehmerliste": {
                 "$ref": "#/components/schemas/Teilnehmerliste"
+              },
+              "teams": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Teameinteilung"
+                  }
+                ],
+                "nullable": true,
+                "description": "Die aktuelle Teameinteilung oder **`null`, solange niemand generiert hat** – kein Fehler, sondern der Normalzustand.\n\nSie steht hier und nicht hinter einem eigenen Endpunkt: Das Dashboard zeigt Termin, Teilnehmerliste und Teams zusammen, und zwei Aufrufe für eine Ansicht sind zwei Gelegenheiten für einen inkonsistenten Stand."
               }
             },
             "required": [
@@ -3141,7 +3356,7 @@
             ]
           }
         ],
-        "description": "Die Einzelansicht eines Termins: dieselben Felder wie in der Liste, dazu die `version` und die Teilnehmerliste.\n\n**Die Teilnehmerliste hat keinen eigenen Endpunkt.** Wer einen Termin öffnet, will die Teilnehmer sehen, und zwei Aufrufe für eine Ansicht sind zwei Gelegenheiten für einen inkonsistenten Stand – zwischen ihnen kann jemand zusagen, und die Zahl im Kopf passte dann nicht mehr zur Liste darunter."
+        "description": "Die Einzelansicht eines Termins: dieselben Felder wie in der Liste, dazu die `version` und die Teilnehmerliste.\n\n**Die Teilnehmerliste hat keinen eigenen Endpunkt.** Wer einen Termin öffnet, will die Teilnehmer sehen, und zwei Aufrufe für eine Ansicht sind zwei Gelegenheiten für einen inkonsistenten Stand – zwischen ihnen kann jemand zusagen, und die Zahl im Kopf passte dann nicht mehr zur Liste darunter.\n\n**Mit S5 kam `teams` dazu** – ein nullbares Feld und damit additiv: Bestehende Clients müssen nichts zurücknehmen."
       },
       "TerminAnlegenRequest": {
         "type": "object",
@@ -3450,6 +3665,171 @@
           "maxTeilnehmer",
           "mindestzahlErreicht",
           "teilnehmer"
+        ]
+      },
+      "TeamEintrag": {
+        "type": "object",
+        "description": "Ein eingeteilter Teilnehmer.\n\n**Drei Felder, und das ist die vollständige Liste.** Keine Skillwerte, keine Scores, keine Gast-Stufe: Die Einteilung reist in der Einzelansicht eines Termins mit und erreicht damit jede Rolle, auch `GAST` (A12).\n\nDerselbe Typ erscheint unter `/admin/` in `ManuelleEinteilung` – unverändert. Ihn dort um Bewertungen zu erweitern wäre nach A12 erlaubt, hieße aber, denselben Namen für zwei Formen zu benutzen.",
+        "properties": {
+          "anzeigeName": {
+            "type": "string",
+            "description": "Profilname oder Gastname."
+          },
+          "gast": {
+            "type": "boolean",
+            "description": "`true` bei einem Gast. Das Frontend kennzeichnet ihn; die Stufe erfährt es nicht."
+          },
+          "auswechselspieler": {
+            "type": "boolean",
+            "description": "`true` für genau einen Teilnehmer des größeren Teams bei ungerader Teilnehmerzahl (A20b), sonst für niemanden."
+          }
+        },
+        "required": [
+          "anzeigeName",
+          "gast",
+          "auswechselspieler"
+        ]
+      },
+      "Teameinteilung": {
+        "type": "object",
+        "description": "Die aktuelle Teameinteilung eines Termins (A20a, A20b).\n\nSie erscheint an zwei Stellen in derselben Form: als Feld `teams` in `TerminDetails` und als Antwort von `POST /teams/generieren`. Wer gerade generiert hat, sieht dasselbe wie der, der den Termin öffnet.\n\n**Ohne `differenzTeamstaerke`.** Der Wert ist die gewichtete Summe der Kategoriedifferenzen und damit eine Aussage über Skillsummen; wer ihn über viele Läufe sammelt und die wechselnden Aufstellungen kennt, kann auf einzelne Werte schließen (A12). Unterhalb von `/admin/` ist er erlaubt und steht dort in `ManuelleEinteilung`.",
+        "properties": {
+          "erzeugtAm": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Zeitpunkt des Laufs."
+          },
+          "erzeugtVon": {
+            "type": "string",
+            "description": "Anzeigename des Aufrufers **zum Zeitpunkt des Laufs** – eine Kopie, kein Verweis. Ein später gelöschtes Profil lässt die Auskunft nicht leer werden."
+          },
+          "veraltet": {
+            "type": "boolean",
+            "description": "`true` heißt „noch anzeigen, aber nicht mehr aktuell“ – seit dem Lauf hat sich der Teilnehmerkreis geändert. **Verstecken wäre falsch**: Jemand hat die Aufstellung vielleicht schon vorgelesen."
+          },
+          "auswechselspieler": {
+            "type": "string",
+            "nullable": true,
+            "description": "Anzeigename oder `null` bei gerader Teilnehmerzahl. `null` und kein leerer String."
+          },
+          "teamA": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TeamEintrag"
+            },
+            "description": "Team A. **Die Reihenfolge ist keine Rangfolge** und darf frei sortiert werden – anders als die Teilnehmerliste."
+          },
+          "teamB": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TeamEintrag"
+            },
+            "description": "Team B."
+          }
+        },
+        "required": [
+          "erzeugtAm",
+          "erzeugtVon",
+          "veraltet",
+          "teamA",
+          "teamB"
+        ]
+      },
+      "GastAuswahl": {
+        "type": "object",
+        "description": "Ein frei angelegter Gast im manuellen Lauf (A24).\n\n**Kein `gast_slot`, keine Sitzung, keine Teilnahme** – dieser Gast existiert nur für die Dauer einer Rechnung. `anzGuests` gilt für ihn deshalb **nicht**: Der Wert begrenzt gleichzeitige Gastsitzungen, nicht Mitspieler auf dem Platz. Die Summe begrenzt `maxTeilnehmer`.",
+        "properties": {
+          "stufe": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GastStufe"
+              }
+            ],
+            "description": "**Pflicht.** Anders als bei der Zusage am Termin (A17) gibt es hier niemanden, der sie später nachträgt – der Ersatzwert `MITTEL` gehört zur Termin-Quelle."
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 40,
+            "nullable": true,
+            "description": "Anzeigename oder weggelassen. Fehlt er, vergibt der Server `Gast 1`, `Gast 2`, … **nach der Position in der Liste** – der zweite Gast heißt `Gast 2`, auch wenn der erste einen Namen trug. Randleerzeichen entfernt der Server; ein danach leerer Name zählt wie ein fehlender."
+          }
+        },
+        "required": [
+          "stufe"
+        ]
+      },
+      "ManuelleGenerierungRequest": {
+        "type": "object",
+        "description": "Die vom Admin benannte Teilnehmermenge des manuellen Laufs (A24).\n\n**Die Auswahlliste ist `GET /admin/user/lesen`** – einen eigenen Listenendpunkt gibt es nicht.\n\n**Kein `algorithmType`, kein `auswechselModus`.** Beides entscheidet die Admin-Konfiguration, wie beim Termin-Lauf. Ein Feld hier wäre die erste Stelle, an der beide Läufe verschieden funktionieren, ohne dass es jemand angeordnet hätte.\n\n**Beide Listen dürfen fehlen, aber nicht beide leer sein** – ein Lauf nur mit Gästen ist zulässig.",
+        "properties": {
+          "spielerIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Ids vorhandener, nicht gesperrter Spielerprofile. **Eine genannte, aber ungültige Id wird abgelehnt und nicht still gefiltert**: unbekannt oder gesperrt `400`, Adminprofil `409 PROFIL_GESCHUETZT`. Am Termin ergibt sich die Menge, hier hat der Admin jeden Einzelnen benannt."
+          },
+          "gaeste": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GastAuswahl"
+            },
+            "description": "Frei angelegte Gäste mit Stufe."
+          }
+        }
+      },
+      "ManuelleEinteilung": {
+        "type": "object",
+        "description": "Das Ergebnis des manuellen Laufs (A24).\n\n**Es wird nirgends gespeichert.** Es löst keine Einteilung ab, erscheint bei keinem anderen Nutzer und ist nach dem Verlassen der Seite weg. **Das gehört sichtbar auf den Bildschirm**, sonst hält der Admin es für die Einteilung des Spieltags.\n\n**Kein `seed`.** Er wäre ohne die Skillwerte daneben eine Zahl ohne Verwendung – und die stehen hier bewusst nicht. Nachvollziehbar bleibt der Lauf über den Audit-Eintrag, der als Einziger den Seed trägt.\n\n**Zweimal „tatsächlich verwendet“ ist kein Zufall:** Der manuelle Lauf hat zwei Stellen, an denen der Server von der Konfiguration abweichen darf, und keine Tabelle, in der man später nachsähe.",
+        "properties": {
+          "algorithmType": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AlgorithmType"
+              }
+            ],
+            "description": "Das **tatsächlich gerechnete** Verfahren. Es kann von der Konfiguration abweichen: Oberhalb von 24 Teilnehmern weicht `EXHAUSTIV` auf `HEURISTIK` aus, statt zu scheitern. **Anzeigen, nicht ignorieren.**"
+          },
+          "auswechselModus": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AuswechselModus"
+              }
+            ],
+            "description": "Die **tatsächlich angewandte** Regel. `ZULETZT_ANGEMELDET` hat im manuellen Lauf keine Datengrundlage – es hat sich niemand gemeldet – und fällt auf `SCHWAECHSTER_UEBERZAHL` zurück. **Anzeigen, nicht ignorieren.**"
+          },
+          "auswechselspieler": {
+            "type": "string",
+            "nullable": true,
+            "description": "Anzeigename oder `null` bei gerader Teilnehmerzahl."
+          },
+          "differenzTeamstaerke": {
+            "type": "number",
+            "format": "double",
+            "description": "Die **Kosten der Zielfunktion** – die gewichtete Summe der Kategoriedifferenzen, **nicht** die Differenz der Gesamtstärken, die der Name nahelegt. `0` heißt perfekt ausgeglichen, größer heißt schlechter. Nur im Adminbildschirm (A12)."
+          },
+          "teamA": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TeamEintrag"
+            },
+            "description": "Team A."
+          },
+          "teamB": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TeamEintrag"
+            },
+            "description": "Team B."
+          }
+        },
+        "required": [
+          "algorithmType",
+          "auswechselModus",
+          "differenzTeamstaerke",
+          "teamA",
+          "teamB"
         ]
       }
     }
