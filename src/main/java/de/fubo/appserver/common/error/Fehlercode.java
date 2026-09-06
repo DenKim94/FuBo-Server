@@ -190,6 +190,58 @@ public enum Fehlercode {
     SKILLWERTE_UNVOLLSTAENDIG(HttpStatus.CONFLICT,
             "Für mindestens einen Teilnehmer fehlen Skillwerte."),
 
+    /**
+     * Das Generierungskontingent dieses Nutzers ist fuer den aktuellen Teilnehmerstand
+     * aufgebraucht (A15, S5 Abschnitt 6.1).
+     *
+     * <p>Massgeblich ist {@code configs.app_config.anz_team_generator}, gezaehlt <b>je Nutzer,
+     * je Termin und je {@code teilnehmer_version}</b>. Das Kontingent wird nie zurueckgesetzt,
+     * sondern durch einen neuen Schluessel umgangen: Sagt jemand zu oder ab, steigt der Zaehler,
+     * und dieselbe Person darf wieder generieren.
+     *
+     * <p>{@code 409} und nicht {@code 429}: Es ist keine Drosselung ueber die Zeit, sondern ein
+     * Zustand, der sich mit dem Teilnehmerkreis aendert - ein {@code Retry-After} liesse sich
+     * gar nicht angeben.
+     *
+     * <p><b>Im manuellen Lauf des Admins gibt es ihn nicht</b> (A24): A15 zaehlt je Termin und
+     * Teilnehmerstand, beides fehlt dort.
+     */
+    KONTINGENT_ERSCHOEPFT(HttpStatus.CONFLICT,
+            "Für diesen Teilnehmerstand wurde bereits die zulässige Anzahl an Läufen verbraucht."),
+
+    /**
+     * Waehrend des Generierungslaufs hat sich der Teilnehmerkreis geaendert (A15, S5
+     * Abschnitt 6.3).
+     *
+     * <p>Die {@code teilnehmer_version} wird zu Beginn gemerkt und am Ende gegengeprueft; weicht
+     * sie ab, wird der Lauf verworfen. <b>Die Alternative waere eine Sperre auf dem Termin</b>
+     * ueber die gesamte Rechnung - bei einem Vorgang von Millisekunden der schlechtere Handel.
+     *
+     * <p><b>Es geht nichts verloren:</b> Das Kontingent wurde unter dem alten Schluessel
+     * verbucht und steht unter dem neuen wieder offen. Der Aufruf laesst sich unveraendert
+     * wiederholen - genau das sagt {@code detail}.
+     */
+    TEILNEHMER_GEAENDERT(HttpStatus.CONFLICT,
+            "Der Teilnehmerkreis hat sich zwischenzeitlich geändert. Bitte erneut versuchen."),
+
+    /**
+     * Der Termin hat begonnen; seine Teams stehen fest (A18, S5 Abschnitt 10.2).
+     *
+     * <p>{@code spieltag.termin.teams_fixiert} setzt derselbe Auftrag, der einen Termin 30
+     * Minuten nach Beginn abschliesst - das Flag faellt bei Beginn, der Abschluss folgt spaeter.
+     * Zwischen beiden liegt das Zeitfenster, in dem der Termin noch {@code GEPLANT} ist und
+     * {@link #TERMIN_GESCHLOSSEN} deshalb nicht greift.
+     *
+     * <p><b>Grossteils redundant und trotzdem ausdruecklich:</b> Nach Terminbeginn nimmt A7
+     * ohnehin keine Rueckmeldung mehr an, der Teilnehmerkreis kann sich also nicht mehr aendern.
+     * Der Gewinn ist eine benennbare Antwort statt eines Scheiterns an einer impliziten
+     * Statuspruefung - und ein in der Datenbank ablesbarer Zustand.
+     *
+     * <p>Verschiebt der Admin den Termin wieder in die Zukunft, faellt das Flag zurueck.
+     */
+    TEAMS_FIXIERT(HttpStatus.CONFLICT,
+            "Der Termin hat begonnen; die Teameinteilung steht fest."),
+
     EINGABE_UNGUELTIG(HttpStatus.BAD_REQUEST, "Ungültige Eingabedaten."),
     INTERNER_FEHLER(HttpStatus.INTERNAL_SERVER_ERROR, "Ein unerwarteter Fehler ist aufgetreten."),
     INHALT_NICHT_GEFUNDEN(HttpStatus.NOT_FOUND, "Der gesuchte Inhalt wurde nicht gefunden.");

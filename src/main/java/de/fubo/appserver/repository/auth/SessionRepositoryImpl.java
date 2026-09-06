@@ -33,23 +33,31 @@ class SessionRepositoryImpl implements SessionRepositoryCustom {
      * absolut_gueltig_bis hinaus. Die Sitzung waere zwar trotzdem ungueltig, weil die
      * Pruefung beide Spalten abfragt, aber die Daten waeren widerspruechlich.
      *
+     * <p><b>Der Gastplatz kommt als Unterabfrage in der RETURNING-Liste</b>, nicht ueber
+     * einen JOIN: UPDATE ... FROM verbindet wie ein INNER JOIN, und eine Spielersitzung -
+     * die keinen Gastplatz hat - wuerde dann gar nicht mehr aktualisiert. Die Sitzung waere
+     * ungueltig, sobald jemand ohne Gastplatz sie benutzt. uq_gast_slot_session sichert zu,
+     * dass die Unterabfrage hoechstens eine Zeile liefert.
+     *
      * <p>now() ist die Datenbankuhr. Alle Ablaufzeitpunkte werden damit gegen dieselbe
      * Uhr geprueft; eine abweichende JVM-Uhr kann das Ergebnis nicht verfaelschen.
      * Innerhalb einer Transaktion ist now() konstant (transaction_timestamp), alle vier
      * Bedingungen beziehen sich also auf denselben Zeitpunkt.
      */
     private static final String SQL_PRUEFEN_UND_VERLAENGERN = """
-            UPDATE profil.session
+            UPDATE profil.session s
                SET letzte_aktivitaet_am = now(),
                    gueltig_bis = LEAST(
                        now() + make_interval(mins => CAST(:leerlauf AS integer)),
-                       absolut_gueltig_bis)
-             WHERE token_hash = :hash
-               AND widerrufen_am IS NULL
-               AND gueltig_bis > now()
-               AND absolut_gueltig_bis > now()
-            RETURNING id, spieler_id, gast_name, gast_stufe, rolle, stage,
-                      gueltig_bis, absolut_gueltig_bis
+                       s.absolut_gueltig_bis)
+             WHERE s.token_hash = :hash
+               AND s.widerrufen_am IS NULL
+               AND s.gueltig_bis > now()
+               AND s.absolut_gueltig_bis > now()
+            RETURNING s.id, s.spieler_id, s.gast_name, s.gast_stufe, s.rolle, s.stage,
+                      s.gueltig_bis, s.absolut_gueltig_bis,
+                      (SELECT gs.id FROM profil.gast_slot gs WHERE gs.session_id = s.id)
+                          AS gast_slot_id
             """;
 
     /**
@@ -65,13 +73,15 @@ class SessionRepositoryImpl implements SessionRepositoryCustom {
      * Hintergrundaufruf richtig gewesen. Der naechste Aufruf sieht den Ablauf.
      */
     private static final String SQL_PRUEFEN = """
-            SELECT id, spieler_id, gast_name, gast_stufe, rolle, stage,
-                   gueltig_bis, absolut_gueltig_bis
-              FROM profil.session
-             WHERE token_hash = :hash
-               AND widerrufen_am IS NULL
-               AND gueltig_bis > now()
-               AND absolut_gueltig_bis > now()
+            SELECT s.id, s.spieler_id, s.gast_name, s.gast_stufe, s.rolle, s.stage,
+                   s.gueltig_bis, s.absolut_gueltig_bis,
+                   (SELECT gs.id FROM profil.gast_slot gs WHERE gs.session_id = s.id)
+                       AS gast_slot_id
+              FROM profil.session s
+             WHERE s.token_hash = :hash
+               AND s.widerrufen_am IS NULL
+               AND s.gueltig_bis > now()
+               AND s.absolut_gueltig_bis > now()
             """;
 
     private final JdbcClient jdbc;
@@ -117,6 +127,9 @@ class SessionRepositoryImpl implements SessionRepositoryCustom {
                 spielerId,
                 rs.getString("gast_name"),
                 stufeText == null ? null : GastStufe.valueOf(stufeText),
+                // Wie bei spieler_id: getShort lieferte fuer NULL eine 0, und 0 ist keine
+                // gueltige Platznummer - gast_slot beginnt bei 1.
+                rs.getObject("gast_slot_id", Short.class),
                 // In der Stufe PIN_VERIFIED ist die Rolle NULL.
                 rolleText == null ? null : Rolle.valueOf(rolleText),
                 Stage.valueOf(rs.getString("stage")),
