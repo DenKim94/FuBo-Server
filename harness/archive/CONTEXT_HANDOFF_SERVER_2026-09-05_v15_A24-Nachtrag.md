@@ -20,57 +20,45 @@
 > Was hier steht, steht **nur** hier. Wird eine Festlegung zur Architekturregel, wandert sie
 > nach `AGENT_SERVER.md` und **verschwindet hier** – sonst laufen beide auseinander.
 
-## Stand: 06.09.2026
+## Stand: 31.08.2026
 
-**S0 bis S4 sind abgeschlossen, S5 ist bis Paket 5 gebaut – alles verifiziert.**
-`./mvnw clean verify` grün am 06.09.2026 mit **340 Tests in 27 Klassen**, keine Fehler, keine
-Abbrüche, keine übersprungenen Tests; die Anwendung startet auf einer frischen Datenbank durch.
-Der Lauf braucht Docker (Testcontainers, `postgres:17`) und läuft ausschliesslich lokal.
+**S0 bis S4 sind abgeschlossen und verifiziert.** `./mvnw clean verify` grün am 31.08.2026 mit
+**331 Tests in 26 Klassen**, keine Fehler, keine Abbrüche, keine übersprungenen Tests; die
+Anwendung startet auf einer frischen Datenbank durch. Der Lauf braucht Docker (Testcontainers,
+`postgres:17`) und läuft ausschliesslich lokal.
+
+**Offen bei S4: zwei Handprüfungen**, die eine laufende Anwendung brauchen – der automatische
+Terminabschluss im Betrieb und die Gast-Stufe über den Sitzungsablauf hinweg (Abschnitt 7).
 
 **Der Vertrag steht bei 32 Endpunkten**, das Datenmodell bei 18 Tabellen in drei Schemas
-(`V001`–`V011`). S5 hat daran bis hierher nichts geändert und wird es erst mit Paket 9 tun –
-dann sind es 34; **eine Migration braucht S5 nicht.**
+(`V001`–`V011`). Drei neue Fehlercodes aus S4 (`TERMIN_BELEGT`, `TERMIN_GESCHLOSSEN`,
+`TERMIN_IN_VERWENDUNG`), sechs neue Audit-Aktionen.
 
-**Drei Handprüfungen sind aufgeschoben, nicht vergessen** – zwei aus S4 (automatischer
-Terminabschluss im Betrieb, Gast-Stufe über den Sitzungsablauf hinweg) und die Liste zu S5
-(13.1 der Anleitung). Alle brauchen eine laufende Anwendung und werden **nach Abschluss von S5**
-in einem Zug abgearbeitet – so entschieden am 06.09.2026, weil eine halbe Generierung nichts
-zeigt, was sich prüfen liesse.
+**Als Nächstes S5 (Teamgenerator).** Die Umsetzungsanleitung liegt als
+`harness/tmp/S5_UMSETZUNG.md` vor; die vier Punkte, die aus S4 offen waren, sind dort in
+Abschnitt 0.4 entschieden.
 
-### Die Anforderung A24 (05.09.2026)
+### Nachtrag 05.09.2026: die Anforderung A24
 
-**(A24) Der Admin kann die Teamgenerierung auch manuell und unabhängig vom Termin ausführen und
-die Teilnehmer frei wählen** – vorhandene Spielerprofile und Gäste mit Stufe. Sie ist **kein
-zweiter Generator, sondern eine zweite Eingangstür zu demselben** und deshalb Teil von S5, nicht
-S5b: Zielfunktion, beide Verfahren und der Auswechselspieler bleiben unberührt, verzweigt wird
-allein die Herkunft der Aufstellung. Sie hebt die Schrittsumme von 20,5 auf **24,0 h** und den
-Vertrag am Ende auf **34 Endpunkte**.
+**Am Code hat sich nichts geändert** – die Zahlen oben gelten unverändert. Hinzugekommen ist eine
+Anforderung: **(A24) Der Admin kann die Teamgenerierung auch manuell und unabhängig vom Termin
+ausführen und die Teilnehmer frei wählen** – vorhandene Spielerprofile und Gäste mit Stufe.
 
-**Der manuelle Lauf wird nicht gespeichert** – `team_generierung.termin_id` ist `NOT NULL`, und
-`team_zuteilung.teilnahme_id` hängt am Fremdschlüssel auf `spieltag.teilnahme`. Genau das hält
-S5 migrationsfrei; Herleitung in `S5_UMSETZUNG.md`, 0.6, Festlegung in 6.2.
+A24 ist **kein zweiter Generator, sondern eine zweite Eingangstür zu demselben**: Zielfunktion,
+beide Verfahren und der Auswechselspieler bleiben unberührt, verzweigt wird allein die Herkunft
+der Aufstellung. Sie ist **Teil von S5** (nicht S5b), hebt dessen Schrittsumme von 20,5 auf
+**24,0 h** und den Vertrag von 32 auf **34 Endpunkte**.
 
-**A24 steht weiterhin nur in `AGENT_SERVER.md`.** Weder `/PRJ_FuBo/harness/AGENT.md` noch der
-Client-Track kennen sie; dort ist es ein neuer Adminbildschirm. **Nachziehen ist jetzt
-überfällig – der Code steht** (Abschnitt 7).
+**Der manuelle Lauf wird nicht gespeichert.** `team_generierung.termin_id` ist `NOT NULL` und
+`team_zuteilung.teilnahme_id` verweist per Fremdschlüssel auf `spieltag.teilnahme` – ein
+Teilnehmer ohne Teilnahmezeile passt dort nicht hinein, und ein Phantom-Termin dafür anzulegen
+machte aus einer Adminrechnung einen Spieltag. **Damit bleibt S5 migrationsfrei**; Herleitung und
+der Preis (keine Historie ausser dem Audit-Eintrag) stehen in `S5_UMSETZUNG.md`, 0.6.
 
-### S5, Pakete 1 bis 5 (06.09.2026)
+**A24 steht bisher nur in `AGENT_SERVER.md`.** Weder `/PRJ_FuBo/harness/AGENT.md` noch der
+Client-Track kennen sie – dort ist es ein neuer Adminbildschirm. **Vor dem Bauen nachziehen**
+(Abschnitt 7).
 
-Gebaut sind die Abschnitte 1 bis 5 der Anleitung – Bestandsaufnahme, **Aufstellung mit beiden
-Quellen**, **Zielfunktion**, **`EXHAUSTIV`**, **`HEURISTIK`**; rund 11,5 der 24,0 h. Damit steht
-die gesamte Rechnung. Es fehlt alles, was sie an Termin, Sitzung und Datenbank anbindet:
-Kontingent (6), Generierungslauf und Snapshot (7), Auswechselspieler (8), Endpunkte (9), die
-beiden S4-Nachträge (10) und der Vertrag (11). Dateien und Paketschnitt stehen in 6.1.
-
-**Drei neue Fehlercodes**, bislang nur vom `AufstellungService` geworfen: `ZU_WENIG_TEILNEHMER`,
-`ZU_VIELE_TEILNEHMER` (neu wegen A24 – dort wird nicht abgeschnitten) und
-`SKILLWERTE_UNVOLLSTAENDIG`. Sie erreichen mit Paket 9 einen Endpunkt und gehören dann im selben
-Zug in den Vertrag.
-
-**Eine Abweichung von der Anleitung wiegt mehr als die anderen:** `HEURISTIK` ist mit acht
-Neustarts gebaut und nicht als ein langer Lauf mit festem Abkühlfaktor – so wie vorgeschlagen
-verfehlte sie das Optimum des Vergleichstests bei 13 von 100 Seeds. Messung in 6.2 und in
-`S5_ALGORITHMUS.md`, 5.2; die übrigen sieben stehen in `S5_UMSETZUNG.md`, „Stand 06.09.2026".
 ---
 
 ## 1. Kontext
@@ -191,8 +179,8 @@ S5: 18 → 20,5 vorgeschlagen).
 | S2 | Auth & Session: Filterchain, PIN-Login, Brute-Force, Zwei-Timer, Gast-/Admin-Login, Vertrag | **verifiziert (148 Tests)** | 23 |
 | S2b | Zugangsdatenpflege und Spielerverwaltung, Aufräumjob | **verifiziert (29.08.2026)** | 10 |
 | S3 | Profile & Skills API, Rollen, `configs` | **verifiziert (29.08.2026, 244 Tests)** | 11 |
-| S4 | Termine & Teilnahme: Einzel/Serie, Teilnahme, `teilnehmer_version`, Min/Max + Warteschlange, Gast-Flow; dazu A7, A18, A19 | **verifiziert (31.08.2026, 331 Tests in 26 Klassen)**; zwei Handprüfungen offen, siehe 7 | 16 (17 + 3) |
-| S5 | Teamgenerator: `EXHAUSTIV` + `HEURISTIK`, Zielfunktion inkl. Torwart-Gewicht, Kontingent/Seed/Snapshot, Auswechselspieler; **dazu A24 (manueller Lauf des Admins)** | **Pakete 1–5 verifiziert (06.09.2026, 340 Tests in 27 Klassen)**; Schrittsumme **24,0 h** (20,5 + 3,5 für A24) | 18 |
+| S4 | Termine & Teilnahme: Einzel/Serie, Teilnahme, `teilnehmer_version`, Min/Max + Warteschlange, Gast-Flow; dazu A7, A18, A19 | **verifiziert (31.08.2026, 331 Tests in 26 Klassen)**; zwei Handprüfungen offen | 16 (17 + 3) |
+| S5 | Teamgenerator: `EXHAUSTIV` + `HEURISTIK`, Zielfunktion inkl. Torwart-Gewicht, Kontingent/Seed/Snapshot, Auswechselspieler; **dazu A24 (manueller Lauf des Admins)** | Anleitung liegt vor, Schrittsumme **24,0 h** (20,5 + 3,5 für A24) | 18 |
 | S6 | Ergebnis & Audit API: „erster Eintrag gilt", Admin-Korrektur, Bilanz-Zähler | offen | 8 |
 | S7 | Hallenmodus: E-Mail-Absage, 48-Stunden-Regel | offen | 6 |
 | S8 | Härtung, Deployment (Docker/nginx/Cloudflared), API-Doku – Entwurf: `harness/tmp/S8_DEPLOYMENT.md` | offen | 14 |
@@ -203,7 +191,7 @@ Anleitungen: `harness/tmp/S<n>_UMSETZUNG.md`. **Ausnahme S5:** Der Algorithmuste
 **die Abschnittsnummern sind beibehalten**, ein Verweis „3.1" meint dieselbe Stelle wie zuvor.
 Beide Dateien zusammen sind die Anleitung für S5.
 
-## 6. Code-Zustand (06.09.2026, Branch `dev`)
+## 6. Code-Zustand (31.08.2026, Branch `dev`)
 
 ### 6.1 Was steht
 
@@ -216,9 +204,9 @@ server/                        Repo-Wurzel (remote: FuBo-Server, oeffentlich)
   src/main/resources/db/       migration/ V001-V011, demodata/ (nur dev und test)
   src/main/java/de/fubo/appserver/
     common/  config error security
-    controller/ auth admin spieltag   service/ auth profil audit mail config spieltag team
+    controller/ auth admin spieltag   service/ auth profil audit mail config spieltag
     repository/ auth profil audit spieltag
-    domain/ auth profil audit config spieltag team
+    domain/ auth profil audit config spieltag
     dto/ auth profil admin spieltag   utils
 ```
 
@@ -245,34 +233,6 @@ aktualisiert und aggregiert gelesen – die Fälle, für die `AGENT_SERVER.md` d
 Entity mit `@Version` wäre hier nachteilig: Optimistic Locking meldet den Konflikt erst beim
 Schreiben, während `ON CONFLICT` den Wettlauf zweier gleichzeitiger Meldungen ohne
 Wiederholung entscheidet.
-
-**Fachbereich `team` (S5, Pakete 1 bis 5, 06.09.2026):**
-
-```
-domain/spieltag/      Aufstellungsspieler   ein Teilnehmer, wie der Generator ihn sieht
-                      ManuelleAuswahl, Gastauswahl   die Eingabe des manuellen Laufs (A24)
-domain/team/          Aufstellung    Teilnehmer + aktive Kategorien, kennt ihre Herkunft nicht
-                      Teamaufteilung Indizes beider Teams, Kosten, verwendetes Verfahren
-repository/spieltag/  AufstellungRepository  drei Abfragen ohne Entity: Zusagen eines Termins,
-                                             benannte Profile, Gast-Vorlagen je Stufe
-service/spieltag/     AufstellungService     fuerTermin(...) und manuell(...) - hier endet die
-                                             Verzweigung zwischen den beiden Quellen
-service/team/         Zielfunktion           flache Matrix, ganzzahlig in Hundertsteln
-                      Teamverfahren          die einzige Schnittstelle zum Rest von S5
-                      ExhaustivVerfahren     Enumeration, Reservoir-Sampling, MAX_EXHAUSTIV = 24
-                      HeuristikVerfahren     Snake-Draft + Simulated Annealing
-                      TeamverfahrenAuswahl   Map<AlgorithmType, Teamverfahren>, kein switch
-```
-
-**`AufstellungRepository` bündelt drei Tabellen** (`spieltag.teilnahme`, `profil.spieler`,
-`profil.gast_vorlage`), und das ist Absicht: Aufgeteilt auf drei Repositories stünden der
-`aktiv`-Filter und der Ausschluss des Adminprofils an drei Stellen. Es ist **eine** fachliche
-Frage – wer wird eingeteilt.
-
-**Der Schnitt zwischen `spieltag` und `team` ist die Zeile, an der A24 billig wird.** Alles, was
-den Spieltag kennt – Termin, Zusage, Sperre, Konfiguration –, liegt in `spieltag`; ab
-`Aufstellung` weiß niemand mehr, woher die Liste kommt. Deshalb berührt A24 die Abschnitte 3 bis
-5 nicht, und deshalb bleibt `TeamverfahrenTests` ohne Spring-Kontext lauffähig.
 
 **Zum Paketschnitt:** Der Verwaltungscontroller liegt in `controller/admin`, seine DTOs in
 `dto/spieltag`. Kein Widerspruch – `admin` ist ein Zugriffs-, kein Datenbereich. Die Regel, nach
@@ -344,16 +304,6 @@ Datum und Herleitung steht in der Archivfassung `…_v14_S4-abgeschlossen.md`.
 | **A24 kostet kein Kontingent** | A15 zählt Läufe **je Termin und Teilnehmerstand**; beides gibt es nicht, und die Kontingentzeile trägt `termin_id NOT NULL`. Schutz sind der Zugang (admin-only) und `MAX_EXHAUSTIV` |
 | **A24 bekommt einen eigenen Endpunkt unter `/admin/`**, nicht ein optionales `terminId` am bestehenden | der Ort ist die Autorisierungsentscheidung. Ein Endpunkt mit zwei Zugangsregeln je nach Körperinhalt wäre die Prüfung im Controller, die `AGENT_SERVER.md` verbietet |
 | Im manuellen Lauf **begrenzt** `max_teilnehmer`, es schneidet nicht ab | am Termin ergibt sich die Menge und der Rest wartet; hier hat der Admin jeden Einzelnen benannt. Wer eine genannte Id still fallen lässt, liefert Teams, die niemand angefordert hat – und es fällt erst auf, wenn jemand vor Ort ohne Team dasteht |
-| **`MAX_EXHAUSTIV = 24` heisst "24 ist erlaubt, 25 nicht"** | Die Anleitung lässt sich in beide Richtungen lesen („ab dieser Zahl weigert sich `EXHAUSTIV`" gegen „die letzte vertretbare Stufe"). Maßgeblich ist die Begründung, und die nennt `C(24,12) ≈ 2,7 Mio.` ausdrücklich als noch tragbar |
-| **Der Rückfall auf `HEURISTIK` liegt in `ExhaustivVerfahren`, nicht im aufrufenden Dienst** | Die Grenze ist die Regel von `EXHAUSTIV` selbst – es weiß als Einziges, wann es nicht mehr kann. Im Dienst müsste sie ein zweites Mal geführt werden, und jeder künftige Aufrufer müsste sie kennen |
-| **Der Seed vergibt A und B, in *beiden* Verfahren** | Sonst stünde bei ungerader Zahl immer dieselbe Hälfte in Überzahl und damit Woche für Woche derselbe Spieler auf der Bank. Auf die Kosten wirkt der Tausch nicht – sie sind ein Betrag und damit symmetrisch |
-| **`HEURISTIK` wertet den Tie-Break aus, aber nur beim Merken der besten Lösung** | Die Annahme eines Tauschs richtet sich nach den Primärkosten, wie in der Anleitung. Ohne den Tie-Break beim Merken hätten die beiden Verfahren **nicht** dieselbe Zielfunktion, und genau das verlangt `AGENT_SERVER.md`. Der Preis ist eine Schleife über die Kategorien je angenommenem Schritt |
-| **`HEURISTIK` setzt acht Mal neu an, und der Abkühlfaktor kommt aus der Schrittzahl** | `S5_ALGORITHMUS.md`, 5.2 schlug einen Lauf mit festem `0.9995` vor. **So gebaut verfehlten 13 von 100 Seeds das Optimum des Vergleichstests** – die Temperatur ist nach einem Drittel der Schritte bei null, die Suche friert im ersten lokalen Minimum ein. Mit Neustarts und einem Plan, der jeden Lauf ausfüllt: 0 von 300, bei gleichem Rechenbudget. Wer die Konstanten anfasst, misst nach – sie sind gemessen, nicht gesetzt |
-| **`Teamaufteilung` trägt Indizes, keine Spieler** | Dieselbe Festlegung wie überall im Algorithmusteil: Die Identität innerhalb eines Laufs ist die Position in der Liste. Wer die Stärke eines Spielers braucht – `score_snapshot` (7.2), Auswechselspieler (8.1) –, gibt denselben Index an `Zielfunktion#staerke`; ein Ergebnis mit Spielerobjekten müsste diesen Weg für jeden von ihnen erst wieder herstellen |
-| **Die wirksame Untergrenze der Aufstellung ist `max(min_teilnehmer, 2)`** | `ck_app_config_teilnehmer` verlangt nur `min_teilnehmer > 0`, und das Konfigurations-DTO lässt `1` ausdrücklich zu. Ohne die zweite Grenze käme eine Aufstellung mit einem Spieler durch und scheiterte erst im Generator mit einem `500` statt einer Meldung. Genannt wird in `detail` die wirksame Zahl, nicht der Konfigurationswert |
-| **Die Namensvorgabe `Gast 1`, `Gast 2` steht im `AufstellungService`, nicht im DTO** | Einzige Ausnahme von „Vorgabewerte gehören an die API-Grenze", und sie hängt an der Dopplungsprüfung: Nennt der Admin einen Gast ausdrücklich „Gast 2" und lässt einen zweiten unbenannt, entsteht die Dopplung erst durch die Vorgabe – und sie soll abgelehnt werden. Das Entfernen von Randleerzeichen bleibt Aufgabe des DTOs |
-| **Ein Gastname darf nicht mit dem Namen eines ausgewählten Profils zusammenfallen** | Zwei gleiche Namen in der Teamausgabe sind genau die Verwechslung, die der Gastname verhindern soll. Die Prüfung läuft **nach** dem Laden der Profile und ist damit der einzige Bruch mit der Reihenfolge aus 2.5; beide Fälle liefern denselben Code |
-| **`IN (:spielerIds)` statt `= ANY(:spielerIds)`** | `JdbcClient` setzt eine Liste selbst in Platzhalter um; `= ANY` bräuchte ein `java.sql.Array` aus der Verbindung. Preis: Eine leere Liste ergäbe `IN ()` und damit einen Syntaxfehler – der Dienst ruft die Abfrage nur mit mindestens einer Id auf |
 
 **Die sechs Weggabelungen aus S4** (30.08.2026, durchgängig entlang der Empfehlung): Serie
 **überspringt** Kollisionen und meldet sie namentlich · erneute Zusage stellt **hinten an** ·
@@ -488,14 +438,9 @@ docker compose -f compose.dev.yml --env-file .env up -d
 ./mvnw clean verify
 ```
 
-**Zuletzt grün am 06.09.2026 – 340 Tests in 27 Klassen.** Verlauf: 148 in 16 Klassen (22.08.),
+**Zuletzt grün am 31.08.2026 – 331 Tests in 26 Klassen.** Verlauf: 148 in 16 Klassen (22.08.),
 184 (23.08.), 227 in 21 und 244 in 22 (beide 29.08.), 247/260/264/265 in 23 (30.08.), 300 in 25
-(S4, Pakete 1–4, 30.08.), 331 in 26 (S4, 31.08.), 340 in 27 (S5, Pakete 1–5, 06.09.).
-
-**`TeamverfahrenTests` ist die vierte Klasse ohne Spring-Kontext** – neben
-`SessionAuthFilterTests`, `SessionCookieFactoryTests` und `BruteForceServiceTests`. Sie läuft in
-0,3 Sekunden und macht die Gegenprobe belastbarer: Sind alle vier grün und der Rest rot, liegt
-ein Kontextfehler vor und kein Anwendungsfehler.
+(S4, Pakete 1–4, 30.08.), 331 in 26 (S4, Pakete 5–10, 31.08.).
 
 **Der vorab gezählte Erwartungswert traf jedes Mal exakt** – `grep -c '^\s*@Test\s*$'` je
 Klasse. **Die Klassenzahl war einmal falsch, weil sie fortgeschrieben statt gezählt wurde.**
@@ -533,29 +478,25 @@ Drei Punkte zur Gastverwaltung stehen in keiner Anleitung, die Bruno-Requests un
 
 ## 7. Nächste Schritte
 
-1. **S5 weiterbauen** nach `harness/tmp/S5_UMSETZUNG.md` **und `harness/tmp/S5_ALGORITHMUS.md`**
-   (zusammen 24,0 h inkl. A24; Abschnitte 1 bis 5 sind gebaut, offen bleiben rund 12,5 h).
-   Als Nächstes **Abschnitt 6, Kontingent und Seed** – und damit sofort der Punkt, der drei
-   Testklassen anfasst: **`AktiveSitzung` bekommt `gastSlotId`** (15, Punkt 5), sonst hat ein
-   Gast kein Kontingent. **Zwei Nachträge aus S4 gehören zu S5** und sind leicht zu übersehen:
-   Sperren nimmt die Zusagen zurück (Reihenfolge beachten – erst die Version erhöhen, dann die
-   Zusage zurücknehmen), und `teams_fixiert` wird vom bestehenden A18-Auftrag bei Terminbeginn
-   gesetzt.
-2. **A24 in die Gesamtspezifikation nachziehen – überfällig, der Code steht.** Die Anforderung
-   steht nur in `AGENT_SERVER.md`. `/PRJ_FuBo/harness/AGENT.md` ist die maßgebliche Quelle und
-   kennt sie nicht; solange das so bleibt, widersprechen sich die beiden Dokumente. `A20b` ist
-   bei der Gelegenheit zu präzisieren, falls Weggabelung A im Sinne der Alternative entschieden
-   wird.
-3. **Nach Abschluss von S5: alle Handprüfungen in einem Zug** (entschieden am 06.09.2026 – eine
-   halbe Generierung zeigt nichts, was sich prüfen liesse). Es sind drei Listen:
-   - **S4, `S4_UMSETZUNG.md` 11.1** – die beiden Punkte, die eine laufende Anwendung brauchen:
-     der automatische Terminabschluss im Betrieb (Termin per SQL in die Vergangenheit setzen,
-     fünf Minuten warten) und die Gast-Stufe über den Sitzungsablauf hinweg. Alles Übrige dort
-     ist über die Bruno-Ordner `termine` und `admin/termin` gangbar.
-   - **S5, `S5_UMSETZUNG.md` 13.1** – darunter die sechs Punkte zu A24, allen voran: fünfmal
-     derselbe Aufruf muss fünfmal `200` liefern, und `spieltag.team_generierung` muss danach
-     unverändert sein.
-   - **Gastverwaltung, 6.4** – die drei Punkte, die in keiner Anleitung stehen.
+1. **Die zwei Handprüfungen zu S4 nachholen.** Alles Übrige aus `S4_UMSETZUNG.md`,
+   Abschnitt 11.1, ist über die Bruno-Ordner `termine` und `admin/termin` gangbar; diese beiden
+   brauchen eine laufende Anwendung:
+   - **Der automatische Abschluss im Betrieb.** Der Test ruft den Auftrag direkt auf; dass der
+     Zeitplan greift, zeigt erst eine laufende Anwendung. Einen Termin per SQL in die
+     Vergangenheit setzen und fünf Minuten warten.
+   - **Die Gast-Stufe über den Sitzungsablauf hinweg.** Sie wird bei der Zusage kopiert; dass
+     sie eine abgelaufene Gastsitzung überdauert, ist in einer zurückgerollten Transaktion nicht
+     zu sehen.
+2. **A24 in die Gesamtspezifikation nachziehen, bevor gebaut wird.** Die Anforderung steht nur
+   in `AGENT_SERVER.md`. `/PRJ_FuBo/harness/AGENT.md` ist die maßgebliche Quelle und kennt sie
+   nicht – solange das so bleibt, widersprechen sich die beiden Dokumente. `A20b` ist bei der
+   Gelegenheit zu präzisieren, falls Weggabelung A im Sinne der Alternative entschieden wird.
+3. **S5 umsetzen** nach `harness/tmp/S5_UMSETZUNG.md` **und `harness/tmp/S5_ALGORITHMUS.md`**
+   (zusammen 24,0 h inkl. A24). Acht Entscheidungen
+   stehen (0.4 und 0.6), vier Weggabelungen sind beim Schreiben des jeweiligen Abschnitts zu
+   klären (0.5). **Zwei Nachträge aus S4 gehören dazu** und sind leicht zu übersehen: Sperren
+   nimmt die Zusagen zurück (Reihenfolge beachten – erst die Version erhöhen, dann die Zusage
+   zurücknehmen), und `teams_fixiert` wird vom bestehenden A18-Auftrag bei Terminbeginn gesetzt.
 4. **Client-Track informieren:** die drei brechenden Vertragsänderungen (4.1) – `anmeldename` im
    Admin-Login, vollständige `skills` beim Anlegen eines Profils, `auswechselModus` im
    Voll-Update der Konfiguration – **und der neue Adminbildschirm für A24** samt der Punkte aus
