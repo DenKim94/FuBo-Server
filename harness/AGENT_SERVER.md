@@ -454,16 +454,31 @@ Zielfunktion für beide Verfahren identisch:
 `EXHAUSTIV` (Default, exakt): vollständige Enumeration aller Splits der Grösse `⌊n/2⌋`, globales
 Optimum, bei bis zu 22 Teilnehmern beherrschbar (`C(22,11) ≈ 705.000`), skaliert nicht darüber. Da
 deterministisch, wählt der `seed` die A/B-Zuordnung und – bei Gleichstand – die konkrete
-Einteilung. **Oberhalb einer festen Teilnehmerzahl weicht der Lauf auf `HEURISTIK` aus und
+Einteilung. **Oberhalb von `MAX_EXHAUSTIV = 24` weicht der Lauf auf `HEURISTIK` aus und
 protokolliert das**, statt zu scheitern: Wer generiert, hat `max_teilnehmer` nicht gesetzt und
-kann es nicht ändern.
+kann es nicht ändern. Die Grenze gehört in den Code und nicht in die Konfiguration – ein
+administrierbarer Wert von 30 ergäbe `C(30,15) ≈ 155 Mio.` und einen Serverstillstand. **Im
+manuellen Lauf nach A24 ist sie zusätzlich der einzige Schutz vor Dauerläufen**, weil dort kein
+Kontingent zählt. Das Ergebnis nennt das tatsächlich verwendete Verfahren; still abzuweichen
+wäre das Schlimmste von beidem.
 
-`HEURISTIK` (skalierbar): seed-basierte lokale Suche / Simulated Annealing mit Paar-Tausch,
-`O(Iterationen · n²)`, je Seed eine andere nah-optimale Lösung (erfüllt A15 direkt).
+`HEURISTIK` (skalierbar): Snake-Draft als Start, dann Simulated Annealing mit Paar-Tausch,
+`O(Iterationen · n²)`, je Seed eine andere nah-optimale Lösung (erfüllt A15 direkt). **Nur
+Tausch, nie Verschiebung** – ein Tausch lässt beide Teamgrössen unverändert, damit hält A20a
+ohne eigene Prüfung.
 
+- **Iterationszahl, Neustarts und Abkühlfaktor sind gemessen, nicht gesetzt.** Gebaut sind acht
+  unabhängige Läufe, die sich das Budget teilen, mit einem Abkühlfaktor, der aus der Schrittzahl
+  je Lauf abgeleitet wird. Ein einzelner Lauf mit festem Faktor `0.9995` – der naheliegende
+  Aufbau – verfehlte im Vergleichstest bei **13 von 100 Seeds** das Optimum: Die Temperatur ist
+  nach einem Drittel der Schritte praktisch bei null, die Suche friert im ersten lokalen Minimum
+  ein, und die restlichen zwei Drittel ändern nichts mehr. **Wer diese Konstanten anfasst, misst
+  nach** – die Messung steht in `S5_ALGORITHMUS.md`, 5.2.
 - **Beide Verfahren teilen sich dieselbe Zielfunktionsklasse, nicht zwei Kopien** – sonst prüft
   der Vergleichstest (`HEURISTIK` muss bei kleiner Spielerzahl das Optimum von `EXHAUSTIV`
-  finden) nichts.
+  finden) nichts. **Der Tie-Break entscheidet dabei nur, was gemerkt wird, nicht was angenommen
+  wird:** Die Annahme eines Tauschs richtet sich nach den Primärkosten, das Merken nach beiden.
+  Ohne den Tie-Break beim Merken wäre die Zielfunktion der beiden Verfahren nicht dieselbe.
 - **Der Seed wird mit `SecureRandom` gezogen, aber mit `java.util.Random` verbraucht:** Dessen
   Algorithmus ist in der Javadoc spezifiziert, `RandomGenerator.getDefault()` darf sich zwischen
   Java-Versionen ändern – dann liesse sich ein gespeicherter Lauf nicht mehr nachrechnen.
