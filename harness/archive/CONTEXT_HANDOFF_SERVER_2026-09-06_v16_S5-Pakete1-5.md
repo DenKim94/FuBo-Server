@@ -14,57 +14,63 @@
 > - **Verbindliche Regeln** → `AGENT_SERVER.md` (Systemprompt, wird ohnehin gelesen)
 > - **Herleitung und Schritt für Schritt** → `harness/tmp/S<n>_UMSETZUNG.md`, für den
 >   Algorithmusteil von S5 zusätzlich `harness/tmp/S5_ALGORITHMUS.md`
-> - **Historie** → Git und `harness/archive/`; die Vorfassung ist
->   `CONTEXT_HANDOFF_SERVER_2026-09-06_v16_S5-Pakete1-5.md`, die letzte Langfassung mit allen
->   Herleitungen `CONTEXT_HANDOFF_SERVER_2026-08-31_v14_S4-abgeschlossen.md`
+> - **Historie** → Git und `harness/archive/`; die letzte Langfassung ist
+>   `CONTEXT_HANDOFF_SERVER_2026-08-31_v14_S4-abgeschlossen.md`
 >
 > Was hier steht, steht **nur** hier. Wird eine Festlegung zur Architekturregel, wandert sie
 > nach `AGENT_SERVER.md` und **verschwindet hier** – sonst laufen beide auseinander.
 
-## Stand: 06.09.2026 (abends)
+## Stand: 06.09.2026
 
-**S0 bis S4 sind abgeschlossen, S5 ist vollständig gebaut.** Der Testlauf lief mit **385 Fällen in
-29 Klassen**; ein Fall schlug fehl, die Ursache ist behoben (unten), **der Bestätigungslauf steht
-aus**. Er braucht Docker (Testcontainers, `postgres:17`) und läuft ausschliesslich lokal.
-**Vor dem grünen Lauf wird nichts committet.**
+**S0 bis S4 sind abgeschlossen, S5 ist bis Paket 5 gebaut – alles verifiziert.**
+`./mvnw clean verify` grün am 06.09.2026 mit **340 Tests in 27 Klassen**, keine Fehler, keine
+Abbrüche, keine übersprungenen Tests; die Anwendung startet auf einer frischen Datenbank durch.
+Der Lauf braucht Docker (Testcontainers, `postgres:17`) und läuft ausschliesslich lokal.
 
-**Der Vertrag steht bei 34 Endpunkten** – die beiden aus S5 sind eingetragen. Das Datenmodell bleibt
-bei 18 Tabellen in drei Schemas (`V001`–`V011`): **S5 ist ohne Migration ausgekommen**, wie in 0.2
-und 0.6 hergeleitet.
+**Der Vertrag steht bei 32 Endpunkten**, das Datenmodell bei 18 Tabellen in drei Schemas
+(`V001`–`V011`). S5 hat daran bis hierher nichts geändert und wird es erst mit Paket 9 tun –
+dann sind es 34; **eine Migration braucht S5 nicht.**
 
-**Was S5 gebracht hat:** die Aufstellung aus beiden Quellen, Zielfunktion, `EXHAUSTIV` und
-`HEURISTIK` (vormittags, verifiziert mit 340 Fällen), dazu Kontingent und Seed, Generierungslauf und
-Snapshot, Auswechselspieler, die beiden Endpunkte samt Lesepfad, die zwei Nachträge aus S4 und die
-Tests. **Drei neue Fehlercodes** (`KONTINGENT_ERSCHOEPFT`, `TEILNEHMER_GEAENDERT`, `TEAMS_FIXIERT`)
-und **zwei neue Audit-Aktionen** (`TEAMS_GENERIERT`, `TEAMS_MANUELL_GENERIERT`).
+**Drei Handprüfungen sind aufgeschoben, nicht vergessen** – zwei aus S4 (automatischer
+Terminabschluss im Betrieb, Gast-Stufe über den Sitzungsablauf hinweg) und die Liste zu S5
+(13.1 der Anleitung). Alle brauchen eine laufende Anwendung und werden **nach Abschluss von S5**
+in einem Zug abgearbeitet – so entschieden am 06.09.2026, weil eine halbe Generierung nichts
+zeigt, was sich prüfen liesse.
 
-### Der eine Fehlschlag – und warum er lehrreich ist
+### Die Anforderung A24 (05.09.2026)
 
-`verschiebenInDieZukunftSetztDieFixierungZurueck` erwartete `teams_fixiert = false` und bekam
-`true`. `TerminService#aendern` prüfte `!beginn.isBefore(jetzt)` – das ist für **jeden** künftigen
-Zeitpunkt wahr, das Flag wurde also gesetzt statt gelöscht.
+**(A24) Der Admin kann die Teamgenerierung auch manuell und unabhängig vom Termin ausführen und
+die Teilnehmer frei wählen** – vorhandene Spielerprofile und Gäste mit Stufe. Sie ist **kein
+zweiter Generator, sondern eine zweite Eingangstür zu demselben** und deshalb Teil von S5, nicht
+S5b: Zielfunktion, beide Verfahren und der Auswechselspieler bleiben unberührt, verzweigt wird
+allein die Herkunft der Aufstellung. Sie hebt die Schrittsumme von 20,5 auf **24,0 h** und den
+Vertrag am Ende auf **34 Endpunkte**.
 
-**Gedeckt hat den Fehler ein unerreichbarer Zweig.** `pruefeNichtVergangen` lehnt oben bereits jeden
-Zeitpunkt ab, der nicht in der Zukunft liegt; die Fallunterscheidung konnte gar nie anders ausgehen,
-und der Kommentar daneben erklärte sie als „ausdrücklich, weil sie die Aussage des Flags ist".
-Zurückgesetzt wird jetzt ohne Bedingung; gesetzt wird ausschliesslich vom Auftrag bei Terminbeginn.
-**Merksatz: Eine Bedingung, deren einer Zweig unerreichbar ist, prüft nichts – sie versteckt nur, was
-der andere tut.**
+**Der manuelle Lauf wird nicht gespeichert** – `team_generierung.termin_id` ist `NOT NULL`, und
+`team_zuteilung.teilnahme_id` hängt am Fremdschlüssel auf `spieltag.teilnahme`. Genau das hält
+S5 migrationsfrei; Herleitung in `S5_UMSETZUNG.md`, 0.6, Festlegung in 6.2.
 
-### Drei Handprüfungen sind aufgeschoben, nicht vergessen
+**A24 steht weiterhin nur in `AGENT_SERVER.md`.** Weder `/PRJ_FuBo/harness/AGENT.md` noch der
+Client-Track kennen sie; dort ist es ein neuer Adminbildschirm. **Nachziehen ist jetzt
+überfällig – der Code steht** (Abschnitt 7).
 
-Zwei aus S4 (automatischer Terminabschluss im Betrieb, Gast-Stufe über den Sitzungsablauf hinweg),
-die Liste zu S5 (`S5_UMSETZUNG.md`, 13.1) und die drei Punkte zur Gastverwaltung aus 6.4. Alle
-brauchen eine laufende Anwendung und werden **nach dem grünen Testlauf in einem Zug** abgearbeitet.
+### S5, Pakete 1 bis 5 (06.09.2026)
 
-### Nachgezogen am 06.09.2026
+Gebaut sind die Abschnitte 1 bis 5 der Anleitung – Bestandsaufnahme, **Aufstellung mit beiden
+Quellen**, **Zielfunktion**, **`EXHAUSTIV`**, **`HEURISTIK`**; rund 11,5 der 24,0 h. Damit steht
+die gesamte Rechnung. Es fehlt alles, was sie an Termin, Sitzung und Datenbank anbindet:
+Kontingent (6), Generierungslauf und Snapshot (7), Auswechselspieler (8), Endpunkte (9), die
+beiden S4-Nachträge (10) und der Vertrag (11). Dateien und Paketschnitt stehen in 6.1.
 
-`/PRJ_FuBo/harness/AGENT.md` kennt A24 jetzt nicht nur als Anforderung 24, sondern auch mit ihren
-vier Folgen im Abschnitt „Teamgenerator"; A20b ist präzisiert (**beide** Modi wählen aus dem
-Überzahl-Team). Damit widersprechen sich Gesamtspezifikation und Server-Systemprompt nicht mehr.
-`AGENT_SERVER.md` hat die neuen verbindlichen Regeln aufgenommen; `S5_UMSETZUNG.md`, 15 ist auf die
-zwei Punkte zusammengestrichen, die wirklich offen sind.
+**Drei neue Fehlercodes**, bislang nur vom `AufstellungService` geworfen: `ZU_WENIG_TEILNEHMER`,
+`ZU_VIELE_TEILNEHMER` (neu wegen A24 – dort wird nicht abgeschnitten) und
+`SKILLWERTE_UNVOLLSTAENDIG`. Sie erreichen mit Paket 9 einen Endpunkt und gehören dann im selben
+Zug in den Vertrag.
 
+**Eine Abweichung von der Anleitung wiegt mehr als die anderen:** `HEURISTIK` ist mit acht
+Neustarts gebaut und nicht als ein langer Lauf mit festem Abkühlfaktor – so wie vorgeschlagen
+verfehlte sie das Optimum des Vergleichstests bei 13 von 100 Seeds. Messung in 6.2 und in
+`S5_ALGORITHMUS.md`, 5.2; die übrigen sieben stehen in `S5_UMSETZUNG.md`, „Stand 06.09.2026".
 ---
 
 ## 1. Kontext
@@ -113,10 +119,9 @@ Vollständige Liste in `CONTEXT_HANDOFF.md`, Abschnitt 3. Serverseitig besonders
 **Maßgeblich ist `server/fubo-api.json`** – OpenAPI 3.1 in JSON auf der Repo-Wurzel und damit
 mitversioniert. **Bei Abweichungen gilt die Datei, nicht dieses Dokument.**
 
-**Umfang: 34 Endpunkte** (Tabelle in 6.1). Aufgenommen wird nur, was umgesetzt ist; S6 und S7
-tragen ihre bei Fertigstellung nach. **S5 hat zwei gebracht** (`teams/generieren` und
-`admin/teams/generieren`, siehe 4.3) und `TerminDetails` um das nullbare Feld `teams` erweitert –
-additiv, also nicht brechend. Kernpunkte: REST/JSON, getrennte Origins mit CORS-Allowlist
+**Umfang: 32 Endpunkte** (Tabelle in 6.1). Aufgenommen wird nur, was umgesetzt ist; S5 bis S7
+tragen ihre bei Fertigstellung nach – **S5 bringt zwei** (`teams/generieren` und
+`admin/teams/generieren`, siehe 4.3). Kernpunkte: REST/JSON, getrennte Origins mit CORS-Allowlist
 (`allowCredentials`), HttpOnly-Session-Cookie, `401`/`403`-Semantik, DTOs ohne Skillwerte für
 USER und GAST, Belegtstatus zum Pollen, einheitliches Fehler-JSON nach RFC 9457.
 
@@ -158,10 +163,9 @@ Es braucht ein zweites Eingabefeld. Drei Punkte gehören dabei ins Frontend:
 3. **Keine Vorbelegung, kein Autovervollständigen.** Der Anmeldename ist über keinen Endpunkt
    abrufbar; ein Auswahlfeld gäbe es nur, wenn ihn jemand ins Frontend schriebe.
 
-### 4.3 Was S5 gebracht hat – und wo die naheliegende Annahme falsch ist
+### 4.3 Was mit S5 dazukommt – und wo die naheliegende Annahme falsch ist
 
-**Seit dem 06.09.2026 im Vertrag.** Jede Zeile ist eine Stelle, an der eine naheliegende Annahme
-falsch ist:
+Noch nicht im Vertrag, aber beim Planen der Adminoberfläche schon zu wissen:
 
 | Punkt | Bedeutung für den Client |
 |---|---|
@@ -173,11 +177,6 @@ falsch ist:
 | Genannte, aber ungültige Auswahl | wird **abgelehnt**, nicht still gefiltert: unbekannte oder gesperrte Id `400`, Adminprofil `409 PROFIL_GESCHUETZT` |
 | `maxTeilnehmer` im manuellen Lauf | **begrenzt, schneidet nicht ab** (`409 ZU_VIELE_TEILNEHMER`). Am Termin ist es die Grenze zur Warteschlange – hier gibt es keine |
 | `teams` in `TerminDetails` | nullbares Feld, `null` heisst „noch nicht generiert" und ist kein Fehler. `veraltet: true` heisst „noch anzeigen, aber nicht mehr aktuell" |
-| `TEAMS_FIXIERT` (`409`) | ab Terminbeginn; der Server setzt das Kennzeichen selbst, spätestens fünf Minuten nach Anpfiff. Verschiebt der Admin den Termin in die Zukunft, fällt es zurück |
-| `TEILNEHMER_GEAENDERT` (`409`) | jemand hat während des Laufs zu- oder abgesagt. **Der Aufruf lässt sich unverändert wiederholen**; es geht nichts verloren, das Kontingent steht unter dem neuen Stand wieder offen |
-| `KONTINGENT_ERSCHOEPFT` (`409`) | **kein `Retry-After`** – es ist keine Drosselung über die Zeit, sondern ein Zustand, der sich mit dem Teilnehmerkreis ändert. Eine Wartezeit liesse sich gar nicht angeben |
-| Reihenfolge in `teamA`/`teamB` | **keine Rangfolge**, darf frei sortiert werden – anders als die Teilnehmerliste, die ihre Ordnung nicht verlieren darf |
-| `auswechselModus` ändern | ändert die **Einteilung** nicht, wohl aber den angezeigten Auswechselspieler bereits gespeicherter Läufe. Er wird beim Lesen aus dem Lauf abgeleitet und nicht mitgespeichert (A20b) |
 
 ## 5. Meilensteine (Server)
 
@@ -193,7 +192,7 @@ S5: 18 → 20,5 vorgeschlagen).
 | S2b | Zugangsdatenpflege und Spielerverwaltung, Aufräumjob | **verifiziert (29.08.2026)** | 10 |
 | S3 | Profile & Skills API, Rollen, `configs` | **verifiziert (29.08.2026, 244 Tests)** | 11 |
 | S4 | Termine & Teilnahme: Einzel/Serie, Teilnahme, `teilnehmer_version`, Min/Max + Warteschlange, Gast-Flow; dazu A7, A18, A19 | **verifiziert (31.08.2026, 331 Tests in 26 Klassen)**; zwei Handprüfungen offen, siehe 7 | 16 (17 + 3) |
-| S5 | Teamgenerator: `EXHAUSTIV` + `HEURISTIK`, Zielfunktion inkl. Torwart-Gewicht, Kontingent/Seed/Snapshot, Auswechselspieler; **dazu A24 (manueller Lauf des Admins)** | **vollständig gebaut (06.09.2026)**; Pakete 1–5 verifiziert (340 Tests), Gesamtlauf 385 Tests in 29 Klassen mit einem behobenen Fehlschlag – **Bestätigungslauf und Handprüfliste 13.1 offen**. Schrittsumme **24,0 h** (20,5 + 3,5 für A24) | 18 |
+| S5 | Teamgenerator: `EXHAUSTIV` + `HEURISTIK`, Zielfunktion inkl. Torwart-Gewicht, Kontingent/Seed/Snapshot, Auswechselspieler; **dazu A24 (manueller Lauf des Admins)** | **Pakete 1–5 verifiziert (06.09.2026, 340 Tests in 27 Klassen)**; Schrittsumme **24,0 h** (20,5 + 3,5 für A24) | 18 |
 | S6 | Ergebnis & Audit API: „erster Eintrag gilt", Admin-Korrektur, Bilanz-Zähler | offen | 8 |
 | S7 | Hallenmodus: E-Mail-Absage, 48-Stunden-Regel | offen | 6 |
 | S8 | Härtung, Deployment (Docker/nginx/Cloudflared), API-Doku – Entwurf: `harness/tmp/S8_DEPLOYMENT.md` | offen | 14 |
@@ -210,7 +209,7 @@ Beide Dateien zusammen sind die Anleitung für S5.
 
 ```
 server/                        Repo-Wurzel (remote: FuBo-Server, oeffentlich)
-  fubo-api.json                Endpunktkontrakt, 34 Endpunkte
+  fubo-api.json                Endpunktkontrakt, 32 Endpunkte
   compose.dev.yml              postgres:17
   .env / .env.example          DB-Zugang, FUBO_INITIAL_PIN, ADMIN_*, SMTP_*
   scripts/                     seed-lokal.sh + anonymisierter 30er-Datensatz
@@ -265,32 +264,6 @@ service/team/         Zielfunktion           flache Matrix, ganzzahlig in Hunder
                       TeamverfahrenAuswahl   Map<AlgorithmType, Teamverfahren>, kein switch
 ```
 
-**Fachbereich `team`, Pakete 6 bis 12 (06.09.2026):**
-
-```
-domain/spieltag/      Terminzustand       Status, teams_fixiert, teilnehmer_version - nativ gelesen
-domain/team/          Bankkandidat, Bankentscheid   Eingabe und Ergebnis der Bankwahl
-                      Teamergebnis        ein fertiger Lauf; traegt auch die Staerken je Index
-                      Zuteilungssatz      eine Zeile fuer team_zuteilung (Snapshot)
-                      Generierungskopf, Zuteilungszeile   was aus der Datenbank zurueckkommt
-                      Einteilung, Einteilungseintrag      was die Einzelansicht traegt
-repository/spieltag/  KontingentRepository        ein bedingtes UPSERT, ohne Entity
-                      TeamGenerierungRepository   abloesen, schreiben, lesen; ohne Entity
-service/team/         SeedQuelle           SecureRandom ziehen, java.util.Random verbrauchen
-                      AuswechselErmittlung die Bankwahl - aus zwei Datengrundlagen dieselbe
-                      Teamrechner          die Stelle, an der beide Eingangstueren zusammenlaufen
-service/spieltag/     TeamGenerierungService  Kontingent, Seed, Snapshot, Audit, Lesepfad
-controller/spieltag/  TeamController              POST /teams/generieren, 201
-controller/admin/     TeamVerwaltungController    POST /admin/teams/generieren, 200
-dto/spieltag/         TeamEintrag, Teameinteilung
-dto/admin/            GastAuswahl, ManuelleGenerierungRequest, ManuelleEinteilung
-```
-
-**`ManuelleEinteilung` liegt in `dto/admin`, `Teameinteilung` in `dto/spieltag`** – und das ist
-kein Zufall des Zugriffs, sondern des Inhalts: Nur die erste trägt `differenzTeamstaerke`, eine
-abgeleitete Kennzahl der Teamstärke. A12 lässt solche Werte ausschliesslich unterhalb von
-`/api/*/admin/**` nach aussen; `TeamEintrag` trägt keine Bewertung und bleibt deshalb geteilt.
-
 **`AufstellungRepository` bündelt drei Tabellen** (`spieltag.teilnahme`, `profil.spieler`,
 `profil.gast_vorlage`), und das ist Absicht: Aufgeteilt auf drei Repositories stünden der
 `aktiv`-Filter und der Ausschluss des Adminprofils an drei Stellen. Es ist **eine** fachliche
@@ -308,12 +281,12 @@ der Skill-DTOs unter `dto/admin` bleiben, greift hier nicht: Termine tragen kein
 **Datenmodell: 18 Tabellen, `V001`–`V011`.** S2b und S3 kamen ohne Migration aus. Die drei
 letzten ergänzen nur Spalten (alle 30.08.2026): `V009` `auswechsel_modus` (A20b), `V010` den
 Vorgabetext für `halle_absage_vorlage` (A23), `V011` die drei Bilanz-Zähler in `profil.spieler`
-(A21). **S5 ist ohne Migration ausgekommen** – `V006` legt `team_generierung`, `team_zuteilung` und
+(A21). **S5 braucht keine Migration** – `V006` legt `team_generierung`, `team_zuteilung` und
 `generierung_kontingent` bereits vollständig an. **Das gilt seit dem 05.09.2026 aus zwei Gründen
 zugleich:** die Entscheidungen aus `S5_UMSETZUNG.md`, 0.4, **und** der Verzicht darauf, den
 manuellen Lauf nach A24 zu speichern (0.6). Fällt eines von beiden, fällt die Aussage.
 
-**Die 34 Endpunkte, nach Bereichen.** Zweck, Körper und Antworten stehen in
+**Die 32 Endpunkte, nach Bereichen.** Zweck, Körper und Antworten stehen in
 `fubo-api.json` – hier nur die Landkarte, damit eine Änderung nicht an zwei Stellen gepflegt
 werden muss:
 
@@ -326,7 +299,7 @@ werden muss:
 | Gastverwaltung (30.08.) | `admin/gast/{lesen,freigeben}` | 2 |
 | Termine lesen und melden (S4) | `termine/lesen`, `termine/{terminId}/lesen`, `termine/rueckmeldung` | 3 |
 | Terminverwaltung (S4) | `admin/termin/{anlegen,aendern,absagen,entfernen}`, `admin/serie/anlegen`, `admin/teilnahme/gast-stufe` | 6 |
-| Teamgenerierung (S5) | `teams/generieren`, `admin/teams/generieren` (A24) | 2 |
+| *geplant S5* | *`teams/generieren`, `admin/teams/generieren` (A24)* | *+2* |
 
 **Der Ort eines Endpunkts ist die Autorisierungsentscheidung.** Alles unter `/api/*/admin/**`
 verlangt `ROLE_ADMIN`; die Reset-Endpunkte und die drei Login-Wege sind ausschliesslich in
@@ -380,14 +353,6 @@ Datum und Herleitung steht in der Archivfassung `…_v14_S4-abgeschlossen.md`.
 | **Die wirksame Untergrenze der Aufstellung ist `max(min_teilnehmer, 2)`** | `ck_app_config_teilnehmer` verlangt nur `min_teilnehmer > 0`, und das Konfigurations-DTO lässt `1` ausdrücklich zu. Ohne die zweite Grenze käme eine Aufstellung mit einem Spieler durch und scheiterte erst im Generator mit einem `500` statt einer Meldung. Genannt wird in `detail` die wirksame Zahl, nicht der Konfigurationswert |
 | **Die Namensvorgabe `Gast 1`, `Gast 2` steht im `AufstellungService`, nicht im DTO** | Einzige Ausnahme von „Vorgabewerte gehören an die API-Grenze", und sie hängt an der Dopplungsprüfung: Nennt der Admin einen Gast ausdrücklich „Gast 2" und lässt einen zweiten unbenannt, entsteht die Dopplung erst durch die Vorgabe – und sie soll abgelehnt werden. Das Entfernen von Randleerzeichen bleibt Aufgabe des DTOs |
 | **Ein Gastname darf nicht mit dem Namen eines ausgewählten Profils zusammenfallen** | Zwei gleiche Namen in der Teamausgabe sind genau die Verwechslung, die der Gastname verhindern soll. Die Prüfung läuft **nach** dem Laden der Profile und ist damit der einzige Bruch mit der Reihenfolge aus 2.5; beide Fälle liefern denselben Code |
-| **Der Schreibpfad liest den Termin nativ** (`TerminRepository#zustand`), nie über `findById` | Der Lauf merkt sich `teilnehmer_version` und prüft sie am Ende gegen (6.3 der Anleitung). Eine geladene Entity lieferte den Zähler aus dem Persistence-Context – also genau den Wert, gegen den geprüft werden soll. Zugleich bleibt die Entity aus dem Vorgang heraus, sonst bräche der nächste Flush an einem Sperrkonflikt, den niemand verursacht hat. **Ohne diese Umstellung fiele der Fall „nach einer Absage erneut generieren" durch** |
-| **Der Termin-Lauf liest sein eigenes Ergebnis zurück**, statt die Antwort aus der Rechnung zu bauen | Der Auswechselspieler wird nicht gespeichert, sondern beim Lesen erneut bestimmt. Weichen Lauf und Ableitung voneinander ab, fällt es so sofort auf – sonst erst, wenn jemand den Termin das nächste Mal öffnet und ein anderer Name auf der Bank steht. Preis: zwei zusätzliche Leseabfragen je Lauf |
-| **Die Bankwahl zieht mit einem frischen `new Random(seed)`** | Der Generator des Verfahrens hat bis dahin unterschiedlich viele Zahlen verbraucht – bei `EXHAUSTIV` je nach Zahl der Optima, bei `HEURISTIK` je Iteration. Sein Zustand ist ohne Wiederholung des ganzen Laufs nicht rekonstruierbar; der Seed dagegen steht in der Tabelle. **Das ist die Bedingung, unter der die Ableitung beim Lesen dasselbe liefert wie der Lauf** |
-| **Die Zuteilungen werden in Laufreihenfolge geschrieben und über `ORDER BY id` gelesen** | Bei Gleichstand entscheidet der Seed über die *Position* in der Kandidatenliste. Nur bei gleicher Ordnung fällt die Wahl genauso aus – eine andere Sortierung beim Lesen wäre ein Fehler, den kein Test bemerkt, solange niemand zwei gleich starke Spieler hat |
-| **Der Auswechselspieler wird nach dem *heute* eingestellten Modus abgeleitet**, nicht nach dem von damals | Der Modus wird nirgends gespeichert, und A20b führt ihn ausdrücklich als Anzeigeregel: Die Einstellung ändert die Einteilung nicht, nur wer aussetzt. **Folge, die man kennen muss:** Stellt der Admin um, kann ein bestehender Lauf einen anderen Auswechselspieler zeigen. Die Alternative wäre die Migration `V012` und damit das Ende der Migrationsfreiheit von S5 |
-| **`AufstellungService` liefert `Aufstellung` statt `List<Aufstellungsspieler>`** | Die Verfahren brauchen zusätzlich die aktiven Kategorien, und dieser Dienst liest sie ohnehin für die Vollständigkeitsprüfung. Sonst holte der Generierungsdienst sie ein zweites Mal – zwei Gelegenheiten, gegen eine andere Kategorienmenge zu prüfen als zu rechnen |
-| **Die Umrechnung Hundertstel → `NUMERIC(6,2)` liegt in `Teamergebnis`** (`domain`), nicht in `Zielfunktion` (`service`) | `ManuelleEinteilung` braucht sie ebenfalls; ein DTO, das auf die Service-Schicht zugreift, dreht die Schichtung um. In `domain` erreichen sie beide, und die Definition steht weiterhin genau einmal |
-| **Die Reihenfolge beim Sperren liegt im `TerminService`** (`sperrungNachtragen`), nicht in der Profilverwaltung | Erst `teilnehmer_version` erhöhen, dann die Zusagen zurücknehmen – die ganze Schwierigkeit des Nachtrags steckt in dieser Reihenfolge, und sie gehört an *eine* Stelle. Die Profilverwaltung muss weder Tabelle noch Bedingung kennen; dieselbe Aufteilung wie beim Zähler-Nachtrag aus S3 |
 | **`IN (:spielerIds)` statt `= ANY(:spielerIds)`** | `JdbcClient` setzt eine Liste selbst in Platzhalter um; `= ANY` bräuchte ein `java.sql.Array` aus der Verbindung. Preis: Eine leere Liste ergäbe `IN ()` und damit einen Syntaxfehler – der Dienst ruft die Abfrage nur mit mindestens einer Id auf |
 
 **Die sechs Weggabelungen aus S4** (30.08.2026, durchgängig entlang der Empfehlung): Serie
@@ -402,12 +367,6 @@ eingeteilt · ein Gast ohne Stufe zählt als `MITTEL` · `teams_fixiert` wird be
 automatisch gesetzt. **Vier weitere zu A24** sind am 05.09.2026 dazugekommen (0.6): nicht
 gespeichert · Teil von S5 statt eigener Meilenstein · kein Kontingent · eigener Endpunkt unter
 `/admin/`.
-
-**Die vier offenen Weggabelungen A bis D sind am 06.09.2026 entschieden** – durchgängig entlang der
-Empfehlung: `ZULETZT_ANGEMELDET` wählt aus dem **Überzahl-Team** · die Einteilung reist als Feld
-`teams` in der **Einzelansicht** mit · `differenzTeamstaerke` erscheint **nicht** am Termin, wohl
-aber unterhalb von `/admin/` · das **Adminprofil darf generieren**, mit eigenem Kontingent. Damit
-ist `S5_UMSETZUNG.md`, 15 auf zwei Punkte zusammengeschmolzen.
 
 **Abweichungen aus S1, die im Datenmodell sichtbar sind:** `min_teilnehmer = 6`,
 `anz_team_generator = 1`, `session_maximal_stunden = 1` (statt 8/2/8); `session.stage` heisst in
@@ -469,10 +428,8 @@ Jeder Punkt hat schon mindestens einmal Zeit gekostet.
 - **`uq_termin_zeit UNIQUE (datum, uhrzeit)` ist global und trifft auch die Tests.** Jede Klasse
   braucht ihren eigenen Zeitstreifen in **beiden** Achsen. Vergeben: `TerminControllerTests`
   40 Tage/18:15, `TerminVerwaltungControllerTests` 120 Tage/19:45, `TeilnehmerlisteTests`
-  200 Tage/17:30, `SpielerControllerTests` 300 Tage/16:05, seit S5 `TeamGeneratorTests`
-  500 Tage/20:15. **`ManuelleGenerierungTests` braucht keinen** – A24 ist terminfrei, und sobald
-  die Klasse einen Streifen braucht, hat sich eine Terminabhängigkeit eingeschlichen. Das ist die
-  schnellste Gegenprobe, die es dafür gibt. Wer eine weitere anlegt, vergibt den nächsten. **Beide Achsen zählen** – ein
+  200 Tage/17:30, `SpielerControllerTests` 300 Tage/16:05, mit S5 `TeamGeneratorTests`
+  500 Tage/20:15. Wer eine weitere anlegt, vergibt den nächsten. **Beide Achsen zählen** – ein
   bereits vergebener Tag mit anderer Uhrzeit hielte zwar am Constraint, kollidiert aber mit dem
   Nächsten, der nur die Tage vergleicht.
 - **Termine für Lesetests entstehen per SQL, nicht über den Adminendpunkt.** Der Lesepfad soll
@@ -490,18 +447,6 @@ Jeder Punkt hat schon mindestens einmal Zeit gekostet.
   erreicht" braucht deshalb `min = max` und mehr Zusagen als beide.
 - **Zeitgrenzen mit Abstand prüfen, nicht am Rand.** `fubo.zeitzone` steht ausdrücklich auch in
   `src/test/resources/application.yml` – in einem CI-Container stünde die Systemzeit auf UTC.
-- **Eine Fallunterscheidung, deren einer Zweig unerreichbar ist, prüft nichts** (06.09.2026,
-  kostete einen Lauf). `TerminService#aendern` setzte `teams_fixiert` mit
-  `!beginn.isBefore(jetzt)` – für jeden künftigen Zeitpunkt wahr, also gesetzt statt gelöscht.
-  Dass `pruefeNichtVergangen` oben schon jeden anderen Zeitpunkt ablehnt, machte den zweiten
-  Zweig unerreichbar **und den Fehler unsichtbar**; der Kommentar daneben verteidigte die
-  Bedingung sogar ausdrücklich. **Erkennungsmerkmal:** Wer eine Bedingung mit „steht hier
-  ausdrücklich, obwohl sie nie anders ausgeht" begründet, hat eine geschrieben, die niemand
-  liest – und niemand prüft.
-- **Ein Testdaten-Helfer, der auf `aktiv` filtert, ändert sein Ergebnis, sobald der Fall etwas
-  sperrt.** `spielerId(5)` liefert nach dem Sperren ein anderes Profil; die Auswahl muss deshalb
-  **vor** der Sperre entstehen. Sonst prüft der Fall, dass sechs aktive Profile durchgehen – und
-  ist grün, ohne den Ablehnungspfad je berührt zu haben.
 - **Ein rückwärts zählender Testdaten-Parameter dreht die Erwartung** (31.08.2026, kostete einen
   Lauf): `zusageAnlegen(…, vorMinuten)` setzt `gemeldet_am = now() - vorMinuten`, die
   **grössere** Zahl meldet sich also **früher** und steht weiter oben. Jede solche Zahl trägt am
@@ -543,20 +488,9 @@ docker compose -f compose.dev.yml --env-file .env up -d
 ./mvnw clean verify
 ```
 
-**Zuletzt grün am 06.09.2026 – 340 Tests in 27 Klassen** (S5, Pakete 1–5). **Der Lauf über den
-vollständigen Meilenstein steht bei 385 Tests in 29 Klassen und hatte einen Fehlschlag; er ist
-behoben, der Bestätigungslauf steht aus.** Verlauf: 148 in 16 Klassen (22.08.), 184 (23.08.),
-227 in 21 und 244 in 22 (beide 29.08.), 247/260/264/265 in 23 (30.08.), 300 in 25 (S4,
-Pakete 1–4, 30.08.), 331 in 26 (S4, 31.08.), 340 in 27 (S5, Pakete 1–5, 06.09.), 385 in 29 (S5
-vollständig, 06.09.).
-
-**Der vorab gezählte Erwartungswert traf wieder exakt** – 385 waren angekündigt, 385 wurden
-ausgeführt. Die in `S5_UMSETZUNG.md`, 12.5 *geschätzten* 377 lagen dagegen um acht daneben; das
-ist der Grund, aus dem die Zahl unmittelbar vor dem Lauf gezählt und nicht fortgeschrieben wird.
-
-**Die beiden neuen Klassen aus S5** sind `TeamGeneratorTests` (20 Fälle, Zeitstreifen 500/20:15)
-und `ManuelleGenerierungTests` (20 Fälle, ohne Streifen). Dazu +3 in `SpielerControllerTests`
-(Sperren nimmt Zusagen zurück) und +2 in `TerminVerwaltungControllerTests` (Fixierung).
+**Zuletzt grün am 06.09.2026 – 340 Tests in 27 Klassen.** Verlauf: 148 in 16 Klassen (22.08.),
+184 (23.08.), 227 in 21 und 244 in 22 (beide 29.08.), 247/260/264/265 in 23 (30.08.), 300 in 25
+(S4, Pakete 1–4, 30.08.), 331 in 26 (S4, 31.08.), 340 in 27 (S5, Pakete 1–5, 06.09.).
 
 **`TeamverfahrenTests` ist die vierte Klasse ohne Spring-Kontext** – neben
 `SessionAuthFilterTests`, `SessionCookieFactoryTests` und `BruteForceServiceTests`. Sie läuft in
@@ -573,9 +507,7 @@ awk -F'[:,]' '/^Tests run:/ {t+=$2; k++} END {print k" Klassen, "t" Faelle"}' \
 ```
 
 **`SecurityConfigTests` bleibt bei 26**, obwohl mit jedem Meilenstein Pfade dazukommen: Sie
-stehen als Zusicherungen *innerhalb* der bestehenden Bündelfälle. S5 hat dort beide neuen Pfade
-namentlich eingetragen – sie unterscheiden sich **nur im `/admin/`-Präfix**, und die
-Platzhalterprüfung `/api/*/admin/**` bemerkt einen Tippfehler darin nicht. Wer die Fallzahl als Mass für
+stehen als Zusicherungen *innerhalb* der bestehenden Bündelfälle. Wer die Fallzahl als Mass für
 die Abdeckung liest, unterschätzt diese Klasse systematisch.
 
 **Scheitert ein Lauf, zuerst die Surefire-Berichte lesen, nicht die Maven-Zusammenfassung.** Bei
@@ -601,65 +533,57 @@ Drei Punkte zur Gastverwaltung stehen in keiner Anleitung, die Bruno-Requests un
 
 ## 7. Nächste Schritte
 
-1. **`./mvnw clean verify` laufen lassen.** Erwartet werden **385 Fälle in 29 Klassen**, grün.
-   Der Fehlschlag vom 06.09.2026 (`verschiebenInDieZukunftSetztDieFixierungZurueck`) ist behoben.
-   **Scheitert etwas anderes, zuerst die Surefire-Berichte lesen**, nicht die
-   Maven-Zusammenfassung – Vorgehen in 6.4. Erst danach committen; der Themenschnitt steht in
-   `S5_UMSETZUNG.md`, 13.2 (Vertrag, Aufstellung, Zielfunktion und Verfahren, Kontingent,
-   Generierungslauf, Lesepfad, manueller Lauf, Nachträge, Tests, Doku).
-2. **Danach alle Handprüfungen in einem Zug** – entschieden am 06.09.2026, weil eine halbe
-   Generierung nichts zeigt, was sich prüfen liesse. Es sind drei Listen:
+1. **S5 weiterbauen** nach `harness/tmp/S5_UMSETZUNG.md` **und `harness/tmp/S5_ALGORITHMUS.md`**
+   (zusammen 24,0 h inkl. A24; Abschnitte 1 bis 5 sind gebaut, offen bleiben rund 12,5 h).
+   Als Nächstes **Abschnitt 6, Kontingent und Seed** – und damit sofort der Punkt, der drei
+   Testklassen anfasst: **`AktiveSitzung` bekommt `gastSlotId`** (15, Punkt 5), sonst hat ein
+   Gast kein Kontingent. **Zwei Nachträge aus S4 gehören zu S5** und sind leicht zu übersehen:
+   Sperren nimmt die Zusagen zurück (Reihenfolge beachten – erst die Version erhöhen, dann die
+   Zusage zurücknehmen), und `teams_fixiert` wird vom bestehenden A18-Auftrag bei Terminbeginn
+   gesetzt.
+2. **A24 in die Gesamtspezifikation nachziehen – überfällig, der Code steht.** Die Anforderung
+   steht nur in `AGENT_SERVER.md`. `/PRJ_FuBo/harness/AGENT.md` ist die maßgebliche Quelle und
+   kennt sie nicht; solange das so bleibt, widersprechen sich die beiden Dokumente. `A20b` ist
+   bei der Gelegenheit zu präzisieren, falls Weggabelung A im Sinne der Alternative entschieden
+   wird.
+3. **Nach Abschluss von S5: alle Handprüfungen in einem Zug** (entschieden am 06.09.2026 – eine
+   halbe Generierung zeigt nichts, was sich prüfen liesse). Es sind drei Listen:
+   - **S4, `S4_UMSETZUNG.md` 11.1** – die beiden Punkte, die eine laufende Anwendung brauchen:
+     der automatische Terminabschluss im Betrieb (Termin per SQL in die Vergangenheit setzen,
+     fünf Minuten warten) und die Gast-Stufe über den Sitzungsablauf hinweg. Alles Übrige dort
+     ist über die Bruno-Ordner `termine` und `admin/termin` gangbar.
    - **S5, `S5_UMSETZUNG.md` 13.1** – darunter die sechs Punkte zu A24, allen voran: fünfmal
      derselbe Aufruf muss fünfmal `200` liefern, und `spieltag.team_generierung` muss danach
-     unverändert sein. Der Bruno-Ordner `teams/` bildet die Aufrufe ab.
-   - **S4, `S4_UMSETZUNG.md` 11.1** – die beiden Punkte, die eine laufende Anwendung brauchen:
-     der automatische Terminabschluss im Betrieb (jetzt zugleich der Beleg für `teams_fixiert`)
-     und die Gast-Stufe über den Sitzungsablauf hinweg.
+     unverändert sein.
    - **Gastverwaltung, 6.4** – die drei Punkte, die in keiner Anleitung stehen.
-3. **Client-Track informieren.** Drei brechende Vertragsänderungen aus früheren Meilensteinen
-   (4.1) und **alles Neue aus S5** (4.3): der Adminbildschirm für A24 samt dem Hinweis, dass sein
-   Ergebnis nirgends gespeichert wird, das nullbare Feld `teams` in der Einzelansicht, die vier
-   neuen `409`-Codes und dass `algorithmType` und `auswechselModus` in der Antwort von der
-   Konfiguration abweichen dürfen.
-4. **S6 beginnen** (Ergebnis & Audit, 8 h): „erster Eintrag gilt", Admin-Korrektur, Bilanz-Zähler.
-   **S5 hinterlässt zwei Zusicherungen, auf die S6 baut:** Massgeblich für die beteiligten Spieler
-   ist die Einteilung mit `abgeloest_am IS NULL` – ein Ergebnis ohne Einteilung hat keine
-   beteiligten Spieler und ist abzulehnen, nicht still zu speichern. Und `team_zuteilung.team` ist
-   die **einzige** `CHAR(1)`-Spalte, die schon in Gebrauch ist; `ergebnis.sieger` ist die zweite
-   und braucht die Mapping-Regel aus `AGENT_SERVER.md` von Anfang an.
+4. **Client-Track informieren:** die drei brechenden Vertragsänderungen (4.1) – `anmeldename` im
+   Admin-Login, vollständige `skills` beim Anlegen eines Profils, `auswechselModus` im
+   Voll-Update der Konfiguration – **und der neue Adminbildschirm für A24** samt der Punkte aus
+   4.3, allen voran: Das Ergebnis des manuellen Laufs wird nicht gespeichert.
 
 **Offene Punkte, die keine Aufgabe für heute sind:**
 
-- **`MAX_EXHAUSTIV = 24` ist gesetzt, nicht gemessen.** `C(24,12) ≈ 2,7 Mio.` ist auf einem
-  Entwicklungsrechner tragbar; ob auch auf dem Raspberry Pi 5, zeigt erst eine Messung auf der
-  Zielhardware – sie gehört zu S8. **Mit A24 ist die Grenze zugleich der einzige Schutz vor
-  Dauerläufen**, weil der manuelle Lauf kein Kontingent kostet.
-- **Drei Teams sind ausgeschlossen.** `ck_team_zuteilung_team` lässt nur `A` und `B` zu. Über 22
-  Teilnehmern wäre ein drittes Team naheliegend – Migration, andere Zielfunktion, anderer
-  Auswechselspieler-Begriff, also ein eigener Meilenstein.
-- **Alte Generierungsläufe werden nie aufgeräumt.** Belanglos, solange Termine bestehen;
-  `ON DELETE CASCADE` nimmt sie mit dem Termin.
+- **Die Zeitzone der Datenbanksitzung ist nicht gesetzt.** Ohne Folge, solange alle
+  Zeitvergleiche über die `Clock`-Bean laufen. Sobald eine Abfrage `current_date` oder
+  `current_time` benutzt, gehört `TimeZone` in die Datenbankkonfiguration oder der Wert als
+  Parameter in die Abfrage.
+- **`termin.teams_fixiert`** bekommt mit S5 seine erste Bedeutung – und bleibt dabei
+  grösstenteils redundant zu den bestehenden Statusprüfungen. Begründung in `S5_UMSETZUNG.md`,
+  10.2.
 - **Der manuelle Lauf hinterlässt nur den Audit-Eintrag**, und der wird nach 90 Tagen gelöscht
   (`fubo.audit.aufbewahrung-tage`). Bewusst so entschieden; wird es zum Problem, ist die Antwort
   die Migration `V012` aus `S5_UMSETZUNG.md`, 0.6 – **nicht** eine längere Löschfrist, denn die
   Frist gilt dem Personenbezug und nicht der Nachvollziehbarkeit von Rechnungen.
-- **`configs.app_config.anz_guests` gilt im manuellen Lauf nicht.** Der Wert begrenzt gleichzeitige
-  Gastsitzungen, nicht Mitspieler auf dem Platz; die Summe begrenzt `max_teilnehmer`. Wer das
-  ändern will, ändert eine Bedeutung, keine Zahl.
-- **Ein Wechsel von `auswechsel_modus` ändert den angezeigten Auswechselspieler bestehender
-  Läufe.** Die Einteilung bleibt unberührt (A20b führt den Modus als Anzeigeregel). Wer das
-  anders will, braucht `auswechsel_teilnahme_id` in `team_generierung` – und damit `V012`.
-- **Die Zeitzone der Datenbanksitzung ist nicht gesetzt.** Ohne Folge, solange alle Zeitvergleiche
-  über die `Clock`-Bean laufen; S5 hält das durchgängig ein und übergibt jeden Zeitpunkt als
-  Parameter. Sobald eine Abfrage `current_date` oder `current_time` benutzt, gehört `TimeZone` in
-  die Datenbankkonfiguration.
-- **Betriebsaufgabe ohne Code:** Custom Domain `app.<domain>` in Cloudflare Pages einrichten. Ohne
-  sie funktioniert die Anmeldung produktiv nicht – `pages.dev` steht auf der Public Suffix List und
-  wäre gegenüber `api.<domain>` cross-site, mit `SameSite=None; Secure`, zwingendem CSRF-Schutz und
-  einem Cookie, das Safari und der Chrome-Inkognito-Modus blockieren. Ebenfalls offen:
-  Pages-Preview-Deployments, in denen der Login bauartbedingt nicht funktioniert.
-- **Deployment (S8):** Entwurf mit Dockerfile, Compose-Ergänzung, nginx-Block, Backup und Rollout
-  liegt in `harness/tmp/S8_DEPLOYMENT.md`.
+- **`configs.app_config.anz_guests` gilt im manuellen Lauf nicht.** Der Wert begrenzt
+  gleichzeitige Gastsitzungen, nicht Mitspieler auf dem Platz; die Summe begrenzt dort
+  `max_teilnehmer`. Wer das ändern will, ändert eine Bedeutung, keine Zahl.
+- **Betriebsaufgabe ohne Code:** Custom Domain `app.<domain>` in Cloudflare Pages einrichten.
+  Ohne sie funktioniert die Anmeldung produktiv nicht – `pages.dev` steht auf der Public Suffix
+  List und wäre gegenüber `api.<domain>` cross-site, mit `SameSite=None; Secure`, zwingendem
+  CSRF-Schutz und einem Cookie, das Safari und der Chrome-Inkognito-Modus blockieren. Ebenfalls
+  offen: Pages-Preview-Deployments, in denen der Login bauartbedingt nicht funktioniert.
+- **Deployment (S8):** Entwurf mit Dockerfile, Compose-Ergänzung, nginx-Block, Backup und
+  Rollout liegt in `harness/tmp/S8_DEPLOYMENT.md`.
 
 **Profildaten** (Vorgehen steht): Reale Daten liegen ausserhalb des Server-Repositories – derzeit
 in `PRJ_FuBo/db_prod_data/`. Pfad in `FUBO_LOCAL_SEED`, Einspielen über `scripts/seed-lokal.sh`.

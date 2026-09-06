@@ -4,7 +4,7 @@
 > Gesamtspezifikation und Datenmodell bleibt `/PRJ_FuBo/harness/AGENT.md`, für den Kontrakt
 > `server/fubo-api.json`, für Stand und Fallstricke `CONTEXT_HANDOFF_SERVER.md`.
 >
-> **Am 05.09.2026 verdichtet.** Jede Regel steht hier mit dem *einen* Grund, der sie trägt – wer
+> **Am 05.09.2026 verdichtet, am 06.09.2026 um die Regeln aus S5 ergänzt.** Jede Regel steht hier mit dem *einen* Grund, der sie trägt – wer
 > sie ändern will, muss den Grund entkräften, nicht die Zeile löschen. **Vorfälle, Daten und
 > ausführliche Herleitungen stehen nicht mehr hier**, sondern in `CONTEXT_HANDOFF_SERVER.md`
 > (6.2 Festlegungen, 6.3 Fallstricke), in `harness/tmp/S<n>_UMSETZUNG.md` und in
@@ -230,7 +230,13 @@ bleibt trotzdem eine Regel, die beim Lesen auffallen soll. Der Teamgenerator lie
    ein zweiter Beleg verdoppelte personenbezogene Daten und fiele nach 90 Tagen der Löschfrist zum
    Opfer. Adminaktionen ja, Nutzerhandlungen nein; die Korrektur einer Gast-Stufe durch den Admin
    ist die einzige Ausnahme.
-8. **Die Teilnehmerliste trägt keine Bewertungen** – sie erreicht jede Rolle, auch `GAST` (A12);
+8. **Sperren nimmt die Zusagen künftiger, geplanter Termine zurück – erst die Version
+   erhöhen, dann die Zusage.** `teilnehmerVersionErhoehenFuerSpieler` sucht über
+   `EXISTS (… AND tn.zusage)`; falsch herum ist der Code lauffähig und **wirkungslos**.
+   Beide Schritte mit derselben Uhrzeit, sonst könnte ein Termin dazwischen die Grenze
+   „künftig" überschreiten. Die Zahl geht in den bestehenden `PROFIL_BLOCKIERT`-Eintrag –
+   es ist eine Folge des Sperrens, keine eigene Handlung.
+9. **Die Teilnehmerliste trägt keine Bewertungen** – sie erreicht jede Rolle, auch `GAST` (A12);
    eine rollenabhängige Liste müsste an jeder Stelle mitgedacht werden.
 
 ### Teilnehmer-Version
@@ -275,7 +281,14 @@ noch Bedingung kennen muss.
 6. **Der Status ist nur vorwärts setzbar**: `ABGESAGT` und `ABGESCHLOSSEN` ja, `GEPLANT` nein –
    ein `400`, kein `409`, denn es ist kein Zustand, der sich mit der Zeit ändert. Über `aendern`
    auf `ABGESAGT` gesetzt, heisst der Protokolleintrag trotzdem `TERMIN_ABGESAGT`.
-7. **Ein geplanter Termin schliesst sich 30 Minuten nach Beginn selbst ab** (A18); der Auftrag
+7. **`teams_fixiert` setzt derselbe Auftrag bei Terminbeginn** – zwei Anweisungen, ein Auftrag;
+   eine zweite `@Scheduled`-Methode wäre ein zweiter Takt für dieselbe Sache. Danach
+   `409 TEAMS_FIXIERT` beim Generieren. **Wird der Termin in die Zukunft verschoben, fällt die
+   Fixierung zurück** – sonst bliebe der Generator für einen künftigen Termin dauerhaft
+   gesperrt, mit einem Grund, der in der Vergangenheit liegt. Die Spalte ist grösstenteils
+   redundant; was sie hinzufügt, ist ein benennbarer Fehlercode statt eines Scheiterns an einer
+   impliziten Statusprüfung.
+8. **Ein geplanter Termin schliesst sich 30 Minuten nach Beginn selbst ab** (A18); der Auftrag
    läuft alle fünf Minuten, der Übergang also zwischen 30 und 35 Minuten. **Aufräumung, kein
    Torwächter** – ob gemeldet werden darf, entscheidet die Uhrzeit. Die Frist ist eine Konstante
    im Dienst, kein Konfigurationsfeld: ein weiteres Pflichtfeld im Voll-Update wäre brechend. Der
@@ -290,6 +303,15 @@ noch Bedingung kennen muss.
   Fehler, sondern zwei „aktuelle" Einteilungen.
 - **Das Kontingent wird nie zurückgesetzt, sondern durch einen neuen Schlüssel umgangen** – steigt
   `teilnehmer_version`, passt keine bestehende Zeile mehr. Kein Löschjob, kein Wettlauf.
+  Verbucht wird in **einer** Anweisung (`INSERT … ON CONFLICT ON CONSTRAINT uq_kontingent DO
+  UPDATE … WHERE anzahl < :grenze RETURNING anzahl`); eine leere Ergebnismenge heisst
+  „erschöpft". **Über die Spaltenliste statt über den Constraint scheitert die Ableitung** –
+  `uq_kontingent` trägt `NULLS NOT DISTINCT`. Der Akteur ist ein Spieler *oder* ein Gastplatz;
+  `AktiveSitzung` führt deshalb `gastSlotId`, sonst hätte ein Gast gar kein Kontingent.
+- **Höchstens ein unabgelöster Lauf je Termin, und das Ablösen läuft vor dem `INSERT`.**
+  `ix_team_generierung_aktuell` setzt die Eigenschaft voraus, erzwingt sie aber nicht.
+- **`veraltet` wird abgeleitet** (`tg.teilnehmer_version <> t.teilnehmer_version`), nie
+  gespeichert – dieselbe Regel wie bei der Warteschlangenposition.
 - **Gast-Slots sind feste Datensätze**, Belegung per bedingtem `UPDATE` statt gezählter Abfrage;
   `anz_guests` wirkt über `id <= :maxGaeste`. **`fk_gast_slot_session` hat kein `ON DELETE`:** Wer
   Sitzungen löscht, gibt vorher die Plätze frei, in derselben Transaktion.
@@ -483,6 +505,41 @@ ohne eigene Prüfung.
   Algorithmus ist in der Javadoc spezifiziert, `RandomGenerator.getDefault()` darf sich zwischen
   Java-Versionen ändern – dann liesse sich ein gespeicherter Lauf nicht mehr nachrechnen.
 
+### Der Generierungslauf
+
+- **Das Kontingent wird vor der Rechnung verbucht.** Wer erst rechnet und dann prüft,
+  verschenkt bei `EXHAUSTIV` eine Zehntelsekunde CPU an jeden, der zu oft drückt – und macht
+  daraus ein Mittel, den Server zu beschäftigen.
+- **Der Schreibpfad liest den Termin nativ, nie über `findById`.** Status, `teams_fixiert` und
+  `teilnehmer_version` kommen aus *einer* Abfrage (`TerminRepository#zustand`). Eine geladene
+  Entity lieferte den Zähler aus dem Persistence-Context – also veraltet, sobald ein natives
+  `UPDATE` ihn zwischendurch erhöht hat; dieselbe Regel wie beim Rückmeldepfad aus S4.
+- **Die `teilnehmer_version` wird am Ende gegengeprüft, statt den Termin zu sperren**
+  (`409 TEILNEHMER_GEAENDERT`). Bei einem Vorgang von Millisekunden der bessere Handel, und es
+  geht nichts verloren: Das Kontingent steht unter dem neuen Schlüssel wieder offen.
+- **Der Termin-Lauf liest sein eigenes Ergebnis zurück, statt die Antwort aus der Rechnung zu
+  bauen.** Der Auswechselspieler wird nirgends gespeichert (unten), also zweimal bestimmt –
+  weichen Lauf und Ableitung voneinander ab, fällt es sofort auf und nicht erst beim nächsten
+  Öffnen des Termins.
+- **Die Zuteilungen werden in Laufreihenfolge geschrieben** (erst Team A, dann Team B, je in
+  der Reihenfolge der Aufteilung) und über `ORDER BY id` wieder gelesen. **Das ist keine
+  Kosmetik:** Bei Gleichstand entscheidet der Seed über die Position in der Kandidatenliste des
+  Auswechselspielers – nur bei gleicher Ordnung fällt die Wahl genauso aus.
+- **Der Auswechselspieler wird nicht gespeichert, sondern beim Lesen erneut bestimmt** – aus
+  Teamgrössen, `score_snapshot`, `gemeldet_am`, dem gespeicherten Seed und dem *heute*
+  eingestellten Modus. Eine Spalte kostete die Migration `V012` und nähme S5 die
+  Migrationsfreiheit. **Die Wahl läuft mit einem frischen `new Random(seed)`**, nicht mit dem
+  Generator des Verfahrens: Dessen Zustand ist ohne Wiederholung des ganzen Laufs nicht
+  rekonstruierbar. Folge, die man kennen muss: Ändert der Admin `auswechsel_modus`, kann sich
+  der angezeigte Auswechselspieler eines bestehenden Laufs ändern – die *Einteilung* bleibt
+  unberührt (A20b).
+- **Die gewichtete Gesamtstärke wird je Lauf einmal gerechnet** und wandert im Ergebnis mit:
+  Snake-Draft, `score_snapshot` und Auswechselspieler benutzen dieselbe Zahl. Drei Rechnungen
+  wären drei Gelegenheiten, „schwächster Spieler" verschieden zu meinen.
+- **Die Umrechnung Hundertstel → `NUMERIC(6,2)` steht genau an einer Stelle** (`Teamergebnis`).
+  Sie liegt bewusst in `domain`: Sonst müsste ein DTO auf die Service-Schicht zugreifen, um
+  seinen eigenen Wert zu bilden.
+
 ---
 
 ## Schnittstelle zum Frontend (Vertrag)
@@ -632,7 +689,11 @@ de/fubo/appserver/
 
 **Repositories ohne Entity sind erlaubt**, wenn die Tabelle nur angehängt oder bedingt
 aktualisiert wird (`AuditLogRepository`, `GastSlotRepository`, `SkillKategorieRepository`,
-`TeilnahmeRepository`, `SessionRepositoryImpl` – alle über `JdbcClient`). Bei `gast_slot` wäre eine
+`TeilnahmeRepository`, `SessionRepositoryImpl`, seit S5 `AufstellungRepository`,
+`KontingentRepository` und `TeamGenerierungRepository` – alle über `JdbcClient`). Bei
+`generierung_kontingent` gilt dasselbe Argument wie bei `gast_slot`: Optimistic Locking meldete
+den Wettlauf zweier gleichzeitiger Klicks erst beim Schreiben und verlangte eine Wiederholung,
+das bedingte `UPDATE` entscheidet ihn ohne. Bei `gast_slot` wäre eine
 Entity mit `@Version` sogar nachteilig: Optimistic Locking meldet den Konflikt erst beim Schreiben
 und verlangt eine Wiederholung, das bedingte `UPDATE` entscheidet den Wettlauf ohne. **Wird eine
 `version`-Spalte per SQL geändert, ist sie von Hand fortzuschreiben.**
@@ -698,8 +759,11 @@ Ursache.**
 | `SMALLINT` | `short` / `Short` | keiner |
 | `BIGSERIAL` | `Long` | `@GeneratedValue(strategy = IDENTITY)` |
 
-Die beiden `CHAR(1)`-Spalten aus `V006` sind noch nicht gemappt – die Entities entstehen in S5 und
-S6; die Regel steht hier, damit sie dort von Anfang an stimmen.
+**Die beiden `CHAR(1)`-Spalten aus `V006` bleiben ungemappt.** `team_zuteilung.team` wird seit S5
+über `JdbcClient` gelesen und geschrieben – die Tabelle wird nur angehängt und aggregiert
+gelesen, eine Entity gäbe es für das Leseergebnis ohnehin nicht (es läuft aus drei Tabellen
+zusammen). `ergebnis.sieger` folgt in S6; die Regel steht hier, damit sie dort von Anfang an
+stimmt.
 
 **2. Der Validator prüft keine Zuordnung.** Zwei vertauschte Spalten desselben Typs – etwa
 `min_teilnehmer`/`max_teilnehmer` oder die beiden Session-Timer – fallen ihm nicht auf. Jede Entity
