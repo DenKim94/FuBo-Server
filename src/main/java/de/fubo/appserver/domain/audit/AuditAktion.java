@@ -203,5 +203,41 @@ public enum AuditAktion {
      * 90 Tagen der Loeschfrist zum Opfer fielen, waehrend die Teilnahme bliebe. Diese
      * Aenderung dagegen ueberschreibt eine Selbsteinschaetzung und gehoert deshalb belegt.
      */
-    GAST_STUFE_GEAENDERT
+    GAST_STUFE_GEAENDERT,
+
+    /**
+     * Ein Generierungslauf am Termin (A15, S5 Abschnitt 7.1).
+     *
+     * <p>Als {@code entitaet} steht {@code termin}, als {@code entitaet_id} die Termin-Id.
+     * <b>Handelnder ist der Aufrufer und nicht der Admin</b> - {@code /teams/generieren} liegt
+     * ausserhalb von {@code /admin/}, jeder Angemeldete darf generieren.
+     *
+     * <p>Die Details nennen Verfahren, Seed, Teilnehmerzahl und Kosten. <b>Sie sind hier
+     * Beiwerk</b>, anders als beim manuellen Lauf: Der Lauf selbst steht mit allem Noetigen in
+     * {@code spieltag.team_generierung} und ueberlebt dort auch die Loeschfrist von 90 Tagen.
+     */
+    TEAMS_GENERIERT,
+
+    /**
+     * Ein manueller Generierungslauf des Admins ohne Termin (A24, S5 Abschnitt 9.4).
+     *
+     * <p><b>Der Eintrag ist die einzige Spur, die dieser Lauf hinterlaesst.</b> Er wird
+     * nirgends gespeichert: {@code team_generierung.termin_id} ist {@code NOT NULL} und
+     * {@code team_zuteilung.teilnahme_id} haengt am Fremdschluessel auf
+     * {@code spieltag.teilnahme} - ein Teilnehmer ohne Teilnahmezeile passt dort nicht hinein.
+     *
+     * <p>Deshalb traegt er mehr als sonst ueblich: Teilnehmer, Seed, verwendetes Verfahren und
+     * Kosten. <b>Der Seed steht ausschliesslich hier</b> - die Antwort fuehrt ihn nicht mit
+     * (Festlegung vom 05.09.2026), weil er ohne die Skillwerte daneben eine Zahl ohne
+     * Verwendung waere.
+     *
+     * <p>{@code entitaet} und {@code entitaet_id} bleiben leer: Es entsteht keine Ressource,
+     * auf die sie zeigen koennten.
+     *
+     * <p><b>Preis, den man kennen muss:</b> Nach 90 Tagen faellt der Eintrag der Loeschfrist
+     * zum Opfer ({@code fubo.audit.aufbewahrung-tage}), und damit die gesamte Nachvollziehbarkeit
+     * dieses Laufs. Bewusst hingenommen - die Frist gilt dem Personenbezug, nicht der
+     * Nachrechenbarkeit einer Adminrechnung.
+     */
+    TEAMS_MANUELL_GENERIERT
 }

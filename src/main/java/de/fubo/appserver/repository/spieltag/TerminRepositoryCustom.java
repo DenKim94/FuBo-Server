@@ -1,6 +1,7 @@
 package de.fubo.appserver.repository.spieltag;
 
 import de.fubo.appserver.domain.spieltag.TerminEintrag;
+import de.fubo.appserver.domain.spieltag.Terminzustand;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -99,6 +100,39 @@ public interface TerminRepositoryCustom {
      * @return Anzahl betroffener Termine
      */
     int teilnehmerVersionErhoehenFuerSpieler(Long spielerId, LocalDateTime jetzt);
+
+    /**
+     * Liest Status, Fixierung und Teilnehmerzaehler eines Termins (S5 Abschnitte 2.4, 6.3, 7.1).
+     *
+     * <p><b>Nativ und nicht ueber die Entity.</b> Der Generierungslauf merkt sich die Version
+     * zu Beginn und prueft sie am Ende gegen; eine zwischenzeitlich geladene {@code Termin}-
+     * Entity lieferte den Stand aus dem Persistence-Context und damit genau den Wert, gegen
+     * den geprueft werden soll. Unter {@code READ COMMITTED} sieht diese Abfrage dagegen, was
+     * eine andere Transaktion inzwischen bestaetigt hat - und das ist der ganze Zweck.
+     * Dieselbe Ueberlegung wie beim Rueckmeldepfad aus S4.
+     *
+     * @param terminId betroffener Termin
+     * @return der Zustand oder {@link Optional#empty()}, wenn es die Id nicht gibt
+     */
+    Optional<Terminzustand> zustand(Long terminId);
+
+    /**
+     * Setzt {@code teams_fixiert} bei allen geplanten Terminen, deren Beginn erreicht ist
+     * (A18, S5 Abschnitt 10.2).
+     *
+     * <p><b>Aufraeumung, kein Torwaechter.</b> Der Auftrag laeuft alle fuenf Minuten, die
+     * Fixierung greift also bis zu fuenf Minuten nach Anpfiff - hinnehmbar, weil keine
+     * fachliche Regel an ihrer Puenktlichkeit haengt: Ob noch gemeldet werden darf, entscheidet
+     * nach A7 die Uhrzeit und nicht dieses Flag.
+     *
+     * <p>{@code NOT teams_fixiert} macht die Anweisung wiederholbar - ohne die Bedingung
+     * stiege {@code version} bei jedem Lauf, und jeder offene Bearbeitungsdialog liefe in
+     * {@code 409 DATEN_VERALTET}.
+     *
+     * @param jetzt Vergleichszeitpunkt aus der {@code Clock}-Bean
+     * @return Anzahl fixierter Termine
+     */
+    int teamsFixieren(LocalDateTime jetzt);
 
     /**
      * Setzt alle geplanten Termine auf {@code ABGESCHLOSSEN}, deren Beginn lange genug

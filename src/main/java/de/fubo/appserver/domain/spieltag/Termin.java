@@ -81,10 +81,16 @@ public class Termin {
     /**
      * Ob die Teameinteilung eingefroren ist.
      *
-     * <p><b>Bleibt in S4 unangetastet.</b> Die Spalte gehoert zum offenen Punkt "Einteilung
-     * einfrieren" und bekommt erst mit S5 eine Bedeutung. Sie steht hier, weil
-     * {@code ddl-auto=validate} nur die Existenz gemappter Spalten prueft - eine fehlende
-     * Abbildung faellt nicht auf, ein spaeteres Nachziehen dagegen schon.
+     * <p><b>Seit S5 in Gebrauch.</b> Gesetzt wird das Flag vom A18-Auftrag bei Terminbeginn,
+     * zurueckgesetzt beim Verschieben in die Zukunft (10.2); wer danach generieren will,
+     * bekommt {@code 409 TEAMS_FIXIERT}.
+     *
+     * <p><b>Ehrlich zu benennen: Es ist grossteils redundant.</b> Nach Terminbeginn nimmt A7
+     * ohnehin keine Rueckmeldung mehr an, und {@code teilnehmerVersionErhoehenFuerSpieler}
+     * fasst nur kuenftige Termine an - die Version kann nicht mehr steigen, die Einteilung
+     * nicht mehr veralten. Was das Flag hinzufuegt, ist Ausdruecklichkeit: ein benennbarer
+     * Fehlercode statt eines Scheiterns an einer impliziten Statuspruefung, und ein in der
+     * Datenbank ablesbarer Zustand.
      */
     @Column(name = "teams_fixiert", nullable = false)
     private boolean teamsFixiert;
@@ -131,6 +137,8 @@ public class Termin {
     public int getTeilnehmerVersion() { return teilnehmerVersion; }
 
     public boolean isTeamsFixiert() { return teamsFixiert; }
+
+    public void setTeamsFixiert(boolean teamsFixiert) { this.teamsFixiert = teamsFixiert; }
 
     public Long getVersion() { return version; }
 }

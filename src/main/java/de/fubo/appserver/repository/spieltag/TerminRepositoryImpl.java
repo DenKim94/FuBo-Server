@@ -2,6 +2,7 @@ package de.fubo.appserver.repository.spieltag;
 
 import de.fubo.appserver.domain.spieltag.TerminEintrag;
 import de.fubo.appserver.domain.spieltag.TerminStatus;
+import de.fubo.appserver.domain.spieltag.Terminzustand;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 import java.sql.ResultSet;
@@ -166,6 +167,37 @@ class TerminRepositoryImpl implements TerminRepositoryCustom {
                               AND tn.zusage)
             """;
 
+    /** Status, Fixierung und Teilnehmerzaehler, nativ gelesen (S5, 2.4 und 6.3). */
+    private static final String SQL_ZUSTAND_LESEN = """
+            SELECT status, teams_fixiert, teilnehmer_version
+              FROM spieltag.termin
+             WHERE id = :terminId
+            """;
+
+    /**
+     * Die Fixierung bei Terminbeginn (A18, S5 Abschnitt 10.2).
+     *
+     * <p><b>{@code teilnehmer_version} bleibt unberuehrt</b>, aus demselben Grund wie beim
+     * Abschluss: Der Teilnehmerkreis aendert sich nicht. Ein Ausschlag des Zaehlers setzte
+     * grundlos Generierungskontingente zurueck.
+     *
+     * <p><b>{@code version} steigt mit</b> - die Regel gilt fuer jede {@code version}-Spalte,
+     * die per SQL geaendert wird. {@code NOT teams_fixiert} sorgt dafuer, dass sie nur beim
+     * tatsaechlichen Uebergang steigt und nicht alle fuenf Minuten.
+     *
+     * <p>Der Zeitpunkt kommt als Parameter aus der {@code Clock}-Bean und nicht aus
+     * {@code current_date}/{@code current_time}: Die richten sich nach der Zeitzone der
+     * Datenbanksitzung, und die steht im Container auf UTC.
+     */
+    private static final String SQL_FIXIEREN = """
+            UPDATE spieltag.termin
+               SET teams_fixiert = true,
+                   version       = version + 1
+             WHERE status = 'GEPLANT'
+               AND NOT teams_fixiert
+               AND (datum + uhrzeit) <= :jetzt
+            """;
+
     /**
      * Der automatische Abschluss aus A18.
      *
@@ -252,6 +284,22 @@ class TerminRepositoryImpl implements TerminRepositoryCustom {
                 .param("spielerId", spielerId)
                 .param("jetzt", jetzt)
                 .update();
+    }
+
+    @Override
+    public Optional<Terminzustand> zustand(Long terminId) {
+        return jdbc.sql(SQL_ZUSTAND_LESEN)
+                .param("terminId", terminId)
+                .query((rs, zeile) -> new Terminzustand(
+                        TerminStatus.valueOf(rs.getString("status")),
+                        rs.getBoolean("teams_fixiert"),
+                        rs.getInt("teilnehmer_version")))
+                .optional();
+    }
+
+    @Override
+    public int teamsFixieren(LocalDateTime jetzt) {
+        return jdbc.sql(SQL_FIXIEREN).param("jetzt", jetzt).update();
     }
 
     @Override

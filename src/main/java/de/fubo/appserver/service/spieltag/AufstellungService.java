@@ -10,8 +10,9 @@ import de.fubo.appserver.domain.profil.SkillKategorie;
 import de.fubo.appserver.domain.spieltag.Aufstellungsspieler;
 import de.fubo.appserver.domain.spieltag.Gastauswahl;
 import de.fubo.appserver.domain.spieltag.ManuelleAuswahl;
-import de.fubo.appserver.domain.spieltag.Termin;
 import de.fubo.appserver.domain.spieltag.TerminStatus;
+import de.fubo.appserver.domain.spieltag.Terminzustand;
+import de.fubo.appserver.domain.team.Aufstellung;
 import de.fubo.appserver.repository.profil.SkillKategorieRepository;
 import de.fubo.appserver.repository.spieltag.AufstellungRepository;
 import de.fubo.appserver.repository.spieltag.TerminRepository;
@@ -40,9 +41,17 @@ import java.util.stream.Collectors;
  *   <li>{@link #fuerTermin(Long)} - die Zusagen eines Termins (2.2)</li>
  *   <li>{@link #manuell(ManuelleAuswahl)} - die freie Auswahl des Admins (2.5, A24)</li>
  * </ul>
- * <b>Hier endet die Verzweigung.</b> Beide liefern eine {@code List<Aufstellungsspieler>};
+ * <b>Hier endet die Verzweigung.</b> Beide liefern eine {@link Aufstellung};
  * Zielfunktion und Verfahren erfahren die Herkunft nicht. A24 ist deshalb keine zweite
  * Teamgenerierung, sondern eine zweite Eingangstuer zu derselben.
+ *
+ * <h2>Abweichung von der Anleitung: {@link Aufstellung} statt {@code List<Aufstellungsspieler>}</h2>
+ * 2.4 nennt die Liste als Rueckgabetyp. Die Verfahren brauchen aber zusaetzlich die aktiven
+ * Skillkategorien - und die liest dieser Dienst ohnehin, um die Vollstaendigkeit der Werte zu
+ * pruefen. Bliebe es bei der Liste, muesste der aufrufende Generierungsdienst sie ein zweites
+ * Mal holen und das Wertobjekt selbst zusammensetzen; <b>zwei Aufrufer, zwei Gelegenheiten,
+ * eine andere Kategorienmenge zu erwischen als die, gegen die geprueft wurde</b>. Fachlich ist
+ * es dieselbe Auskunft, nur vollstaendig.
  *
  * <h2>Warum dieser Dienst in {@code service.spieltag} liegt und nicht in {@code service.team}</h2>
  * Er beantwortet eine Frage des Spieltags - wer hat zugesagt, wer ist gesperrt, wer wartet -
@@ -116,19 +125,25 @@ public class AufstellungService {
      * liegen in der Abfrage.
      *
      * @param terminId betroffener Termin
-     * @return Teilnehmer in Meldereihenfolge, mindestens {@code min_teilnehmer} viele
+     * @return die Aufstellung: Teilnehmer in Meldereihenfolge, mindestens
+     *         {@code min_teilnehmer} viele, samt der aktiven Kategorien
      * @throws FachlicherFehler {@code 404 INHALT_NICHT_GEFUNDEN}, wenn es den Termin nicht
      *                          gibt; {@code 409 TERMIN_GESCHLOSSEN}, wenn er nicht mehr
      *                          geplant ist; {@code 409 ZU_WENIG_TEILNEHMER};
      *                          {@code 409 SKILLWERTE_UNVOLLSTAENDIG}
      */
     @Transactional(readOnly = true)
-    public List<Aufstellungsspieler> fuerTermin(Long terminId) {
-        Termin termin = terminRepository.findById(terminId)
+    public Aufstellung fuerTermin(Long terminId) {
+        // Nativ und nicht ueber findById: Der Generierungslauf liest die teilnehmer_version
+        // aus demselben Zustand, und die Entity lieferte sie aus dem Persistence-Context -
+        // also veraltet, sobald ein natives UPDATE sie zwischendurch erhoeht hat. Ausserdem
+        // bleibt die Entity damit aus dem Vorgang heraus; dieselbe Regel wie beim
+        // Rueckmeldepfad aus S4.
+        Terminzustand zustand = terminRepository.zustand(terminId)
                 .orElseThrow(() -> new FachlicherFehler(Fehlercode.INHALT_NICHT_GEFUNDEN,
                         "Es gibt keinen Termin mit dieser Id."));
 
-        if (termin.getStatus() != TerminStatus.GEPLANT) {
+        if (zustand.status() != TerminStatus.GEPLANT) {
             throw new FachlicherFehler(Fehlercode.TERMIN_GESCHLOSSEN,
                     "Für diesen Termin lassen sich keine Teams mehr generieren.");
         }
@@ -138,8 +153,7 @@ public class AufstellungService {
                 aufstellungRepository.fuerTermin(terminId, konfiguration.getMaxTeilnehmer());
 
         pruefeMindestzahl(aufstellung.size(), konfiguration.getMinTeilnehmer());
-        pruefeSkillwerte(aufstellung);
-        return aufstellung;
+        return pruefenUndBauen(aufstellung);
     }
 
     // --------------------------------------------------- Quelle 2: die Auswahl des Admins
@@ -173,14 +187,15 @@ public class AufstellungService {
      * Teilnehmerstand - beides fehlt hier.
      *
      * @param auswahl die benannten Profile und Gaeste
-     * @return Teilnehmer in der Reihenfolge der Auswahl: erst die Spieler, dann die Gaeste
+     * @return die Aufstellung in der Reihenfolge der Auswahl: erst die Spieler, dann die
+     *         Gaeste, samt der aktiven Kategorien
      * @throws FachlicherFehler {@code 400 EINGABE_UNGUELTIG}, {@code 409 PROFIL_GESCHUETZT},
      *                          {@code 409 ZU_WENIG_TEILNEHMER},
      *                          {@code 409 ZU_VIELE_TEILNEHMER},
      *                          {@code 409 SKILLWERTE_UNVOLLSTAENDIG}
      */
     @Transactional(readOnly = true)
-    public List<Aufstellungsspieler> manuell(ManuelleAuswahl auswahl) {
+    public Aufstellung manuell(ManuelleAuswahl auswahl) {
         if (auswahl.anzahl() == 0) {
             throw new FachlicherFehler(Fehlercode.EINGABE_UNGUELTIG,
                     "Es wurde kein Teilnehmer ausgewählt.");
@@ -198,9 +213,7 @@ public class AufstellungService {
         pruefeMindestzahl(auswahl.anzahl(), konfiguration.getMinTeilnehmer());
         pruefeHoechstzahl(auswahl.anzahl(), konfiguration.getMaxTeilnehmer());
 
-        List<Aufstellungsspieler> aufstellung = zusammenstellen(auswahl, profile, gastNamen);
-        pruefeSkillwerte(aufstellung);
-        return aufstellung;
+        return pruefenUndBauen(zusammenstellen(auswahl, profile, gastNamen));
     }
 
     // ------------------------------------------------------------------ Hilfsmittel
@@ -380,6 +393,25 @@ public class AufstellungService {
     }
 
     /**
+     * Prueft die Skillwerte und setzt daraus das Wertobjekt zusammen.
+     *
+     * <p><b>Die Kategorien werden genau einmal gelesen</b> und sowohl fuer die Pruefung als
+     * auch fuer die Aufstellung verwendet. Zwei Lesevorgaenge koennten - theoretisch -
+     * verschiedene Mengen liefern, und dann waere gegen etwas anderes geprueft worden als
+     * gerechnet wird.
+     *
+     * <p>Ist keine Kategorie aktiv, bricht {@link Aufstellung} mit einer
+     * {@code IllegalArgumentException} ab. Das ist richtig so: Ohne Kategorie gibt es keine
+     * Zielfunktion, und es gibt keinen Endpunkt, der diesen Zustand herbeifuehren koennte -
+     * es waere ein Eingriff in die Datenbank und damit ein Betriebs-, kein Eingabefehler.
+     */
+    private Aufstellung pruefenUndBauen(List<Aufstellungsspieler> spieler) {
+        List<SkillKategorie> kategorien = skillKategorieRepository.aktive();
+        pruefeSkillwerte(spieler, kategorien);
+        return new Aufstellung(spieler, kategorien);
+    }
+
+    /**
      * Lehnt die Aufstellung ab, wenn jemandem der Wert zu einer aktiven Kategorie fehlt
      * (2.3).
      *
@@ -400,13 +432,14 @@ public class AufstellungService {
      * das Feld - und die Kategorien stuenden dann fuer jeden Betroffenen einzeln in der
      * Antwort.
      */
-    private void pruefeSkillwerte(List<Aufstellungsspieler> aufstellung) {
-        Set<String> aktive = skillKategorieRepository.aktive().stream()
+    private static void pruefeSkillwerte(List<Aufstellungsspieler> spieler,
+                                         List<SkillKategorie> kategorien) {
+        Set<String> aktive = kategorien.stream()
                 .map(SkillKategorie::schluessel)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
 
-        List<String> unvollstaendig = aufstellung.stream()
-                .filter(spieler -> !spieler.werte().keySet().containsAll(aktive))
+        List<String> unvollstaendig = spieler.stream()
+                .filter(eintrag -> !eintrag.werte().keySet().containsAll(aktive))
                 .map(Aufstellungsspieler::anzeigeName)
                 .toList();
 

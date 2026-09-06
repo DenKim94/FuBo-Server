@@ -238,13 +238,4 @@ public final class Zielfunktion {
         return staerke;
     }
 
-    /**
-     * Rechnet Hundertstel in den gespeicherten {@code NUMERIC(6,2)}-Wert zurueck.
-     *
-     * <p>Die Umrechnung steht hier und nicht beim Schreiben, damit die Definition von
-     * "Kosten" und ihre Darstellung nicht auseinanderlaufen koennen.
-     */
-    public static BigDecimal alsDezimal(long hundertstel) {
-        return BigDecimal.valueOf(hundertstel, 2);
-    }
 }
