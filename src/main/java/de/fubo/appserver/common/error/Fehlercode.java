@@ -145,6 +145,51 @@ public enum Fehlercode {
     TERMIN_GESCHLOSSEN(HttpStatus.CONFLICT,
             "Dieser Termin ist nicht mehr offen."),
 
+    /**
+     * Es haben zu wenige Teilnehmer zugesagt, als dass sich zwei Teams bilden liessen
+     * (A10, S5 Abschnitte 2.4 und 2.5).
+     *
+     * <p>Massgeblich ist {@code configs.app_config.min_teilnehmer}. <b>{@code detail} nennt
+     * Ist und Soll</b> - "zu wenige" ohne Zahlen zwingt den Nutzer, die Teilnehmerliste zu
+     * zaehlen und die Konfiguration nachzuschlagen.
+     *
+     * <p>{@code 409} und nicht {@code 400}: Die Anfrage ist in Ordnung, der Zustand ist es
+     * nicht - und er aendert sich, sobald jemand zusagt. Dieselbe Ueberlegung wie bei
+     * {@link #TERMIN_GESCHLOSSEN}.
+     */
+    ZU_WENIG_TEILNEHMER(HttpStatus.CONFLICT,
+            "Es haben zu wenige Teilnehmer zugesagt."),
+
+    /**
+     * Im manuellen Lauf des Admins wurden mehr Teilnehmer benannt, als
+     * {@code configs.app_config.max_teilnehmer} zulaesst (A24, S5 Abschnitt 2.5).
+     *
+     * <p><b>Es gibt keine Entsprechung am Termin</b>, und das ist der ganze Punkt: Dort
+     * ergibt sich die Menge, alles jenseits der Grenze wartet. Im manuellen Lauf hat der
+     * Admin jeden Einzelnen benannt; wer eine genannte Id kommentarlos herausnimmt, liefert
+     * Teams, die niemand angefordert hat - und es faellt erst auf, wenn jemand vor Ort ohne
+     * Team dasteht. <b>Die Grenze begrenzt hier, sie schneidet nicht ab.</b>
+     */
+    ZU_VIELE_TEILNEHMER(HttpStatus.CONFLICT,
+            "Es wurden mehr Teilnehmer ausgewählt, als zugelassen sind."),
+
+    /**
+     * Mindestens einem eingeteilten Spieler fehlt der Wert zu einer aktiven Skillkategorie
+     * (A12, S5 Abschnitt 2.3).
+     *
+     * <p><b>Nicht stillschweigend auffuellen.</b> Ein ergaenztes "mittleres" Ergebnis saehe
+     * in der Einteilung aus wie ein gepflegter Wert: Der Fehler bliebe unsichtbar, die Teams
+     * waeren falsch ausbalanciert, und niemand koennte nachsehen, warum. <b>{@code detail}
+     * nennt die betroffenen Namen</b>, sonst muesste der Admin alle Profile durchsehen.
+     *
+     * <p>Gemeint sind Altbestaende: Seit dem 30.08.2026 verlangt {@code /admin/user/anlegen}
+     * vollstaendige Skillwerte, eine neue Luecke kann also nicht mehr entstehen. Beim Gast
+     * ist es anders - dort <i>ist</i> die Stufe optional (A17), und die fehlende Stufe
+     * ersetzt {@code MITTEL} aus {@code profil.gast_vorlage}.
+     */
+    SKILLWERTE_UNVOLLSTAENDIG(HttpStatus.CONFLICT,
+            "Für mindestens einen Teilnehmer fehlen Skillwerte."),
+
     EINGABE_UNGUELTIG(HttpStatus.BAD_REQUEST, "Ungültige Eingabedaten."),
     INTERNER_FEHLER(HttpStatus.INTERNAL_SERVER_ERROR, "Ein unerwarteter Fehler ist aufgetreten."),
     INHALT_NICHT_GEFUNDEN(HttpStatus.NOT_FOUND, "Der gesuchte Inhalt wurde nicht gefunden.");
