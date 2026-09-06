@@ -218,8 +218,17 @@ public class SpielerVerwaltungService {
      * <p>Beim Freigeben geschieht das Gegenteil ausdruecklich <i>nicht</i>: Eine widerrufene
      * Sitzung laesst sich nicht wiederbeleben, und der Nutzer meldet sich ohnehin neu an.
      *
+     * <h2>Seit S5: Sperren nimmt auch die Zusagen zurueck</h2>
+     * Fuer kuenftige, geplante Termine (Nachtrag aus S4, entschieden am 31.08.2026). Ohne das
+     * stuende ein Gesperrter weiter auf der Teilnehmerliste und ginge in die naechste
+     * Teameinteilung ein - die Sperre wirkte im Adminbereich und nicht auf dem Platz.
+     *
+     * <p><b>Wieder nicht beim Freigeben:</b> Die Zusage zurueckzuholen hiesse, fuer jemanden zu
+     * sprechen, der vielleicht gar nicht mehr kann. Er sagt selbst wieder zu.
+     *
      * <p>Der Aufruf ist wiederholbar - ein bereits gesperrtes Profil erneut zu sperren
-     * aendert nichts.
+     * aendert nichts. Beim zweiten Mal steht {@code zusagenZurueckgenommen: 0} im Protokoll,
+     * und das ist die richtige Auskunft.
      *
      * @param blockieren {@code true} sperrt, {@code false} gibt frei
      * @throws FachlicherFehler {@code 404} bei unbekannter Id, {@code 409 PROFIL_GESCHUETZT}
@@ -241,14 +250,24 @@ public class SpielerVerwaltungService {
         // gibt es keinen, und die Aenderung bliebe bis zum Ende der Transaktion unsichtbar.
         spielerRepository.saveAndFlush(profil);
 
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("name", name);
+
         if (blockieren) {
             sessionService.widerrufenFuerSpieler(spielerId);
+            // Nachtrag aus S4, entschieden am 31.08.2026 (S5, 0.4 Punkt 1): Ein gesperrtes
+            // Profil behaelt seine Zusagen nicht. Die Reihenfolge - erst die
+            // teilnehmer_version erhoehen, dann die Zusagen zuruecknehmen - liegt im
+            // TerminService; falsch herum waere sie lauffaehig und wirkungslos.
+            details.put("zusagenZurueckgenommen", terminService.sperrungNachtragen(spielerId));
         }
         profilStammdatenCache.verwerfen();
 
+        // Ein eigener Audit-Eintrag fuer die Zusagen waere irrefuehrend: Es ist eine Folge des
+        // Sperrens, keine eigene Handlung. Die Zahl steht deshalb im bestehenden Eintrag.
         auditService.protokolliere(adminSpielerId, clientIp,
                 blockieren ? AuditAktion.PROFIL_BLOCKIERT : AuditAktion.PROFIL_FREIGEGEBEN,
-                ENTITAET, spielerId, Map.of("name", name));
+                ENTITAET, spielerId, details);
     }
 
     /**

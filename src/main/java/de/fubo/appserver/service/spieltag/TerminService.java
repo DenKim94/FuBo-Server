@@ -65,15 +65,18 @@ public class TerminService {
 
     private final TerminRepository terminRepository;
     private final TeilnahmeService teilnahmeService;
+    private final TeamGenerierungService teamGenerierungService;
     private final AuditService auditService;
     private final Clock uhr;
 
     public TerminService(TerminRepository terminRepository,
                          TeilnahmeService teilnahmeService,
+                         TeamGenerierungService teamGenerierungService,
                          AuditService auditService,
                          Clock uhr) {
         this.terminRepository = terminRepository;
         this.teilnahmeService = teilnahmeService;
+        this.teamGenerierungService = teamGenerierungService;
         this.auditService = auditService;
         this.uhr = uhr;
     }
@@ -104,11 +107,14 @@ public class TerminService {
     /**
      * Liefert einen einzelnen Termin samt seiner Teilnehmer (S4, Abschnitte 2.1 und 7.1).
      *
-     * <p><b>Beide Abfragen in einer Transaktion.</b> Die Teilnehmerliste bekommt keinen
+     * <p><b>Alle Abfragen in einer Transaktion.</b> Die Teilnehmerliste bekommt keinen
      * eigenen Endpunkt: Wer einen Termin oeffnet, will die Teilnehmer sehen, und zwei
      * Aufrufe fuer eine Ansicht sind zwei Gelegenheiten fuer einen inkonsistenten Stand -
      * zwischen ihnen kann jemand zusagen, und die Zahl im Kopf passte dann nicht mehr zur
      * Liste darunter.
+     *
+     * <p><b>Die Teameinteilung reist aus demselben Grund mit</b> (S5, Weggabelung B) und
+     * fehlt, solange niemand generiert hat - das ist der Normalzustand und kein Fehler.
      *
      * @param terminId gesuchter Termin
      * @param sitzung  aufrufende Sitzung
@@ -122,7 +128,9 @@ public class TerminService {
                 .orElseThrow(() -> new FachlicherFehler(Fehlercode.INHALT_NICHT_GEFUNDEN,
                         "Es gibt keinen Termin mit dieser Id."));
 
-        return new TerminMitTeilnehmern(termin, teilnahmeService.uebersicht(terminId));
+        return new TerminMitTeilnehmern(termin,
+                teilnahmeService.uebersicht(terminId),
+                teamGenerierungService.einteilungLesen(terminId).orElse(null));
     }
 
     // ------------------------------------------------------------------ Anlegen
@@ -235,6 +243,20 @@ public class TerminService {
 
         termin.setDatum(neuesDatum);
         termin.setUhrzeit(neueUhrzeit);
+        if (zeitpunktAendertSich) {
+            // Der Restfall aus 10.2: A19 erlaubt dem Admin, einen bereits fixierten Termin zu
+            // verschieben. Bliebe das Flag stehen, waere der Generator fuer einen kuenftigen
+            // Termin dauerhaft gesperrt - mit einem 409, dessen Grund in der Vergangenheit
+            // liegt.
+            //
+            // Hier wird nur ZURUECKGESETZT, nie gesetzt: Das Setzen ist Sache des Auftrags bei
+            // Terminbeginn (A18), und pruefeNichtVergangen hat oben bereits jeden Zeitpunkt
+            // abgelehnt, der nicht in der Zukunft liegt. Eine Bedingung an dieser Stelle waere
+            // damit unerreichbar - und genau daran ist sie am 06.09.2026 gescheitert: Sie war
+            // verdreht und setzte das Flag, statt es zu loeschen. Der unerreichbare Zweig hat
+            // den Fehler gedeckt, bis der Test ihn traf.
+            termin.setTeamsFixiert(false);
+        }
         if (neuerStatus != null) {
             termin.setStatus(neuerStatus);
         }
@@ -403,9 +425,19 @@ public class TerminService {
     @Scheduled(cron = "0 */5 * * * *")
     @Transactional
     public void abgelaufeneAbschliessen() {
-        LocalDateTime grenze = LocalDateTime.now(uhr).minusMinutes(ABSCHLUSS_NACH_MINUTEN);
+        LocalDateTime jetzt = LocalDateTime.now(uhr);
+
+        // Zwei Anweisungen, ein Auftrag (S5, 10.2): Das Fixieren greift bei Beginn, der
+        // Abschluss 30 Minuten spaeter. Eine zweite @Scheduled-Methode waere ein zweiter Takt
+        // fuer dieselbe Sache - und der zweite Ort, an dem jemand die Frist verstellt.
+        int fixiert = terminRepository.teamsFixieren(jetzt);
+
+        LocalDateTime grenze = jetzt.minusMinutes(ABSCHLUSS_NACH_MINUTEN);
         int anzahl = terminRepository.abgelaufeneAbschliessen(grenze);
 
+        if (fixiert > 0) {
+            LOG.info("Teameinteilungen fixiert: {} (Beginn vor {} oder frueher).", fixiert, jetzt);
+        }
         if (anzahl > 0) {
             LOG.info("Termine automatisch abgeschlossen: {} (Beginn vor {} oder frueher).",
                     anzahl, grenze);
@@ -439,6 +471,34 @@ public class TerminService {
     public int teilnehmerVersionErhoehenFuerSpieler(Long spielerId) {
         return terminRepository.teilnehmerVersionErhoehenFuerSpieler(
                 spielerId, LocalDateTime.now(uhr));
+    }
+
+    /**
+     * Nimmt die Zusagen eines gesperrten Profils zurueck (S5 Abschnitt 10.1, Nachtrag aus S4).
+     *
+     * <h2>Die Reihenfolge ist die ganze Schwierigkeit dieses Nachtrags</h2>
+     * <b>Erst die Version erhoehen, dann die Zusagen zuruecknehmen.</b>
+     * {@code teilnehmerVersionErhoehenFuerSpieler} findet die betroffenen Termine ueber
+     * {@code EXISTS (... AND tn.zusage)}. Steht die Zusage schon auf {@code false}, findet es
+     * nichts mehr - die Kontingente blieben verbraucht und bestehende Einteilungen
+     * faelschlich aktuell, obwohl ein Spieler weniger da ist. Falsch herum ist der Code
+     * lauffaehig und wirkungslos; das ist der Fehler, der hier gemacht werden kann.
+     *
+     * <p><b>Derselbe Zeitpunkt fuer beide Schritte</b> - sonst koennte ein Termin dazwischen
+     * die Grenze "kuenftig" ueberschreiten und nur von einem der beiden erfasst werden.
+     *
+     * <p><b>Nur beim Sperren, nicht beim Freigeben.</b> Ein freigegebenes Profil sagt selbst
+     * wieder zu; die Zusage automatisch zurueckzuholen hiesse, fuer jemanden zu sprechen, der
+     * vielleicht nicht mehr kann.
+     *
+     * @param spielerId gesperrtes Profil
+     * @return Anzahl zurueckgenommener Zusagen; sie steht im Protokolleintrag des Sperrens
+     */
+    @Transactional
+    public int sperrungNachtragen(Long spielerId) {
+        LocalDateTime jetzt = LocalDateTime.now(uhr);
+        terminRepository.teilnehmerVersionErhoehenFuerSpieler(spielerId, jetzt);
+        return teilnahmeService.zusagenZuruecknehmen(spielerId, jetzt);
     }
 
     // ------------------------------------------------------------------ Hilfsmittel

@@ -1,5 +1,7 @@
 package de.fubo.appserver.domain.spieltag;
 
+import de.fubo.appserver.domain.team.Einteilung;
+
 /**
  * Ergebnis der Einzelansicht: der Termin und seine Teilnehmer (S4, Abschnitt 2.1).
  *
@@ -12,8 +14,15 @@ package de.fubo.appserver.domain.spieltag;
  * bis das DTO daraus die Antwort baut. Beide Abfragen laufen in derselben Transaktion und
  * damit auf demselben Stand.
  *
- * @param termin     Stammdaten, Zaehler und die eigene Rueckmeldung des Aufrufers
- * @param teilnehmer die Zusagen in Warteschlangenreihenfolge samt der geltenden Grenzen
+ * <p><b>Mit S5 kam die Teameinteilung dazu</b> (Weggabelung B, 9.1) - aus demselben Grund und
+ * als drittes Feld: Das Dashboard zeigt Termin, Teilnehmerliste und Teams zusammen. Sie fehlt,
+ * solange niemand generiert hat; das ist der Normalzustand und kein Fehler.
+ *
+ * @param termin      Stammdaten, Zaehler und die eigene Rueckmeldung des Aufrufers
+ * @param teilnehmer  die Zusagen in Warteschlangenreihenfolge samt der geltenden Grenzen
+ * @param einteilung  die aktuelle Teameinteilung oder {@code null}, wenn es noch keine gibt
  */
-public record TerminMitTeilnehmern(TerminEintrag termin, Teilnehmeruebersicht teilnehmer) {
+public record TerminMitTeilnehmern(TerminEintrag termin,
+                                   Teilnehmeruebersicht teilnehmer,
+                                   Einteilung einteilung) {
 }

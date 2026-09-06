@@ -109,6 +109,26 @@ public class TeilnahmeService {
         terminRepository.teilnehmerVersionErhoehen(terminId);
     }
 
+    /**
+     * Nimmt die Zusagen eines gesperrten Profils zurueck (S5 Abschnitt 10.1).
+     *
+     * <p><b>Weitergereicht und nicht orchestriert:</b> Die Reihenfolge - erst
+     * {@code teilnehmer_version} erhoehen, dann die Zusagen zuruecknehmen - steht im
+     * {@code TerminService}, der beide Schritte kennt. Zwei Orte fuer diese Reihenfolge waeren
+     * einer zu viel; sie ist die ganze Schwierigkeit des Nachtrags.
+     *
+     * <p>Kein Protokolleintrag: Der Vorgang ist eine <i>Folge</i> des Sperrens und keine
+     * eigene Handlung. Die Zahl geht in den bestehenden {@code PROFIL_BLOCKIERT}-Eintrag.
+     *
+     * @param spielerId gesperrtes Profil
+     * @param jetzt     Vergleichszeitpunkt des aufrufenden Vorgangs
+     * @return Anzahl zurueckgenommener Zusagen
+     */
+    @Transactional
+    public int zusagenZuruecknehmen(Long spielerId, LocalDateTime jetzt) {
+        return teilnahmeRepository.zusagenZuruecknehmen(spielerId, jetzt);
+    }
+
     // ------------------------------------------------------------------ Gast-Stufe
 
     /**

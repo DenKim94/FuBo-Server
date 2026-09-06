@@ -5,6 +5,7 @@ import de.fubo.appserver.domain.spieltag.Teilnehmereintrag;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -154,10 +155,59 @@ public class TeilnahmeRepository {
             RETURNING alt.gast_stufe
             """;
 
+    /**
+     * Nimmt die Zusagen eines gesperrten Profils fuer kuenftige, geplante Termine zurueck
+     * (S5 Abschnitt 10.1, Nachtrag aus S4).
+     *
+     * <h2>Nur kuenftige und nur geplante Termine</h2>
+     * Dieselbe Abgrenzung wie beim Zaehler-Nachtrag aus S4: Ein gespieltes Training laesst
+     * sich nicht nachtraeglich absagen, und ein abgesagter Termin hat keine Teilnehmer mehr,
+     * um die es ginge.
+     *
+     * <p><b>{@code version} steigt mit</b> - die Regel gilt fuer jede {@code version}-Spalte,
+     * die per SQL geaendert wird.
+     *
+     * <p><b>{@code AND tn.zusage} macht die Anweisung wiederholbar</b> und haelt die
+     * Rueckgabe ehrlich: Gezaehlt werden die Zusagen, die es wirklich gab, nicht alle
+     * Teilnahmezeilen des Profils.
+     *
+     * <p>Der Zeitpunkt kommt als Parameter aus der {@code Clock}-Bean und nicht aus
+     * {@code current_date}/{@code current_time}: Die richten sich nach der Zeitzone der
+     * Datenbanksitzung, und die steht im Container auf UTC.
+     */
+    private static final String SQL_ZUSAGEN_ZURUECKNEHMEN = """
+            UPDATE spieltag.teilnahme tn
+               SET zusage  = false,
+                   version = tn.version + 1
+              FROM spieltag.termin t
+             WHERE tn.termin_id  = t.id
+               AND tn.spieler_id = :spielerId
+               AND tn.zusage
+               AND t.status = 'GEPLANT'
+               AND (t.datum + t.uhrzeit) > :jetzt
+            """;
+
     private final JdbcClient jdbc;
 
     public TeilnahmeRepository(JdbcClient jdbc) {
         this.jdbc = jdbc;
+    }
+
+    /**
+     * Setzt die Zusagen eines Profils fuer kuenftige, geplante Termine auf Absage.
+     *
+     * <p><b>Der Aufrufer erhoeht vorher {@code teilnehmer_version}</b> - danach findet die
+     * Suche dort nichts mehr, weil sie ueber {@code EXISTS (... AND tn.zusage)} laeuft.
+     *
+     * @param spielerId gesperrtes Profil
+     * @param jetzt     Vergleichszeitpunkt aus der {@code Clock}-Bean
+     * @return Anzahl zurueckgenommener Zusagen
+     */
+    public int zusagenZuruecknehmen(Long spielerId, LocalDateTime jetzt) {
+        return jdbc.sql(SQL_ZUSAGEN_ZURUECKNEHMEN)
+                .param("spielerId", spielerId)
+                .param("jetzt", jetzt)
+                .update();
     }
 
     /**

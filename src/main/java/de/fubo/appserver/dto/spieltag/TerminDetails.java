@@ -19,6 +19,12 @@ import java.time.LocalTime;
  * Geheimnis: Er zaehlt Schreibvorgaenge und verraet nichts ueber ihren Inhalt - dieselbe
  * Abwaegung wie bei {@code Konfiguration}.
  *
+ * <h2>Die Teameinteilung kam mit S5 dazu (Weggabelung B)</h2>
+ * Nach derselben Ueberlegung wie die Teilnehmerliste und wieder <b>additiv</b>: Ein neues,
+ * nullbares Feld bricht keinen bestehenden Client. Ein eigener Endpunkt
+ * {@code GET /teams/{terminId}/lesen} bleibt vertretbar, sobald die Einteilung haeufiger
+ * einzeln nachgeladen wird als der Termin - heute waeren es zwei Aufrufe fuer eine Ansicht.
+ *
  * <h2>Die Teilnehmerliste kam mit Paket 7 dazu (30.08.2026)</h2>
  * Als zusaetzliches Feld dieser Antwort und <b>nicht</b> als eigener Endpunkt: Wer einen
  * Termin oeffnet, will die Teilnehmer sehen, und zwei Aufrufe fuer eine Ansicht sind zwei
@@ -37,6 +43,11 @@ import java.time.LocalTime;
  * @param version            Stand der Zeile fuer das Optimistic Locking
  * @param teilnehmerliste    die Zusagen in Warteschlangenreihenfolge samt der Grenzen aus
  *                           der Konfiguration
+ * @param teams              die aktuelle Teameinteilung oder {@code null}, solange niemand
+ *                           generiert hat. <b>{@code null} ist kein Fehler</b>, sondern der
+ *                           Normalzustand - und die Antwort auf "gibt es schon eine
+ *                           Einteilung", ohne die Wahl zwischen {@code 404} (klingt nach
+ *                           Fehler) und {@code 204} (klingt nach "nichts zu holen")
  */
 public record TerminDetails(Long terminId,
                             Long serieId,
@@ -48,7 +59,8 @@ public record TerminDetails(Long terminId,
                             int zusagen,
                             Boolean eigeneRueckmeldung,
                             Long version,
-                            Teilnehmerliste teilnehmerliste) {
+                            Teilnehmerliste teilnehmerliste,
+                            Teameinteilung teams) {
 
     /** Bildet Termin und Teilnehmer auf den Vertrag ab. */
     public static TerminDetails von(TerminMitTeilnehmern gelesen) {
@@ -64,6 +76,7 @@ public record TerminDetails(Long terminId,
                 eintrag.zusagen(),
                 eintrag.eigeneRueckmeldung(),
                 eintrag.version(),
-                Teilnehmerliste.von(gelesen.teilnehmer()));
+                Teilnehmerliste.von(gelesen.teilnehmer()),
+                gelesen.einteilung() == null ? null : Teameinteilung.von(gelesen.einteilung()));
     }
 }
