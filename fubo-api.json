@@ -4,7 +4,7 @@
     "title": "FuBo Server API",
     "version": "1.0.0",
     "summary": "Vertrag zwischen FuBo-Server und FuBo-Client.",
-    "description": "Maßgebliche Beschreibung der REST-Schnittstelle des FuBo-Servers.\n\n**Diese Datei ist die Quelle der Wahrheit für den Client-Track.** Server und Client liegen in getrennten Repositories; eine Vertragsänderung wird deshalb immer zuerst hier abgebildet und der Client anschließend nachgezogen.\n\n**Stand:** S2 (Auth und Session), S2b (Zugangsdatenpflege und Spielerverwaltung), S3 (Profile, Skills, Konfiguration, Gastverwaltung), **S4 vollständig** und **S5 vollständig** – der Teamgenerator: die Einteilung eines Termins anstoßen und lesen, der Auswechselspieler bei ungerader Teilnehmerzahl und der manuelle Lauf des Admins ohne Termin (A24); dazu S4 – Termine lesen, Einzeltermin anlegen, ändern, absagen und entfernen, Terminserien, Zu- und Absagen von Spielern und Gästen, die Teilnehmerliste samt Warteschlange und die Skill-Stufe eines Gastes.\n\n**Noch nicht enthalten und deshalb hier nicht beschrieben:** die Ergebniserfassung (S6) und der Hallenmodus (S7). Spekulative Endpunkte wären ein Vertrag über etwas, das es nicht gibt.\n\n**Vier Dinge geschehen ohne Zutun des Clients:** Ein Termin wird bei seinem Beginn selbsttätig fixiert und wechselt 30 Minuten später von `GEPLANT` auf `ABGESCHLOSSEN` (A18) – ab der Fixierung liefert `POST /teams/generieren` ein `409 TEAMS_FIXIERT`, und wird der Termin danach in die Zukunft verschoben, fällt die Fixierung zurück; eine erneute Zusage stellt in der Warteschlange hinten an; eine Änderung an den Skillwerten eines zugesagten Spielers erhöht die `teilnehmerVersion` seiner künftigen Termine; und **das Sperren eines Profils nimmt dessen Zusagen für künftige Termine zurück** – die Teilnehmerliste wird dadurch kürzer, ohne dass jemand abgesagt hätte.\n\n### Versionierung\nJeder fachliche Endpunkt liegt unter `/api/{version}/<bereich>/<ressource>/<aktion>`. Die Version steht als Präfix an Segment-Index 1, die Aktion als eigenes Segment am Ende. Umgesetzt mit `ApiVersionConfigurer#usePathSegment` aus Spring Framework 7.\n\n- `/api/v1/...` und `/api/1/...` werden beide als Version 1 gelesen; nach außen wird durchgängig `v1` verwendet.\n- Eine unbekannte Version (`/api/v99/...`) liefert `400`.\n- Ein fehlendes Versionssegment liefert `404` – ohne das Segment passt der Pfad schlicht auf kein Mapping.\n\n### Authentifizierung\nOpakes Session-Cookie (`FUBO_SESSION`, `HttpOnly`, `Secure`, `SameSite=Lax`, kein Ablaufdatum). Das Frontend kann den Token weder lesen noch prüfen und muss das auch nicht: Die Validierung passiert ausschließlich serverseitig in der Filterchain. Alle Aufrufe erfolgen mit `credentials: 'include'`.\n\n**Die zentrale PIN besteht aus vier Ziffern.** Das Eingabefeld im Frontend darf darauf ausgelegt werden. `POST /auth/pin/pruefen` schreibt der Eingabe trotzdem **kein** Format vor – ein abweichender Bestandswert aus der Erstkonfiguration muss eingebbar bleiben, und eine Mindestlänge im Vertrag wäre eine Auskunft über das Format der echten PIN. Verbindlich ist das Format nur beim *Setzen* über `POST /admin/pin/aendern`.\n\nDer Login ist zweistufig und wird serverseitig erzwungen:\n1. `PIN_VERIFIED` – zentrale PIN geprüft, Identität noch offen.\n2. `PROFILE_AUTHENTICATED` – erst hier existiert eine Rolle. Es führen drei Wege dorthin: Namensauswahl (`USER`), Gast-Login (`GAST`) und Admin-Login mit Passwort (`ADMIN`).\n\n**Das Adminprofil ist ein technisches Konto.** Es steht nicht in der Namensliste, nimmt an keinem Termin teil und wird nie in ein Team eingeteilt; seine Skillwerte stehen auf 0. Der Admin meldet sich deshalb über `POST /api/v1/auth/admin/anmelden` mit seinem Passwort an – die Namensauswahl lehnt das Adminprofil auch dann ab, wenn seine Id bekannt ist.\n\nBei jedem Stufenwechsel und bei jeder Erneuerung wird der Token rotiert (Schutz vor Session Fixation). Die `session.id` bleibt dabei erhalten.\n\n### Sitzungsdauer (Zwei-Timer-Modell)\n`gueltigBis` ist ein gleitendes Leerlauf-Fenster (Vorgabe 15 Minuten) und wandert bei jedem Aufruf nach hinten. `absolutGueltigBis` ist eine harte Obergrenze (Vorgabe 1 Stunde) und wird nie verschoben – auch nicht durch `/auth/session/erneuern`.\n\nHintergrundaufrufe (etwa das Pollen des Belegtstatus) sollen das Leerlauf-Fenster **nicht** verlängern und senden dazu `X-FuBo-Kein-Refresh: true`. Ohne diesen Header würde „15 Minuten Inaktivität\" den offenen Browser-Tab messen statt den Nutzer.\n\n### CORS\nFrontend und API liegen auf Subdomains derselben registrierbaren Domain (`app.<domain>` / `api.<domain>`). Der Server führt eine Allowlist mit `allowCredentials=true`; erlaubte Anfrageheader sind `Content-Type` und `X-FuBo-Kein-Refresh`, freigegebener Antwortheader ist `Retry-After`.\n\n### Datenschutz\nSkillbewertungen verlassen den Server nie in Richtung USER oder GAST (Anforderung A12). Sie erscheinen **ausschliesslich in Antworten unterhalb von `/admin/`** – heute in `GET /admin/user/lesen` – und erreichen `USER` und `GAST` nie; die Teamgenerierung läuft vollständig serverseitig.\n\nBis S2b enthielt kein Antwortobjekt dieser Beschreibung Skillwerte. Seit S3 gilt die genauere Fassung oben: Der Prüfpunkt ist nicht mehr „kommen Skillwerte vor\", sondern „kommen sie ausserhalb von `/admin/` vor\".\n\n### Nicht enthalten\n`GET /actuator/health` bleibt bewusst unversioniert und ist kein Teil der fachlichen API. Der Endpunkt dient dem Container-Healthcheck und wird von nginx nach außen abgeschottet.",
+    "description": "Maßgebliche Beschreibung der REST-Schnittstelle des FuBo-Servers.\n\n**Diese Datei ist die Quelle der Wahrheit für den Client-Track.** Server und Client liegen in getrennten Repositories; eine Vertragsänderung wird deshalb immer zuerst hier abgebildet und der Client anschließend nachgezogen.\n\n**Stand:** S2 (Auth und Session), S2b (Zugangsdatenpflege und Spielerverwaltung), S3 (Profile, Skills, Konfiguration, Gastverwaltung), **S4 vollständig**, **S5 vollständig** und **S6 vollständig** – die Ergebniserfassung: den Ausgang eines Termins eintragen (der erste Eintrag gilt), ihn als Admin korrigieren, ihn in der Einzelansicht lesen und die eigene Bilanz abrufen; dazu S5 – der Teamgenerator: die Einteilung eines Termins anstoßen und lesen, der Auswechselspieler bei ungerader Teilnehmerzahl und der manuelle Lauf des Admins ohne Termin (A24); dazu S4 – Termine lesen, Einzeltermin anlegen, ändern, absagen und entfernen, Terminserien, Zu- und Absagen von Spielern und Gästen, die Teilnehmerliste samt Warteschlange und die Skill-Stufe eines Gastes.\n\n**Noch nicht enthalten und deshalb hier nicht beschrieben:** der Hallenmodus (S7). Spekulative Endpunkte wären ein Vertrag über etwas, das es nicht gibt.\n\n**Auch das Audit-Log ist nicht enthalten**, obwohl A21 verlangt, dass Erfassung und Korrektur protokolliert werden: Sie *werden* protokolliert, aber keine Anforderung verlangt, das Protokoll abzurufen. Es trägt personenbezogene Daten und unterliegt einer Löschfrist von 30 Tagen; es nach außen zu öffnen wäre eine eigene Entscheidung mit Filter, Blätterung und Feldauswahl.\n\n**Vier Dinge geschehen ohne Zutun des Clients:** Ein Termin wird bei seinem Beginn selbsttätig fixiert und wechselt 30 Minuten später von `GEPLANT` auf `ABGESCHLOSSEN` (A18) – ab der Fixierung liefert `POST /teams/generieren` ein `409 TEAMS_FIXIERT`, und wird der Termin danach in die Zukunft verschoben, fällt die Fixierung zurück; eine erneute Zusage stellt in der Warteschlange hinten an; eine Änderung an den Skillwerten eines zugesagten Spielers erhöht die `teilnehmerVersion` seiner künftigen Termine; und **das Sperren eines Profils nimmt dessen Zusagen für künftige Termine zurück** – die Teilnehmerliste wird dadurch kürzer, ohne dass jemand abgesagt hätte.\n\n### Versionierung\nJeder fachliche Endpunkt liegt unter `/api/{version}/<bereich>/<ressource>/<aktion>`. Die Version steht als Präfix an Segment-Index 1, die Aktion als eigenes Segment am Ende. Umgesetzt mit `ApiVersionConfigurer#usePathSegment` aus Spring Framework 7.\n\n- `/api/v1/...` und `/api/1/...` werden beide als Version 1 gelesen; nach außen wird durchgängig `v1` verwendet.\n- Eine unbekannte Version (`/api/v99/...`) liefert `400`.\n- Ein fehlendes Versionssegment liefert `404` – ohne das Segment passt der Pfad schlicht auf kein Mapping.\n\n### Authentifizierung\nOpakes Session-Cookie (`FUBO_SESSION`, `HttpOnly`, `Secure`, `SameSite=Lax`, kein Ablaufdatum). Das Frontend kann den Token weder lesen noch prüfen und muss das auch nicht: Die Validierung passiert ausschließlich serverseitig in der Filterchain. Alle Aufrufe erfolgen mit `credentials: 'include'`.\n\n**Die zentrale PIN besteht aus vier Ziffern.** Das Eingabefeld im Frontend darf darauf ausgelegt werden. `POST /auth/pin/pruefen` schreibt der Eingabe trotzdem **kein** Format vor – ein abweichender Bestandswert aus der Erstkonfiguration muss eingebbar bleiben, und eine Mindestlänge im Vertrag wäre eine Auskunft über das Format der echten PIN. Verbindlich ist das Format nur beim *Setzen* über `POST /admin/pin/aendern`.\n\nDer Login ist zweistufig und wird serverseitig erzwungen:\n1. `PIN_VERIFIED` – zentrale PIN geprüft, Identität noch offen.\n2. `PROFILE_AUTHENTICATED` – erst hier existiert eine Rolle. Es führen drei Wege dorthin: Namensauswahl (`USER`), Gast-Login (`GAST`) und Admin-Login mit Passwort (`ADMIN`).\n\n**Das Adminprofil ist ein technisches Konto.** Es steht nicht in der Namensliste, nimmt an keinem Termin teil und wird nie in ein Team eingeteilt; seine Skillwerte stehen auf 0. Der Admin meldet sich deshalb über `POST /api/v1/auth/admin/anmelden` mit seinem Passwort an – die Namensauswahl lehnt das Adminprofil auch dann ab, wenn seine Id bekannt ist.\n\nBei jedem Stufenwechsel und bei jeder Erneuerung wird der Token rotiert (Schutz vor Session Fixation). Die `session.id` bleibt dabei erhalten.\n\n### Sitzungsdauer (Zwei-Timer-Modell)\n`gueltigBis` ist ein gleitendes Leerlauf-Fenster (Vorgabe 15 Minuten) und wandert bei jedem Aufruf nach hinten. `absolutGueltigBis` ist eine harte Obergrenze (Vorgabe 1 Stunde) und wird nie verschoben – auch nicht durch `/auth/session/erneuern`.\n\nHintergrundaufrufe (etwa das Pollen des Belegtstatus) sollen das Leerlauf-Fenster **nicht** verlängern und senden dazu `X-FuBo-Kein-Refresh: true`. Ohne diesen Header würde „15 Minuten Inaktivität\" den offenen Browser-Tab messen statt den Nutzer.\n\n### CORS\nFrontend und API liegen auf Subdomains derselben registrierbaren Domain (`app.<domain>` / `api.<domain>`). Der Server führt eine Allowlist mit `allowCredentials=true`; erlaubte Anfrageheader sind `Content-Type` und `X-FuBo-Kein-Refresh`, freigegebener Antwortheader ist `Retry-After`.\n\n### Datenschutz\nSkillbewertungen verlassen den Server nie in Richtung USER oder GAST (Anforderung A12). Sie erscheinen **ausschliesslich in Antworten unterhalb von `/admin/`** – heute in `GET /admin/user/lesen` – und erreichen `USER` und `GAST` nie; die Teamgenerierung läuft vollständig serverseitig.\n\n**Die Bilanz aus S6 ist davon ausgenommen**, und das ist kein Widerspruch: Siege und Niederlagen sind Statistik und keine Bewertung. Sie stehen deshalb sowohl in `SpielerDetails` als auch in `GET /bilanz/lesen`, wo jeder Angemeldete **seine eigene** abruft. A16 bleibt unberührt – Ergebnisse wirken nicht auf Skillwerte zurück.\n\nBis S2b enthielt kein Antwortobjekt dieser Beschreibung Skillwerte. Seit S3 gilt die genauere Fassung oben: Der Prüfpunkt ist nicht mehr „kommen Skillwerte vor\", sondern „kommen sie ausserhalb von `/admin/` vor\".\n\n### Nicht enthalten\n`GET /actuator/health` bleibt bewusst unversioniert und ist kein Teil der fachlichen API. Der Endpunkt dient dem Container-Healthcheck und wird von nginx nach außen abgeschottet.",
     "contact": {
       "name": "FuBo-Server",
       "url": "https://github.com/DenKim94/FuBo-Server"
@@ -66,6 +66,10 @@
     {
       "name": "Teamgenerierung",
       "description": "Die Teameinteilung anstoßen (A15, A20a, A20b) und den manuellen Lauf des Admins ohne Termin ausführen (A24). **Gelesen wird die Einteilung eines Termins nicht hier**, sondern als Feld `teams` in `GET /termine/{terminId}/lesen` – wer einen Termin öffnet, will Termin, Teilnehmer und Teams zusammen sehen."
+    },
+    {
+      "name": "Ergebnis",
+      "description": "Den Ausgang eines Termins erfassen und korrigieren (A21) sowie die eigene Bilanz lesen. **Gelesen wird das Ergebnis eines Termins nicht hier**, sondern als Feld `ergebnis` in `GET /termine/{terminId}/lesen` – dieselbe Überlegung wie bei der Teameinteilung."
     }
   ],
   "security": [
@@ -2340,6 +2344,167 @@
           }
         }
       }
+    },
+    "/api/v1/ergebnis/erfassen": {
+      "post": {
+        "tags": [
+          "Ergebnis"
+        ],
+        "operationId": "ergebnisErfassen",
+        "summary": "Das Ergebnis eines Termins erfassen",
+        "description": "Trägt den Ausgang eines gespielten Termins ein (A21).\n\n**Der erste Eintrag gilt.** Je Termin gibt es genau ein Ergebnis; der zweite Versuch liefert `409 ERGEBNIS_VORHANDEN`. **Das ist kein Bedienfehler** – nach dem Abpfiff tippen mehrere gleichzeitig. Die Oberfläche sollte „hat schon jemand erfasst\" melden und danach das vorhandene Ergebnis aus `GET /termine/{terminId}/lesen` zeigen, nicht eine Fehlermeldung.\n\n**Der Endpunkt liegt bewusst nicht unter `/admin/`.** Wer einträgt, ist der, der mit dem Telefon auf dem Platz steht – auch ein `GAST`. „Der erste Eintrag gilt\" ergibt nur einen Sinn, wenn mehrere es versuchen dürfen. Korrigieren darf danach nur der Admin.\n\n**Zwei Vorbedingungen:** Der Termin ist `ABGESCHLOSSEN` (er wechselt 30 Minuten nach Beginn selbsttätig dorthin, A18), und es gibt eine Teameinteilung – ohne sie hätte das Ergebnis keine beteiligten Spieler.\n\n**Die Bilanz aller Eingeteilten wird im selben Vorgang neu berechnet.** Gäste führen keine; der Auswechselspieler zählt mit.\n\n**`201` mit Körper und kein `204`:** Die Antwort trägt die `version`, ohne die sich nicht korrigieren lässt, und `erfasstVon`. Einen `Location`-Header gibt es nicht – das Ergebnis hat keine eigene Adresse, es reist in `GET /termine/{terminId}/lesen` mit.\n\n**Es gibt keinen Weg, ein Ergebnis wieder zu löschen.** Das gehört in die Bestätigungsabfrage der Oberfläche, so wie die Endgültigkeit einer Terminabsage.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErgebnisErfassenRequest"
+              },
+              "example": {
+                "terminId": 42,
+                "sieger": "A",
+                "deutlich": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Das Ergebnis wurde erfasst.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ergebnis"
+                },
+                "example": {
+                  "sieger": "A",
+                  "deutlich": true,
+                  "erfasstVon": "Beispielspieler 01",
+                  "erfasstAm": "2026-09-12T21:07:44+02:00",
+                  "korrigiertAm": null,
+                  "version": 0
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/EingabeUngueltig"
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "404": {
+            "description": "`INHALT_NICHT_GEFUNDEN` – es gibt keinen Termin mit dieser Id.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Der Eintrag ist nicht möglich. Der Grund steht in `code`:\n\n- `TERMIN_NICHT_ABGESCHLOSSEN` – der Termin ist noch `GEPLANT` oder `ABGESAGT`. `detail` nennt den Status. **Warten hilft nur im ersten Fall**, dafür aber zuverlässig: Der Abschluss folgt 30 bis 35 Minuten nach Beginn.\n- `KEINE_EINTEILUNG` – für diesen Termin wurde nie generiert. Der Ausweg ist `POST /teams/generieren`; für einen abgeschlossenen Termin ist der allerdings gesperrt, der Fall gehört also gemeldet und nicht wegbedient.\n- `ERGEBNIS_VORHANDEN` – jemand war schneller. **Kein Bedienfehler**; das erfasste Ergebnis steht in der Einzelansicht des Termins.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/ergebnis/korrigieren": {
+      "post": {
+        "tags": [
+          "Ergebnis"
+        ],
+        "operationId": "ergebnisKorrigieren",
+        "summary": "Ein erfasstes Ergebnis korrigieren",
+        "description": "Ändert den Ausgang eines bereits erfassten Termins (A21). **Nur der Admin.**\n\n**Ein Voll-Update mit `version`:** Beide Felder sind Pflicht, auch das unveränderte. Feldweise wäre bei `deutlich` als `boolean` „weggelassen\" nicht von `false` zu unterscheiden.\n\n**Die Bilanz wird gedreht, nicht addiert.** Aus einem Sieg wird eine Niederlage; die Zähler entstehen bei jeder Änderung neu aus den Ergebnissen. Die Bilanzen anderer Termine bleiben unberührt.\n\n**Eine Korrektur, die nichts ändert, wird angenommen** – anders als `/admin/termin/aendern`, das einen Körper ohne Änderung mit `400` ablehnt. Hier ist es ein Formular, und „ich habe nachgesehen und es stimmt so\" ist eine Handlung: `korrigiertAm` wandert, und der Protokolleintrag entsteht.\n\n**`korrigiertAm` führt keine Historie** – jede weitere Korrektur überschreibt den Wert. Wer wann was gedreht hat, steht im Audit-Log, das über die API nicht erreichbar ist.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErgebnisKorrigierenRequest"
+              },
+              "example": {
+                "terminId": 42,
+                "sieger": "B",
+                "deutlich": false,
+                "version": 0
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Die Korrektur wurde gespeichert."
+          },
+          "400": {
+            "$ref": "#/components/responses/EingabeUngueltig"
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
+          },
+          "404": {
+            "description": "`INHALT_NICHT_GEFUNDEN` – für diesen Termin liegt kein Ergebnis vor. **Derselbe Code deckt den unbekannten Termin ab**: Beide Male gibt es nichts zu korrigieren, und eine feinere Auskunft verriete, welche Termin-Ids existieren.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`DATEN_VERALTET` – die mitgeschickte `version` ist nicht mehr aktuell; jemand hat zwischenzeitlich korrigiert. **Neu laden und erneut speichern**, nicht die Eingabe prüfen.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bilanz/lesen": {
+      "get": {
+        "tags": [
+          "Ergebnis"
+        ],
+        "operationId": "bilanzLesen",
+        "summary": "Die eigene Bilanz lesen",
+        "description": "Liefert Siege, Niederlagen und Unentschieden **des angemeldeten Profils** (A21).\n\n**Der Endpunkt nimmt keine Id entgegen**, und das ist sein Kern: Die Identität kommt aus der Sitzung. Mit einer Id wäre es ein Endpunkt „fremde Bilanz lesen\", und darüber hat niemand entschieden. Wer die Bilanz aller sehen darf, ist der Admin – über das Feld `bilanz` in `GET /admin/user/lesen`.\n\n**Ein `GAST` darf aufrufen** und bekommt dreimal `0` statt eines Fehlers: Er führt keine Bilanz, aber das ist kein Grund für eine Fehlerseite. Dieselbe Antwort gibt es für einen Spieler ohne gewertete Termine.\n\n**Kein A12-Fall:** Die Bilanz ist Statistik und kein Skillwert; der Endpunkt liegt deshalb nicht unter `/admin/`.",
+        "responses": {
+          "200": {
+            "description": "Die Bilanz des Aufrufers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Bilanz"
+                },
+                "example": {
+                  "siege": 12,
+                  "niederlagen": 9,
+                  "unentschieden": 3
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2511,7 +2676,10 @@
           "SKILLWERTE_UNVOLLSTAENDIG",
           "KONTINGENT_ERSCHOEPFT",
           "TEILNEHMER_GEAENDERT",
-          "TEAMS_FIXIERT"
+          "TEAMS_FIXIERT",
+          "ERGEBNIS_VORHANDEN",
+          "TERMIN_NICHT_ABGESCHLOSSEN",
+          "KEINE_EINTEILUNG"
         ]
       },
       "Stage": {
@@ -2840,6 +3008,14 @@
               "type": "integer"
             },
             "description": "Wert je Kategorieschlüssel, etwa `{\"ANGRIFF\": 4, \"TORWART\": 2}`.\n\nEnthalten sind **nur Kategorien, zu denen eine Zeile existiert**, und nur aktive. Fehlt eine Kategorie, ist das Profil ungepflegt – das kommt bei Profilen aus einem Datenimport vor; über `/admin/user/anlegen` entstandene haben immer alle. Der Client erkennt die Lücke, indem er diese Karte gegen `/admin/skills/lesen` hält."
+          },
+          "bilanz": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Bilanz"
+              }
+            ],
+            "description": "Siege, Niederlagen und Unentschieden (A21). **Nie `null`**, höchstens dreimal `0`. Anders als `skills` ist dieses Feld **kein** A12-Fall – es steht hier, weil der Admin ohnehin hier nachsieht, nicht weil es geschützt wäre; der Spieler selbst liest es über `GET /bilanz/lesen`."
           }
         },
         "required": [
@@ -2848,7 +3024,8 @@
           "rolle",
           "aktiv",
           "belegt",
-          "skills"
+          "skills",
+          "bilanz"
         ]
       },
       "SpielerBearbeitenRequest": {
@@ -3350,6 +3527,17 @@
                   }
                 ],
                 "description": "Die aktuelle Teameinteilung oder **`null`, solange niemand generiert hat** – kein Fehler, sondern der Normalzustand.\n\nSie steht hier und nicht hinter einem eigenen Endpunkt: Das Dashboard zeigt Termin, Teilnehmerliste und Teams zusammen, und zwei Aufrufe für eine Ansicht sind zwei Gelegenheiten für einen inkonsistenten Stand."
+              },
+              "ergebnis": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/Ergebnis"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Der erfasste Ausgang oder **`null`, solange niemand erfasst hat** – kein Fehler, sondern der Normalzustand jedes Termins bis zum Abpfiff.\n\n**Unabhängig von `teams`:** Eine Einteilung ohne Ergebnis ist der Regelfall vor dem Spiel; ein Ergebnis ohne Einteilung kann es dagegen nicht geben – `POST /ergebnis/erfassen` lehnt das mit `409 KEINE_EINTEILUNG` ab.\n\n**Hier steht die `version`, die `/admin/ergebnis/korrigieren` zurückverlangt.**"
               }
             },
             "required": [
@@ -3358,7 +3546,7 @@
             ]
           }
         ],
-        "description": "Die Einzelansicht eines Termins: dieselben Felder wie in der Liste, dazu die `version` und die Teilnehmerliste.\n\n**Die Teilnehmerliste hat keinen eigenen Endpunkt.** Wer einen Termin öffnet, will die Teilnehmer sehen, und zwei Aufrufe für eine Ansicht sind zwei Gelegenheiten für einen inkonsistenten Stand – zwischen ihnen kann jemand zusagen, und die Zahl im Kopf passte dann nicht mehr zur Liste darunter.\n\n**Mit S5 kam `teams` dazu** – ein nullbares Feld und damit additiv: Bestehende Clients müssen nichts zurücknehmen."
+        "description": "Die Einzelansicht eines Termins: dieselben Felder wie in der Liste, dazu die `version` und die Teilnehmerliste.\n\n**Die Teilnehmerliste hat keinen eigenen Endpunkt.** Wer einen Termin öffnet, will die Teilnehmer sehen, und zwei Aufrufe für eine Ansicht sind zwei Gelegenheiten für einen inkonsistenten Stand – zwischen ihnen kann jemand zusagen, und die Zahl im Kopf passte dann nicht mehr zur Liste darunter.\n\n**Mit S5 kam `teams` dazu** – ein nullbares Feld und damit additiv: Bestehende Clients müssen nichts zurücknehmen.\n\n**Mit S6 kam `ergebnis` dazu** – wieder ein nullbares Feld und damit additiv."
       },
       "TerminAnlegenRequest": {
         "type": "object",
@@ -3838,6 +4026,147 @@
           "differenzTeamstaerke",
           "teamA",
           "teamB"
+        ]
+      },
+      "Sieger": {
+        "type": "string",
+        "description": "Ausgang eines Spiels (A21). `A` und `B` bezeichnen die Teams der Einteilung, `U` ein Unentschieden.\n\n**`U` ist ein dritter Ausgang und kein fehlender Sieger.** Ein noch nicht erfasstes Ergebnis ist nicht `U`, sondern gar kein `Ergebnis` – das Feld `ergebnis` der Einzelansicht ist dann `null`.",
+        "enum": [
+          "A",
+          "B",
+          "U"
+        ]
+      },
+      "Ergebnis": {
+        "type": "object",
+        "description": "Der erfasste Ausgang eines Termins (A9, A21).\n\n**Dieses Schema erreicht jede Rolle, auch `GAST`** – es trägt deshalb keine Skillwerte und keine Ids von Personen. `erfasstVon` ist ein Anzeigename.\n\nEs erscheint an zwei Stellen: als Antwort von `POST /ergebnis/erfassen` und als Feld `ergebnis` in `GET /termine/{terminId}/lesen`.",
+        "properties": {
+          "sieger": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Sieger"
+              }
+            ],
+            "description": "Wer gewonnen hat, oder `U` für unentschieden."
+          },
+          "deutlich": {
+            "type": "boolean",
+            "description": "Ob der Sieg deutlich ausfiel. **Ohne Einfluss auf die Bilanz** – das Feld beschreibt die Höhe, nicht den Ausgang. Bei `sieger: \"U\"` ist es immer `false`; ein Erfassungsversuch mit `true` liefert `400 EINGABE_UNGUELTIG`."
+          },
+          "erfasstVon": {
+            "type": "string",
+            "description": "Anzeigename dessen, der zuerst erfasst hat – **zum Zeitpunkt der Erfassung**. Der Name wurde kopiert und ändert sich nicht mehr, auch nicht bei einer späteren Umbenennung oder wenn das Profil entfernt wird. Bei einem Gast steht hier sein temporärer Name.\n\n**Das ist die Auskunft, die der Zweitschnellste braucht**, wenn er `409 ERGEBNIS_VORHANDEN` bekommt."
+          },
+          "erfasstAm": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Zeitpunkt des ersten Eintrags."
+          },
+          "korrigiertAm": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Zeitpunkt der **letzten** Korrektur, oder `null`, solange nicht korrigiert wurde. `null` und kein Datum – der unkorrigierte Zustand ist die Abwesenheit einer Korrektur.\n\n**Die Zeile führt keine Historie:** Jede weitere Korrektur überschreibt diesen Wert. Wer sie braucht, braucht das Audit-Log."
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Stand des Datensatzes für das Optimistic Locking. `/admin/ergebnis/korrigieren` verlangt diesen Wert zurück und lehnt einen veralteten mit `409 DATEN_VERALTET` ab.\n\n**Dass schon die Antwort des Erfassens ihn trägt, ist der Grund für `201` mit Körper statt `204`** – sonst müsste der Client den Termin sofort danach noch einmal lesen, nur um korrigieren zu können."
+          }
+        },
+        "required": [
+          "sieger",
+          "deutlich",
+          "erfasstVon",
+          "erfasstAm",
+          "version"
+        ]
+      },
+      "ErgebnisErfassenRequest": {
+        "type": "object",
+        "description": "Anfragekörper von `POST /ergebnis/erfassen`.\n\n**Wer erfasst, steht nicht darin** – die Identität kommt aus der Sitzung. Ein Name im Körper wäre ein Weg, fremde Einträge zu erzeugen, und machte `erfasstVon` als Auskunft wertlos.",
+        "properties": {
+          "terminId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Betroffener Termin. Er muss `ABGESCHLOSSEN` sein und eine Teameinteilung haben."
+          },
+          "sieger": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Sieger"
+              }
+            ],
+            "description": "**Pflicht.** Ein unbekannter Wert liefert `400`."
+          },
+          "deutlich": {
+            "type": "boolean",
+            "default": false,
+            "description": "Weglassen zählt wie `false`. **Bei `sieger: \"U\"` ist `true` unzulässig** und liefert `400 EINGABE_UNGUELTIG` mit dem Schlüssel `deutlichNurBeiSieg` im Block `felder` – die Oberfläche blendet den Haken bei Unentschieden am besten aus."
+          }
+        },
+        "required": [
+          "terminId",
+          "sieger"
+        ]
+      },
+      "ErgebnisKorrigierenRequest": {
+        "type": "object",
+        "description": "Anfragekörper von `POST /admin/ergebnis/korrigieren`.\n\n**Ein Voll-Update, kein feldweises.** Grund ist `deutlich`: Bei einem `boolean` wäre „weggelassen\" nicht von `false` zu unterscheiden, und ein einmal gesetzter Haken liesse sich nie wieder entfernen. Beide Felder sind deshalb Pflicht – anders als bei `/admin/termin/aendern`.",
+        "properties": {
+          "terminId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Betroffener Termin. Das Ergebnis hat keine eigene Adresse, es hängt am Termin."
+          },
+          "sieger": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Sieger"
+              }
+            ],
+            "description": "**Pflicht**, auch wenn er sich nicht ändert."
+          },
+          "deutlich": {
+            "type": "boolean",
+            "description": "**Pflicht.** Bei `sieger: \"U\"` ist `true` unzulässig."
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Der Wert aus der Antwort des Erfassens oder aus dem Feld `ergebnis` der Einzelansicht. Bei Abweichung `409 DATEN_VERALTET` – das heißt **„neu laden und erneut speichern\", nicht „Eingabe falsch\"**."
+          }
+        },
+        "required": [
+          "terminId",
+          "sieger",
+          "deutlich",
+          "version"
+        ]
+      },
+      "Bilanz": {
+        "type": "object",
+        "description": "Siege, Niederlagen und Unentschieden eines Spielers (A21).\n\n**Kein A12-Fall:** Die Bilanz ist Statistik und kein Skillwert – sie darf den Server auch in Richtung `USER` verlassen. Dasselbe Schema erscheint deshalb an zwei Stellen: als Feld `bilanz` in `SpielerDetails` (Adminübersicht) und als Antwort von `GET /bilanz/lesen` für den angemeldeten Spieler über sich selbst.\n\n**Dreimal `0` heißt „nichts zu zeigen\"** – bei einem Spieler ohne gewertete Termine wie bei einem Gast, der grundsätzlich keine Bilanz führt. Beide Fälle sind absichtlich nicht unterscheidbar.\n\n**Die Zähler werden bei jeder Ergebnisänderung neu berechnet**, nicht fortgeschrieben: Eine Korrektur *dreht* einen Sieg in eine Niederlage, sie addiert nichts.",
+        "properties": {
+          "siege": {
+            "type": "integer",
+            "description": "Gewonnene Spiele."
+          },
+          "niederlagen": {
+            "type": "integer",
+            "description": "Verlorene Spiele."
+          },
+          "unentschieden": {
+            "type": "integer",
+            "description": "Unentschiedene Spiele. **Der Auswechselspieler zählt in allen drei Zählern mit** – er hat gespielt."
+          }
+        },
+        "required": [
+          "siege",
+          "niederlagen",
+          "unentschieden"
         ]
       }
     }
