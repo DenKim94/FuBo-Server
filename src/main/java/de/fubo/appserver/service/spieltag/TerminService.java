@@ -12,6 +12,7 @@ import de.fubo.appserver.dto.spieltag.TerminAendernRequest;
 import de.fubo.appserver.dto.spieltag.TerminAngelegt;
 import de.fubo.appserver.repository.spieltag.TerminRepository;
 import de.fubo.appserver.service.audit.AuditService;
+import de.fubo.appserver.service.ergebnis.ErgebnisService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -66,17 +67,20 @@ public class TerminService {
     private final TerminRepository terminRepository;
     private final TeilnahmeService teilnahmeService;
     private final TeamGenerierungService teamGenerierungService;
+    private final ErgebnisService ergebnisService;
     private final AuditService auditService;
     private final Clock uhr;
 
     public TerminService(TerminRepository terminRepository,
                          TeilnahmeService teilnahmeService,
                          TeamGenerierungService teamGenerierungService,
+                         ErgebnisService ergebnisService,
                          AuditService auditService,
                          Clock uhr) {
         this.terminRepository = terminRepository;
         this.teilnahmeService = teilnahmeService;
         this.teamGenerierungService = teamGenerierungService;
+        this.ergebnisService = ergebnisService;
         this.auditService = auditService;
         this.uhr = uhr;
     }
@@ -128,9 +132,12 @@ public class TerminService {
                 .orElseThrow(() -> new FachlicherFehler(Fehlercode.INHALT_NICHT_GEFUNDEN,
                         "Es gibt keinen Termin mit dieser Id."));
 
+        // Vier Abfragen, eine Transaktion und damit ein Stand. Die Reihenfolge ist
+        // beliebig - keine der drei Ergaenzungen haengt von einer anderen ab.
         return new TerminMitTeilnehmern(termin,
                 teilnahmeService.uebersicht(terminId),
-                teamGenerierungService.einteilungLesen(terminId).orElse(null));
+                teamGenerierungService.einteilungLesen(terminId).orElse(null),
+                ergebnisService.lesen(terminId).orElse(null));
     }
 
     // ------------------------------------------------------------------ Anlegen

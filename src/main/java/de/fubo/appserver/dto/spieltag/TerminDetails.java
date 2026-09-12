@@ -25,6 +25,12 @@ import java.time.LocalTime;
  * {@code GET /teams/{terminId}/lesen} bleibt vertretbar, sobald die Einteilung haeufiger
  * einzeln nachgeladen wird als der Termin - heute waeren es zwei Aufrufe fuer eine Ansicht.
  *
+ * <h2>Das Ergebnis kam mit S6 dazu (Weggabelung B)</h2>
+ * Das vierte additive Feld nach demselben Muster, und es traegt zugleich die {@code version},
+ * die {@code /admin/ergebnis/korrigieren} zurueckverlangt. <b>Ein dritter Aufruf nur fuer den
+ * Ausgang eines Spiels waere die schlechtere Antwort</b> - das Dashboard zeigt Termin,
+ * Teilnehmer, Teams und Ergebnis ohnehin zusammen.
+ *
  * <h2>Die Teilnehmerliste kam mit Paket 7 dazu (30.08.2026)</h2>
  * Als zusaetzliches Feld dieser Antwort und <b>nicht</b> als eigener Endpunkt: Wer einen
  * Termin oeffnet, will die Teilnehmer sehen, und zwei Aufrufe fuer eine Ansicht sind zwei
@@ -48,6 +54,11 @@ import java.time.LocalTime;
  *                           Normalzustand - und die Antwort auf "gibt es schon eine
  *                           Einteilung", ohne die Wahl zwischen {@code 404} (klingt nach
  *                           Fehler) und {@code 204} (klingt nach "nichts zu holen")
+ * @param ergebnis           der erfasste Ausgang oder {@code null}, solange niemand erfasst
+ *                           hat - ebenfalls kein Fehler, sondern der Normalzustand jedes
+ *                           Termins bis zum Abpfiff. <b>Unabhaengig von {@code teams}:</b>
+ *                           Eine Einteilung ohne Ergebnis ist der Regelfall vor dem Spiel,
+ *                           ein Ergebnis ohne Einteilung kann es nicht geben
  */
 public record TerminDetails(Long terminId,
                             Long serieId,
@@ -60,7 +71,8 @@ public record TerminDetails(Long terminId,
                             Boolean eigeneRueckmeldung,
                             Long version,
                             Teilnehmerliste teilnehmerliste,
-                            Teameinteilung teams) {
+                            Teameinteilung teams,
+                            Ergebnis ergebnis) {
 
     /** Bildet Termin und Teilnehmer auf den Vertrag ab. */
     public static TerminDetails von(TerminMitTeilnehmern gelesen) {
@@ -77,6 +89,9 @@ public record TerminDetails(Long terminId,
                 eintrag.eigeneRueckmeldung(),
                 eintrag.version(),
                 Teilnehmerliste.von(gelesen.teilnehmer()),
-                gelesen.einteilung() == null ? null : Teameinteilung.von(gelesen.einteilung()));
+                gelesen.einteilung() == null ? null : Teameinteilung.von(gelesen.einteilung()),
+                // Ergebnis ist hier der DTO aus diesem Paket, gelesen.ergebnis() die
+                // gleichnamige Entity aus domain.spieltag - die Zuordnung macht das Paket.
+                gelesen.ergebnis() == null ? null : Ergebnis.von(gelesen.ergebnis()));
     }
 }

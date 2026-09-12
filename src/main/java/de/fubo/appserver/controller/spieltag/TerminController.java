@@ -92,7 +92,9 @@ public class TerminController {
      *
      * <p><b>Die Teilnehmerliste kommt mit</b>, als Feld dieser Antwort und nicht als zweiter
      * Endpunkt: Wer einen Termin oeffnet, will die Teilnehmer sehen, und zwei Aufrufe fuer
-     * eine Ansicht sind zwei Gelegenheiten fuer einen inkonsistenten Stand.
+     * eine Ansicht sind zwei Gelegenheiten fuer einen inkonsistenten Stand. Aus demselben
+     * Grund reisen seit S5 die Teams und seit S6 das Ergebnis mit; <b>beide Felder sind
+     * nullbar, und {@code null} ist dort jeweils der Normalzustand</b> und kein Fehler.
      *
      * @param terminId gesuchter Termin
      * @param sitzung  aufrufende Sitzung
