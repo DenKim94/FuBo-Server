@@ -65,9 +65,10 @@ public record FuboProperties(@NotNull Session session,
      * Konstante im {@code SessionService}, weil dort gar kein Anlass zum Verstellen
      * besteht - eine Sitzung ist nach spaetestens einer Stunde ohnehin wertlos.
      *
-     * @param aufbewahrungTage Tage, nach denen ein Eintrag geloescht wird (Vorgabe 90)
+     * @param aufbewahrungTage Tage, nach denen ein Eintrag geloescht wird (Vorgabe 30;
+     *                         bis zum 12.09.2026 waren es 90)
      */
-    public record Audit(@DefaultValue("90") @Min(1) int aufbewahrungTage) {}
+    public record Audit(@DefaultValue("30") @Min(1) int aufbewahrungTage) {}
 
     /**
      * SMTP-Zugang fuer den Versand der Bestaetigungs-PIN (A22, S2b).
@@ -131,9 +132,12 @@ public record FuboProperties(@NotNull Session session,
      *                                 und Rechtsgroesse und deshalb Property, nicht
      *                                 {@code configs.app_config}: {@code angefordert_von_ip}
      *                                 ist personenbezogen, und die Tabelle waechst sonst
-     *                                 unbegrenzt. <b>Kuerzer als die 90 Tage des
-     *                                 Audit-Logs</b>, weil der fachliche Beleg dort steht -
-     *                                 hier bleiben nur die technischen Vorgangsdaten.
+     *                                 unbegrenzt. <b>Seit dem 12.09.2026 dieselbe Frist wie
+     *                                 das Audit-Log</b>; vorher war sie kuerzer. Der fachliche
+     *                                 Beleg steht dort, hier bleiben nur die technischen
+     *                                 Vorgangsdaten - eine laengere Frist braeuchte es also
+     *                                 auch dann nicht, wenn das Protokoll wieder laenger
+     *                                 aufbewahrt wuerde.
      */
     public record Reset(@DefaultValue("15") @Min(1) int gueltigkeitMinuten,
                         @DefaultValue("5") @Min(1) @Max(5) int maxVersuche,

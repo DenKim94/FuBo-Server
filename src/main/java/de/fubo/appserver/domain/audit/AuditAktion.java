@@ -92,7 +92,7 @@ public enum AuditAktion {
      * <p>Die Details nennen den alten und den neuen Namen sowie die <i>gesetzten</i>
      * Skillwerte - nicht die vorherigen. Der Eintrag beantwortet "wer hat wann was geaendert",
      * nicht "wie war es vorher"; eine vollstaendige Aenderungshistorie waere eine eigene
-     * Entscheidung mit eigenem Datenmodell, und die Loeschfrist von 90 Tagen machte sie
+     * Entscheidung mit eigenem Datenmodell, und die Loeschfrist von 30 Tagen machte sie
      * ohnehin lueckenhaft.
      */
     PROFIL_GEAENDERT,
@@ -177,7 +177,7 @@ public enum AuditAktion {
      * Serie. <b>Die erzeugten Termine bekommen keinen eigenen Eintrag</b> - bei 52 Terminen
      * waeren das 52 Zeilen fuer einen Vorgang. Die Details nennen stattdessen die Anzahl der
      * angelegten und der uebersprungenen Termine; welche es im Einzelnen sind, steht in
-     * {@code spieltag.termin} und ueberlebt dort auch die Loeschfrist von 90 Tagen.
+     * {@code spieltag.termin} und ueberlebt dort auch die Loeschfrist von 30 Tagen.
      */
     SERIE_ANGELEGT,
 
@@ -200,7 +200,7 @@ public enum AuditAktion {
      * <p>Die <b>einzige</b> Adminaktion an einer Teilnahme. Zu- und Absagen der Nutzer werden
      * nicht protokolliert - sie stehen vollstaendig in {@code spieltag.teilnahme} samt
      * {@code gemeldet_am}, und ein zweiter Beleg verdoppelte personenbezogene Daten, die nach
-     * 90 Tagen der Loeschfrist zum Opfer fielen, waehrend die Teilnahme bliebe. Diese
+     * 30 Tagen der Loeschfrist zum Opfer fielen, waehrend die Teilnahme bliebe. Diese
      * Aenderung dagegen ueberschreibt eine Selbsteinschaetzung und gehoert deshalb belegt.
      */
     GAST_STUFE_GEAENDERT,
@@ -214,7 +214,7 @@ public enum AuditAktion {
      *
      * <p>Die Details nennen Verfahren, Seed, Teilnehmerzahl und Kosten. <b>Sie sind hier
      * Beiwerk</b>, anders als beim manuellen Lauf: Der Lauf selbst steht mit allem Noetigen in
-     * {@code spieltag.team_generierung} und ueberlebt dort auch die Loeschfrist von 90 Tagen.
+     * {@code spieltag.team_generierung} und ueberlebt dort auch die Loeschfrist von 30 Tagen.
      */
     TEAMS_GENERIERT,
 
@@ -234,7 +234,7 @@ public enum AuditAktion {
      * <p>{@code entitaet} und {@code entitaet_id} bleiben leer: Es entsteht keine Ressource,
      * auf die sie zeigen koennten.
      *
-     * <p><b>Preis, den man kennen muss:</b> Nach 90 Tagen faellt der Eintrag der Loeschfrist
+     * <p><b>Preis, den man kennen muss:</b> Nach 30 Tagen faellt der Eintrag der Loeschfrist
      * zum Opfer ({@code fubo.audit.aufbewahrung-tage}), und damit die gesamte Nachvollziehbarkeit
      * dieses Laufs. Bewusst hingenommen - die Frist gilt dem Personenbezug, nicht der
      * Nachrechenbarkeit einer Adminrechnung.

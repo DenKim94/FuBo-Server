@@ -406,7 +406,7 @@ public class TeamGenerierungService {
      *
      * <p><b>Beiwerk, anders als beim manuellen Lauf:</b> Der Lauf selbst steht mit allem
      * Noetigen in {@code spieltag.team_generierung} und ueberlebt dort auch die Loeschfrist von
-     * 90 Tagen. Die Details sind der schnelle Blick, nicht der Beleg.
+     * 30 Tagen. Die Details sind der schnelle Blick, nicht der Beleg.
      */
     private static Map<String, Object> laufDetails(Teamergebnis ergebnis) {
         Map<String, Object> details = new LinkedHashMap<>();

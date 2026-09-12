@@ -191,7 +191,7 @@ class BruteForceServiceTests {
                 new FuboProperties.BruteForce(MAX_JE_IP, MAX_GLOBAL, FENSTER_MINUTEN, SPERRDAUERN),
                 // Fuer die Drosselung ohne Bedeutung; seit S2b sind Mail-Zugang und
                 // Reset-Grenzen ebenfalls Pflichtbestandteile von FuboProperties.
-                new FuboProperties.Audit(90),
+                new FuboProperties.Audit(30),
                 new FuboProperties.Mail("smtp.example.invalid", 587, "test", "test",
                         "FuBo-Test <noreply@example.invalid>", 5000),
                 new FuboProperties.Reset(15, 5, 3, 30));

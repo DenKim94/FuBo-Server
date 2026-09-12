@@ -358,7 +358,7 @@ class ManuelleGenerierungTests {
      * steht.
      *
      * <p>Er traegt deshalb mehr als sonst ueblich: Teilnehmer, Seed, Verfahren und Kosten.
-     * <b>Der Preis, den man kennen muss:</b> Nach 90 Tagen faellt er der Loeschfrist zum
+     * <b>Der Preis, den man kennen muss:</b> Nach 30 Tagen faellt er der Loeschfrist zum
      * Opfer.
      */
     @Test

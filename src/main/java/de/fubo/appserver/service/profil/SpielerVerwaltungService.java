@@ -414,7 +414,7 @@ public class SpielerVerwaltungService {
         // Die alten Skillwerte gehoeren nicht ins Protokoll: Der Eintrag beantwortet "wer hat
         // wann was geaendert", nicht "wie war es vorher". Eine vollstaendige Aenderungshistorie
         // waere eine eigene Entscheidung mit eigenem Datenmodell - und die Loeschfrist von
-        // 90 Tagen machte sie ohnehin lueckenhaft.
+        // 30 Tagen machte sie ohnehin lueckenhaft.
         Map<String, Object> details = new LinkedHashMap<>();
         if (nameAendern) {
             details.put("nameAlt", alterName);

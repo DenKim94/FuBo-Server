@@ -214,7 +214,7 @@ public class SerienService {
      * Baut die Details des Protokolleintrags.
      *
      * <p><b>Anzahlen statt Listen.</b> Bei 52 Terminen stuenden sonst 52 Ids in einer Zeile,
-     * die nach 90 Tagen der Loeschfrist zum Opfer faellt - waehrend die Termine selbst in
+     * die nach 30 Tagen der Loeschfrist zum Opfer faellt - waehrend die Termine selbst in
      * {@code spieltag.termin} stehen bleiben und ueber ihre {@code serie_id} auffindbar sind.
      * Der Eintrag beantwortet "wer hat wann welche Serie angelegt", nicht "welche Zeilen
      * entstanden dabei".

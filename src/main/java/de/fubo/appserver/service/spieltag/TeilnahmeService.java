@@ -28,7 +28,7 @@ import java.util.Map;
  *
  * <h2>Warum die Rueckmeldung nicht protokolliert wird</h2>
  * Sie steht bereits vollstaendig in {@code spieltag.teilnahme} samt {@code gemeldet_am}; ein
- * zweiter Beleg im Audit-Log verdoppelte personenbezogene Daten und fiele nach 90 Tagen der
+ * zweiter Beleg im Audit-Log verdoppelte personenbezogene Daten und fiele nach 30 Tagen der
  * Loeschfrist zum Opfer, waehrend die Teilnahme bliebe. <b>Adminaktionen werden
  * protokolliert, Nutzerhandlungen nicht</b> - die Aenderung der Gast-Stufe ist deshalb die
  * einzige Stelle hier mit einem Eintrag.

@@ -76,9 +76,17 @@ fubo:
       - 15
   audit:
     # Loeschfrist des Audit-Logs. Betriebs- und Rechtsgroesse, deshalb Property und nicht
-    # Teil der Admin-Konfiguration. Betrifft alle Aktionen gleichermassen; eine nach
-    # Aktionsart gestaffelte Frist waere eine Erweiterung des Aufraeumjobs.
-    aufbewahrung-tage: 90
+    # Teil der Admin-Konfiguration: Ein Admin soll die Nachvollziehbarkeit seiner eigenen
+    # Aenderungen nicht per Formular verkuerzen koennen. Betrifft alle Aktionen
+    # gleichermassen; eine nach Aktionsart gestaffelte Frist waere eine Erweiterung des
+    # Aufraeumlaufs.
+    #
+    # Am 12.09.2026 von 90 auf 30 Tage verkuerzt (Vorgabe des Haupt-Entwicklers, S6
+    # Abschnitt 0.6): Der Server laeuft auf einem Raspberry Pi, und audit_log ist die
+    # einzige Tabelle, die ohne Zutun dauerhaft waechst. Preis: Eine Ergebniskorrektur ist
+    # nach 30 Tagen nicht mehr belegbar, ein manueller Generierungslauf (A24) gar nicht
+    # mehr nachvollziehbar - er steht nirgends sonst.
+    aufbewahrung-tage: 30
   mail:
     # SMTP-Zugang fuer den Versand der Bestaetigungs-PIN beim Passwort-Reset (A22).
     #

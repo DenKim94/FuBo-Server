@@ -46,7 +46,7 @@ class SessionAuthFilterTests {
             new FuboProperties.Cors(List.of("http://localhost:5173")),
             // Fuer den Filter ohne Bedeutung; die Drosselung haengt am PIN-Endpunkt.
             new FuboProperties.BruteForce(5, 30, 15, List.of(1, 5, 15)),
-            new FuboProperties.Audit(90),
+            new FuboProperties.Audit(30),
             // S2b: Mail-Zugang und Reset-Grenzen. Fuer den Filter ohne Bedeutung, seit
             // S2b aber Pflichtbestandteile von FuboProperties.
             new FuboProperties.Mail("smtp.example.invalid", 587, "test", "test",

@@ -198,10 +198,13 @@ public class PasswortResetService {
      * personenbezogen, und nach der DSGVO gilt Speicherbegrenzung. Nebenbei bleibt die
      * Tabelle klein - Vorgaenge werden ausschliesslich angehaengt.
      *
-     * <p><b>Kuerzer als die 90 Tage des Audit-Logs</b> und aus gutem Grund: Der fachliche
-     * Beleg steht dort ({@code PASSWORT_RESET_ANGEFORDERT}, {@code PASSWORT_GEAENDERT}), hier
-     * bleiben nur die technischen Vorgangsdaten. Wer nachvollziehen will, wer wann ein
-     * Passwort gesetzt hat, schaut ins Protokoll, nicht in diese Tabelle.
+     * <p><b>Seit dem 12.09.2026 dieselbe Frist wie das Audit-Log</b>, das von 90 auf 30 Tage
+     * verkuerzt wurde (Vorgabe des Haupt-Entwicklers, Speicherplatz auf dem Raspberry Pi).
+     * Vorher war diese Frist die kuerzere, und die Begruendung traegt weiterhin in eine
+     * Richtung: Der fachliche Beleg steht im Protokoll
+     * ({@code PASSWORT_RESET_ANGEFORDERT}, {@code PASSWORT_GEAENDERT}), hier bleiben nur die
+     * technischen Vorgangsdaten. <b>Laenger als das Protokoll darf diese Tabelle deshalb nie
+     * werden</b> - dann ueberlebte die Spur den Beleg.
      *
      * <p>Der Lauf schreibt sich <b>nicht</b> ins Audit-Log - das waere zirkulaer, dieselbe
      * Regel wie beim Aufraeumen des Protokolls selbst. Er meldet sich ueber die

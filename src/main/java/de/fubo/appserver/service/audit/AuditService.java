@@ -85,19 +85,31 @@ public class AuditService {
     }
 
     /**
-     * Entfernt Eintraege jenseits der Aufbewahrungsfrist (Vorgabe 90 Tage,
+     * Entfernt Eintraege jenseits der Aufbewahrungsfrist (Vorgabe 30 Tage,
      * {@code fubo.audit.aufbewahrung-tage}).
      *
-     * <p><b>Warum ueberhaupt geloescht wird:</b> Das Audit-Log enthaelt personenbezogene
-     * Daten - bei einem PIN-Fehlversuch steht die Client-IP darin. Nach der DSGVO duerfen
-     * solche Daten nur so lange gespeichert werden, wie sie fuer den Zweck erforderlich
-     * sind; "Angriffe erkennen" rechtfertigt keine unbegrenzte Vorhaltung. Nebenbei bleibt
-     * die Tabelle damit klein - sie ist die einzige, die sonst dauerhaft waechst.
+     * <p><b>Warum ueberhaupt geloescht wird - zwei Gruende, die beide fuer sich tragen.</b>
+     * Erstens der Personenbezug: Bei einem PIN-Fehlversuch steht die Client-IP im Protokoll,
+     * und nach der DSGVO duerfen solche Daten nur so lange gespeichert werden, wie sie fuer
+     * den Zweck erforderlich sind; "Angriffe erkennen" rechtfertigt keine unbegrenzte
+     * Vorhaltung. Zweitens der Speicherplatz: Die Anwendung laeuft auf einem Raspberry Pi,
+     * und {@code profil.audit_log} ist die einzige Tabelle, die ohne Zutun dauerhaft waechst.
      *
-     * <p><b>Die Frist gilt einheitlich fuer alle Aktionen.</b> Eine Ergebniskorrektur aus
-     * S6 ist damit nach 90 Tagen ebenfalls nicht mehr belegbar. Soll sicherheitsbezogenes
+     * <p><b>Die Frist wurde am 12.09.2026 von 90 auf 30 Tage verkuerzt</b> (Vorgabe des
+     * Haupt-Entwicklers, S6 Abschnitt 0.6). Der Preis ist benannt und angenommen: Eine
+     * Ergebniskorrektur ist nach 30 Tagen nicht mehr belegbar, und beim manuellen
+     * Generierungslauf (A24) faellt mit dem Eintrag die <i>gesamte</i> Nachvollziehbarkeit,
+     * weil er nirgends sonst gespeichert wird.
+     *
+     * <p><b>Die Frist ist das einzige Mittel gegen das Wachstum.</b> Eine harte Obergrenze
+     * der Zeilenzahl gibt es bewusst nicht: Sie warf in einem Ansturm genau die Eintraege
+     * weg, die ihn belegen - und ein Angreifer haette damit ein Mittel, das Protokoll seiner
+     * eigenen Versuche zu verdraengen.
+     *
+     * <p><b>Die Frist gilt einheitlich fuer alle Aktionen.</b> Soll sicherheitsbezogenes
      * Protokoll kuerzer und fachliches laenger aufbewahrt werden, ist das eine Staffelung
-     * je {@code aktion} - der Aufraeumjob waere dafuer die einzige Stelle, die sich aendert.
+     * je {@code aktion} - dieser Aufraeumlauf waere dafuer die einzige Stelle, die sich
+     * aendert.
      *
      * <p>Der Lauf selbst wird nicht ins Audit-Log geschrieben; das waere zirkulaer. Er
      * protokolliert ueber die Anwendungsprotokollierung.
