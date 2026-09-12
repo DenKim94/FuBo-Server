@@ -24,15 +24,23 @@ import java.util.Map;
  *
  * <p>Zusammengefuehrt werden beide Teile in {@code SpielerVerwaltungService#uebersicht()}.
  *
+ * <h2>Warum die Bilanz hier mitreist und der Belegtstatus nicht</h2>
+ * Sie ist gespeicherter Bestand und kein abgeleiteter Live-Wert: Sie aendert sich nur, wenn ein
+ * Ergebnis erfasst oder korrigiert wird - und genau dann verwirft {@code BilanzService} den
+ * Zwischenspeicher. Sie kann darin also nicht veralten, waehrend der Belegtstatus es sofort
+ * wuerde.
+ *
  * @param spielerId Id des Profils
  * @param name      Anzeigename
  * @param rolle     {@link Rolle#ADMIN} oder {@link Rolle#USER}
  * @param aktiv     {@code false} bedeutet gesperrt
  * @param skills    Wert je Kategorieschluessel; enthaelt nur aktive Kategorien, zu denen eine
  *                  Zeile existiert - eine fehlende Kategorie ist ein ungepflegtes Profil
+ * @param bilanz    Siege, Niederlagen und Unentschieden aus {@code profil.spieler}
+ *                  (A21, {@code V011}); nie {@code null}, hoechstens dreimal Null
  */
 public record Profileintrag(Long spielerId, String name, Rolle rolle, boolean aktiv,
-                            Map<String, Integer> skills) {
+                            Map<String, Integer> skills, Bilanzstand bilanz) {
 
     /**
      * Kompakter Konstruktor, der die Skillkarte unveraenderlich macht.
@@ -44,5 +52,6 @@ public record Profileintrag(Long spielerId, String name, Rolle rolle, boolean ak
      */
     public Profileintrag {
         skills = skills == null ? Map.of() : Map.copyOf(skills);
+        bilanz = bilanz == null ? Bilanzstand.LEER : bilanz;
     }
 }

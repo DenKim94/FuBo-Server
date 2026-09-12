@@ -2,6 +2,7 @@ package de.fubo.appserver.repository.spieltag;
 
 import de.fubo.appserver.domain.auth.GastStufe;
 import de.fubo.appserver.domain.auth.Rolle;
+import de.fubo.appserver.domain.profil.Bilanzstand;
 import de.fubo.appserver.domain.profil.Profileintrag;
 import de.fubo.appserver.domain.spieltag.Aufstellungsspieler;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -200,9 +201,10 @@ public class AufstellungRepository {
      * Liefert die genannten, aktiven Profile samt Rolle und Skillwerten.
      *
      * <p><b>Der Rueckgabetyp ist {@code Profileintrag} aus {@code domain.profil}</b> und kein
-     * eigener Record: Genau diese fuenf Angaben stehen dort, und ein zweiter, fast gleicher
-     * Typ liefe frueher oder spaeter auseinander. Dass {@code aktiv} hier immer {@code true}
-     * ist, ist eine Folge der Abfrage und kein Widerspruch.
+     * eigener Record: Genau diese Angaben stehen dort, und ein zweiter, fast gleicher Typ
+     * liefe frueher oder spaeter auseinander. Dass {@code aktiv} hier immer {@code true} ist,
+     * ist eine Folge der Abfrage und kein Widerspruch; dass die Bilanz leer bleibt, ist eine
+     * Folge dessen, dass der Generator sie nicht liest (A16).
      *
      * @param spielerIds genannte Ids, <b>mindestens eine</b> - eine leere Liste ergaebe
      *                   {@code IN ()} und damit einen Syntaxfehler
@@ -217,7 +219,12 @@ public class AufstellungRepository {
                         rs.getString("name"),
                         Rolle.valueOf(rs.getString("rolle")),
                         true,
-                        skillsLesen(rs.getString("skills"))))
+                        skillsLesen(rs.getString("skills")),
+                        // Der Generator rechnet nicht mit der Bilanz - A16 stellt eine
+                        // Rueckwirkung von Ergebnissen ausdruecklich zurueck, und die Bilanz
+                        // ist ohnehin Statistik und kein Skillwert. Der gemeinsame Record
+                        // fuehrt das Feld, diese Abfrage laesst es deshalb leer.
+                        Bilanzstand.LEER))
                 .list();
     }
 

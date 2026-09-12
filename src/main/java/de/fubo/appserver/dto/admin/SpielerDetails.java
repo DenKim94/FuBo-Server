@@ -2,6 +2,7 @@ package de.fubo.appserver.dto.admin;
 
 import de.fubo.appserver.domain.auth.Rolle;
 import de.fubo.appserver.domain.profil.Profileintrag;
+import de.fubo.appserver.dto.profil.Bilanz;
 
 import java.util.Map;
 
@@ -28,6 +29,10 @@ import java.util.Map;
  *       Aenderung daran ueber {@code bearbeiten} ab; eine Eingabe, die immer scheitert, ist
  *       eine schlechte Oberflaeche.</li>
  *   <li><b>{@code skills}</b> - ohne sie liesse sich kein Bearbeitungsformular fuellen.</li>
+ *   <li><b>{@code bilanz}</b> (seit S6) - sie liegt dort, wo der Admin ohnehin nachsieht, und
+ *       kostete keinen neuen Endpunkt. Sie stammt aus derselben zwischengespeicherten
+ *       Uebersichtsabfrage wie die Stammdaten; <b>jeder Vorgang, der sie aendert, verwirft den
+ *       Zwischenspeicher</b> - sonst zeigte die Uebersicht unbegrenzt lange alte Zahlen.</li>
  * </ul>
  *
  * @param spielerId Id des Profils; Eingabewert von {@code /admin/user/bearbeiten}
@@ -43,10 +48,14 @@ import java.util.Map;
  *                  Der Client erkennt die Luecke, indem er die Karte gegen
  *                  {@code /admin/skills/lesen} haelt; ein eigenes Feld im Vertrag braucht es
  *                  dafuer nicht.
+ * @param bilanz    Siege, Niederlagen und Unentschieden (A21 in der Ergaenzung vom
+ *                  30.08.2026); nie {@code null}, hoechstens dreimal Null. <b>Kein A12-Fall</b>
+ *                  - die Bilanz ist Statistik und kein Skillwert; dasselbe Schema liefert
+ *                  {@code GET /api/v1/bilanz/lesen} dem Spieler ueber sich selbst
  */
 public record SpielerDetails(Long spielerId, String name, Rolle rolle,
                              boolean aktiv, boolean belegt,
-                             Map<String, Integer> skills) {
+                             Map<String, Integer> skills, Bilanz bilanz) {
 
     /**
      * Fuehrt die zwischengespeicherten Stammdaten mit dem frisch ermittelten Belegtstatus
@@ -65,6 +74,7 @@ public record SpielerDetails(Long spielerId, String name, Rolle rolle,
                 eintrag.rolle(),
                 eintrag.aktiv(),
                 belegt,
-                eintrag.skills());
+                eintrag.skills(),
+                Bilanz.von(eintrag.bilanz()));
     }
 }

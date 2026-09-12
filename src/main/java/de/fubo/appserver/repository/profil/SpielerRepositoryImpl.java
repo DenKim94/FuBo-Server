@@ -1,6 +1,7 @@
 package de.fubo.appserver.repository.profil;
 
 import de.fubo.appserver.domain.auth.Rolle;
+import de.fubo.appserver.domain.profil.Bilanzstand;
 import de.fubo.appserver.domain.profil.NamensEintrag;
 import de.fubo.appserver.domain.profil.Profileintrag;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -99,6 +100,9 @@ class SpielerRepositoryImpl implements SpielerRepositoryCustom {
                    s.name,
                    s.rolle,
                    s.aktiv,
+                   s.anz_siege,
+                   s.anz_niederlagen,
+                   s.anz_unentschieden,
                    COALESCE(
                        (SELECT jsonb_object_agg(sk.kategorie, sk.wert)
                           FROM profil.spieler_skill sk
@@ -161,7 +165,11 @@ class SpielerRepositoryImpl implements SpielerRepositoryCustom {
                         rs.getString("name"),
                         Rolle.valueOf(rs.getString("rolle")),
                         rs.getBoolean("aktiv"),
-                        skillsLesen(rs.getString("skills"))))
+                        skillsLesen(rs.getString("skills")),
+                        new Bilanzstand(
+                                rs.getInt("anz_siege"),
+                                rs.getInt("anz_niederlagen"),
+                                rs.getInt("anz_unentschieden"))))
                 .list();
     }
 
