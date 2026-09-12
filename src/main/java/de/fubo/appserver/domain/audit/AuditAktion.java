@@ -9,7 +9,7 @@ package de.fubo.appserver.domain.audit;
  * rueckwirkend.
  *
  * <p>Die Liste waechst mit den Meilensteinen (Generierungslaeufe in S5,
- * Ergebniskorrekturen in S6). Hier stehen die Vorgaenge aus S2 und S2b.
+ * Ergebniskorrekturen in S6).
  */
 public enum AuditAktion {
 
@@ -239,5 +239,39 @@ public enum AuditAktion {
      * dieses Laufs. Bewusst hingenommen - die Frist gilt dem Personenbezug, nicht der
      * Nachrechenbarkeit einer Adminrechnung.
      */
-    TEAMS_MANUELL_GENERIERT
+    TEAMS_MANUELL_GENERIERT,
+
+    /**
+     * Ein Ergebnis wurde erfasst (A21, S6 Abschnitt 3.4).
+     *
+     * <p>Als {@code entitaet} steht {@code termin}, als {@code entitaet_id} die Termin-Id -
+     * das Ergebnis hat keine eigene Adresse, es haengt am Termin. <b>Handelnder ist der
+     * Aufrufer und nicht der Admin</b>: {@code /ergebnis/erfassen} liegt ausserhalb von
+     * {@code /admin/}, weil der Eintrag von dem kommen soll, der mit dem Telefon auf dem
+     * Platz steht.
+     *
+     * <p>Die Details nennen {@code sieger}, {@code deutlich} und die Zahl der betroffenen
+     * Spieler. <b>Die letzte Zahl ist der eigentliche Gewinn</b> - sie ist der einzige
+     * Beleg dafuer, wie viele Bilanzen dieser Eintrag bewegt hat; die Einteilung selbst
+     * kann spaeter abgeloest werden.
+     */
+    ERGEBNIS_ERFASST,
+
+    /**
+     * Der Admin hat ein Ergebnis korrigiert (A21, S6 Abschnitt 3.4).
+     *
+     * <p><b>Hier stehen alter <i>und</i> neuer Wert je Feld</b>, wie bei
+     * {@link #KONFIG_GEAENDERT} und {@link #TERMIN_GEAENDERT}: Die Frage "wer hat den Sieger
+     * gedreht" ist ohne den alten Wert nicht zu beantworten, und es sind zwei Felder - kein
+     * mehrzeiliger Text, der die Tabelle aufblaehte.
+     *
+     * <p><b>Auch eine Korrektur, die nichts aendert, wird protokolliert.</b> Anders als beim
+     * Termin ist der Aufruf hier ein Formular, das der Admin absendet; "ich habe nachgesehen
+     * und es stimmt so" ist eine Handlung, und {@code korrigiert_am} ist ebenfalls gewandert.
+     *
+     * <p>Die Zeile selbst traegt keine Historie: {@code korrigiert_am} ueberschreibt den
+     * vorherigen Wert. <b>Mehrfachkorrekturen sind nur ueber dieses Protokoll nachvollziehbar
+     * - und auch das nur, solange die Loeschfrist reicht.</b>
+     */
+    ERGEBNIS_KORRIGIERT
 }

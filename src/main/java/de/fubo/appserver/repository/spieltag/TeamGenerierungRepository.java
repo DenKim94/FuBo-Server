@@ -156,6 +156,25 @@ public class TeamGenerierungRepository {
              ORDER BY tz.id
             """;
 
+    /**
+     * Meldet, ob ein Termin eine unabgeloeste Einteilung hat (S6 Abschnitt 2.4).
+     *
+     * <p><b>Warum nicht {@link #SQL_KOPF_LESEN} mit {@code isPresent()}:</b> Dort steckt ein
+     * Join auf {@code spieltag.termin}, nur um {@code veraltet} abzuleiten - ein Wert, den
+     * die Ergebniserfassung nicht braucht. Und das Kennzeichen waere sogar irrefuehrend: Eine
+     * veraltete Einteilung ist fuer das Ergebnis vollkommen brauchbar, weil sich der
+     * Teilnehmerkreis nach dem Terminabschluss ohnehin nicht mehr aendern kann.
+     *
+     * <p><b>{@code EXISTS} statt {@code count(*)}</b>: PostgreSQL bricht beim ersten Treffer
+     * ab, und gezaehlt werden soll hier nichts.
+     */
+    private static final String SQL_EINTEILUNG_VORHANDEN = """
+            SELECT EXISTS (SELECT 1
+                             FROM spieltag.team_generierung tg
+                            WHERE tg.termin_id = :terminId
+                              AND tg.abgeloest_am IS NULL)
+            """;
+
     private final JdbcClient jdbc;
     private final ObjectMapper objectMapper;
 
@@ -218,6 +237,23 @@ public class TeamGenerierungRepository {
                     .param("skills", objectMapper.writeValueAsString(satz.werte()))
                     .update();
         }
+    }
+
+    /**
+     * Meldet, ob fuer diesen Termin eine unabgeloeste Einteilung vorliegt.
+     *
+     * <p>Gebraucht von der Ergebniserfassung: <b>Ohne Einteilung kein Ergebnis</b> (A21). Ein
+     * Ergebnis ohne Einteilung haette keine beteiligten Spieler - es stuende in der Tabelle,
+     * die Bilanz bliebe unveraendert, und niemand koennte spaeter sagen, ob das ein Fehler war.
+     *
+     * @param terminId betroffener Termin
+     * @return {@code true}, wenn es einen Lauf mit {@code abgeloest_am IS NULL} gibt
+     */
+    public boolean existiertAktuelle(Long terminId) {
+        return Boolean.TRUE.equals(jdbc.sql(SQL_EINTEILUNG_VORHANDEN)
+                .param("terminId", terminId)
+                .query(Boolean.class)
+                .single());
     }
 
     /**

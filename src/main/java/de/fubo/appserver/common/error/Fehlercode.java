@@ -242,6 +242,62 @@ public enum Fehlercode {
     TEAMS_FIXIERT(HttpStatus.CONFLICT,
             "Der Termin hat begonnen; die Teameinteilung steht fest."),
 
+    /**
+     * Fuer diesen Termin liegt bereits ein Ergebnis vor (A21, S6 Abschnitt 2.3).
+     *
+     * <p><b>Das ist kein Bedienfehler.</b> Nach dem Abpfiff tippen mehrere gleichzeitig; der
+     * Zweite soll nicht "Fehler" sehen, sondern "hat schon jemand gemacht" - und danach das
+     * bereits erfasste Ergebnis. Genau das sagt {@code detail}.
+     *
+     * <p>Entschieden wird der Wettlauf von {@code uq_ergebnis_termin} ueber
+     * {@code ON CONFLICT ... DO NOTHING RETURNING id}: Eine leere Ergebnismenge heisst "liegt
+     * schon vor". Derselbe Griff wie beim Anlegen eines Termins und aus demselben Grund -
+     * "erst pruefen, dann einfuegen" liesse ein Fenster offen, in dem ein zweiter Aufruf
+     * denselben Termin belegt, und der {@code INSERT} braeche doch am Constraint, mit genau
+     * dem {@code 500}, den die Pruefung verhindern sollte.
+     *
+     * <p><b>Korrigieren darf nur der Admin</b> ({@code /admin/ergebnis/korrigieren}); wer
+     * zuerst war, steht im Feld {@code erfasstVon} der Einzelansicht.
+     */
+    ERGEBNIS_VORHANDEN(HttpStatus.CONFLICT,
+            "Für diesen Termin wurde bereits ein Ergebnis erfasst."),
+
+    /**
+     * Der Termin ist noch nicht abgeschlossen (A21, S6 Abschnitt 2.1).
+     *
+     * <p><b>Bewusst nicht {@link #TERMIN_GESCHLOSSEN}</b>, obwohl beide einen Status
+     * beanstanden: Dort bedeutet der Code "nimmt keine Aenderung mehr an", hier ist die
+     * Polaritaet umgekehrt - der Termin ist <i>noch nicht</i> so weit. Derselbe Code fuer zwei
+     * entgegengesetzte Zustaende waere fuer den Aufrufer unbrauchbar; er koennte aus der
+     * Antwort nicht ableiten, ob Warten hilft.
+     *
+     * <p>Der Fall trifft einen geplanten <b>und</b> einen abgesagten Termin: Vor dem Anpfiff
+     * gibt es kein Ergebnis, und ein abgesagter Termin hat nicht stattgefunden. <b>Warten
+     * hilft nur im ersten Fall</b> - der Status setzt sich 30 Minuten nach Beginn selbst
+     * (A18), das Fenster ist also nie laenger als rund 35 Minuten. {@code detail} nennt
+     * deshalb den tatsaechlichen Status.
+     */
+    TERMIN_NICHT_ABGESCHLOSSEN(HttpStatus.CONFLICT,
+            "Für diesen Termin lässt sich noch kein Ergebnis erfassen."),
+
+    /**
+     * Zu diesem Termin gibt es keine Teameinteilung (A21, S6 Abschnitt 2.4).
+     *
+     * <p><b>Warum abgelehnt und nicht still gespeichert:</b> Ein Ergebnis ohne Einteilung hat
+     * keine beteiligten Spieler. Es stuende in der Tabelle, die Bilanz bliebe unveraendert,
+     * und niemand koennte spaeter sagen, ob das ein Fehler war oder ein Spiel, bei dem
+     * zufaellig niemand mitgezaehlt wurde.
+     *
+     * <p><b>Der Fall ist selten und deshalb gefaehrlich:</b> Er tritt nur auf, wenn ein Termin
+     * gespielt wurde, ohne dass jemand generiert hat - und genau dann faellt eine stumme
+     * Nullbilanz nicht auf.
+     *
+     * <p>Massgeblich ist die Einteilung mit {@code abgeloest_am IS NULL}. Ein abgeloester Lauf
+     * zaehlt nicht: Er beschreibt einen Teilnehmerkreis, der so nicht gespielt hat.
+     */
+    KEINE_EINTEILUNG(HttpStatus.CONFLICT,
+            "Für diesen Termin wurde keine Teameinteilung erzeugt."),
+
     EINGABE_UNGUELTIG(HttpStatus.BAD_REQUEST, "Ungültige Eingabedaten."),
     INTERNER_FEHLER(HttpStatus.INTERNAL_SERVER_ERROR, "Ein unerwarteter Fehler ist aufgetreten."),
     INHALT_NICHT_GEFUNDEN(HttpStatus.NOT_FOUND, "Der gesuchte Inhalt wurde nicht gefunden.");
