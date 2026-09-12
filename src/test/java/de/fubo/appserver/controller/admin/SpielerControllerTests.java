@@ -229,6 +229,64 @@ class SpielerControllerTests {
                 .contains("Pruefspieler N");
     }
 
+    /**
+     * Die Bilanz steht in der Adminuebersicht (A21, S6 Abschnitt 4.5).
+     *
+     * <p><b>Die Zaehler werden hier per SQL gesetzt und nicht ueber ein Ergebnis erzeugt</b> -
+     * das ist Absicht und keine Bequemlichkeit. Die Bilanzrechnung erhoeht
+     * {@code profil.spieler.version} per SQL; ein Fall, der in dieser Klasse ein Ergebnis
+     * erfasste, haette die betroffene {@code Spieler}-Entity aus einem frueheren Aufruf im
+     * Persistence-Context und liefe in einen Sperrkonflikt, <b>den es im Betrieb nicht
+     * gaebe</b>. Der Weg vom Ergebnis zu den Zaehlern steht in
+     * {@code ErgebnisControllerTests}; hier wird der Lesepfad geprueft - dass die Uebersicht
+     * die Spalten ueberhaupt mitliest und als {@code bilanz} ausliefert.
+     *
+     * <p><b>{@code version} steigt beim Setzen mit</b>, wie bei jeder {@code version}-Spalte,
+     * die per SQL geaendert wird.
+     *
+     * <p>Der Zwischenspeicher wird danach verworfen: Die Uebersicht liest die Stammdaten
+     * daraus, und ein direkter Eingriff in die Tabelle geht an jedem Verwerfen vorbei.
+     */
+    @Test
+    void uebersichtLiefertDieBilanz() throws Exception {
+        anlegen(vollstaendig("Pruefspieler Z")).andExpect(status().isCreated());
+
+        jdbc.update("""
+                UPDATE profil.spieler
+                   SET anz_siege = 4, anz_niederlagen = 2, anz_unentschieden = 1,
+                       version = version + 1
+                 WHERE name = ?
+                """, "Pruefspieler Z");
+        profilStammdatenCache.verwerfen();
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> bilanz = (Map<String, Object>)
+                profilVon(uebersicht(), "Pruefspieler Z").get("bilanz");
+
+        assertThat(bilanz).containsEntry("siege", 4)
+                .containsEntry("niederlagen", 2)
+                .containsEntry("unentschieden", 1);
+    }
+
+    /**
+     * Ein Profil ohne gewertetes Spiel traegt dreimal Null - und <b>nie {@code null}</b>.
+     *
+     * <p>Der Unterschied ist fuer den Client-Track keiner der Bequemlichkeit: Ein nullbares
+     * Feld zwaenge jede Anzeige zu einer Fallunterscheidung fuer einen Zustand, der genau
+     * dasselbe bedeutet wie dreimal Null - "nichts zu zeigen".
+     */
+    @Test
+    void profilOhneErgebnisTraegtDieLeereBilanz() throws Exception {
+        anlegen(vollstaendig("Pruefspieler Y")).andExpect(status().isCreated());
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> bilanz = (Map<String, Object>)
+                profilVon(uebersicht(), "Pruefspieler Y").get("bilanz");
+
+        assertThat(bilanz).isNotNull();
+        assertThat(bilanz.values()).containsOnly(0);
+    }
+
     // --------------------------------------------------------------------- Bearbeiten
 
     /** Umbenennen wirkt in der Uebersicht und in der Namensauswahl. */

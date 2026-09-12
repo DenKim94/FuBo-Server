@@ -361,6 +361,21 @@ class SecurityConfigTests {
         mockMvc.perform(post("/api/v1/admin/teams/generieren")
                         .contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isUnauthorized());
+
+        // S6: dieselbe Lage wie bei der Generierung - /ergebnis/erfassen und
+        // /admin/ergebnis/korrigieren unterscheiden sich im Wesentlichen nur im Praefix.
+        // Der Lesepfad der eigenen Bilanz steht daneben, weil er der einzige neue
+        // GET-Endpunkt ausserhalb von /admin/ ist.
+        mockMvc.perform(post("/api/v1/ergebnis/erfassen")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(post("/api/v1/admin/ergebnis/korrigieren")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/v1/bilanz/lesen"))
+                .andExpect(status().isUnauthorized());
     }
 
     /**
@@ -425,6 +440,14 @@ class SecurityConfigTests {
                         .contentType(MediaType.APPLICATION_JSON).content("{}")
                         .cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))
                 .andExpect(status().isForbidden());
+
+        // A21: Korrigieren ist eine Adminbefugnis. Der offene Endpunkt daneben
+        // (/api/v1/ergebnis/erfassen) steht bewusst allen Rollen offen - siehe
+        // userUndGastDuerfenGeschuetzteEndpunkteAufrufen.
+        mockMvc.perform(post("/api/v1/admin/ergebnis/korrigieren")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}")
+                        .cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -472,6 +495,26 @@ class SecurityConfigTests {
                         .contentType(MediaType.APPLICATION_JSON).content("{}")
                         .cookie(new Cookie(COOKIE, gastSitzung())))
                 .andExpect(status().isBadRequest());
+
+        // S6, A21: Erfassen darf jeder Angemeldete, auch ein GAST - "der erste Eintrag gilt"
+        // ergibt nur einen Sinn, wenn mehrere es versuchen duerfen. Der leere Koerper faellt
+        // danach durch die Eingabepruefung, und genau das ist der Beleg: Ein 400 kommt erst
+        // zustande, wenn die Filterchain durchgelassen hat.
+        mockMvc.perform(post("/api/v1/ergebnis/erfassen")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}")
+                        .cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post("/api/v1/ergebnis/erfassen")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}")
+                        .cookie(new Cookie(COOKIE, gastSitzung())))
+                .andExpect(status().isBadRequest());
+
+        // Die eigene Bilanz antwortet einem Gast mit 200 und dreimal Null - er fuehrt keine,
+        // aber das ist kein Grund fuer eine Fehlerseite.
+        mockMvc.perform(get("/api/v1/bilanz/lesen")
+                        .cookie(new Cookie(COOKIE, gastSitzung())))
+                .andExpect(status().isOk());
     }
 
     // ------------------------------------------------------------- Konfiguration der Kette
