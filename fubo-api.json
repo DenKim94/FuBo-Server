@@ -3341,12 +3341,14 @@
                 "$ref": "#/components/schemas/Teilnehmerliste"
               },
               "teams": {
-                "allOf": [
+                "anyOf": [
                   {
                     "$ref": "#/components/schemas/Teameinteilung"
+                  },
+                  {
+                    "type": "null"
                   }
                 ],
-                "nullable": true,
                 "description": "Die aktuelle Teameinteilung oder **`null`, solange niemand generiert hat** – kein Fehler, sondern der Normalzustand.\n\nSie steht hier und nicht hinter einem eigenen Endpunkt: Das Dashboard zeigt Termin, Teilnehmerliste und Teams zusammen, und zwei Aufrufe für eine Ansicht sind zwei Gelegenheiten für einen inkonsistenten Stand."
               }
             },
@@ -3708,8 +3710,10 @@
             "description": "`true` heißt „noch anzeigen, aber nicht mehr aktuell“ – seit dem Lauf hat sich der Teilnehmerkreis geändert. **Verstecken wäre falsch**: Jemand hat die Aufstellung vielleicht schon vorgelesen."
           },
           "auswechselspieler": {
-            "type": "string",
-            "nullable": true,
+            "type": [
+              "string",
+              "null"
+            ],
             "description": "Anzeigename oder `null` bei gerader Teilnehmerzahl. `null` und kein leerer String."
           },
           "teamA": {
@@ -3748,9 +3752,11 @@
             "description": "**Pflicht.** Anders als bei der Zusage am Termin (A17) gibt es hier niemanden, der sie später nachträgt – der Ersatzwert `MITTEL` gehört zur Termin-Quelle."
           },
           "name": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "maxLength": 40,
-            "nullable": true,
             "description": "Anzeigename oder weggelassen. Fehlt er, vergibt der Server `Gast 1`, `Gast 2`, … **nach der Position in der Liste** – der zweite Gast heißt `Gast 2`, auch wenn der erste einen Namen trug. Randleerzeichen entfernt der Server; ein danach leerer Name zählt wie ein fehlender."
           }
         },
@@ -3800,8 +3806,10 @@
             "description": "Die **tatsächlich angewandte** Regel. `ZULETZT_ANGEMELDET` hat im manuellen Lauf keine Datengrundlage – es hat sich niemand gemeldet – und fällt auf `SCHWAECHSTER_UEBERZAHL` zurück. **Anzeigen, nicht ignorieren.**"
           },
           "auswechselspieler": {
-            "type": "string",
-            "nullable": true,
+            "type": [
+              "string",
+              "null"
+            ],
             "description": "Anzeigename oder `null` bei gerader Teilnehmerzahl."
           },
           "differenzTeamstaerke": {
