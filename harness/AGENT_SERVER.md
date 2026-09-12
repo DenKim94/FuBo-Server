@@ -4,7 +4,8 @@
 > Gesamtspezifikation und Datenmodell bleibt `/PRJ_FuBo/harness/AGENT.md`, für den Kontrakt
 > `server/fubo-api.json`, für Stand und Fallstricke `CONTEXT_HANDOFF_SERVER.md`.
 >
-> **Am 05.09.2026 verdichtet, am 06.09.2026 um die Regeln aus S5 ergänzt.** Jede Regel steht hier mit dem *einen* Grund, der sie trägt – wer
+> **Am 05.09.2026 verdichtet, am 06.09.2026 um die Regeln aus S5 und am 12.09.2026 um die
+> Regeln aus S6 ergänzt.** Jede Regel steht hier mit dem *einen* Grund, der sie trägt – wer
 > sie ändern will, muss den Grund entkräften, nicht die Zeile löschen. **Vorfälle, Daten und
 > ausführliche Herleitungen stehen nicht mehr hier**, sondern in `CONTEXT_HANDOFF_SERVER.md`
 > (6.2 Festlegungen, 6.3 Fallstricke), in `harness/tmp/S<n>_UMSETZUNG.md` und in
@@ -122,6 +123,33 @@ Ergänzungen des Entwicklers sind als *Ergänzung* gekennzeichnet.
     der Platz wiederverwendet wird.
   - **Der Auswechselspieler zählt mit** (er hat gespielt); **`deutlich` ändert nichts** (Höhe, nicht
     Ausgang); **A16 bleibt unberührt** – die Bilanz ist Statistik, kein Skillwert.
+  - **Erfasst wird nur für einen `ABGESCHLOSSEN`-Termin**, und dafür gibt es einen eigenen Code
+    `TERMIN_NICHT_ABGESCHLOSSEN`. **`TERMIN_GESCHLOSSEN` wird nicht wiederverwendet:** Es bedeutet
+    „nimmt keine Änderung mehr an" – hier ist die Polarität umgekehrt, der Termin ist *noch nicht*
+    so weit. Derselbe Code für zwei entgegengesetzte Zustände wäre für den Aufrufer unbrauchbar.
+  - **Erfassen darf jeder Angemeldete, auch `GAST`** – der Endpunkt liegt deshalb ausserhalb von
+    `/admin/`. „Der erste Eintrag gilt" ergibt nur einen Sinn, wenn mehrere es versuchen dürfen.
+    Korrigieren darf nur der Admin; das ist der ganze Unterschied der beiden Pfade.
+  - **Die Korrektur ist ein Voll-Update mit `version`, nicht feldweise** – Grund ist
+    `deutlich`: Bei einem `boolean` wäre `false` nicht von „nicht angegeben" zu unterscheiden, und
+    ein gesetzter Haken liesse sich nie wieder entfernen. **Eine Korrektur, die nichts ändert, wird
+    durchgelassen** und protokolliert; es ist ein Formular, kein Feldbefehl.
+  - **Die `version` von `profil.spieler` wird in der Bilanzrechnung mitgezählt.** Das ist keine
+    Formalie, sondern der Riegel gegen einen stillen Datenverlust: Die `Spieler`-Entity mappt die
+    drei Zähler, Hibernate schreibt beim Flush alle Spalten – ein gleichzeitig geladenes Profil
+    schriebe sonst die alte Bilanz aus seinem Schnappschuss zurück, ohne Fehler und ohne Spur.
+    Mit erhöhter `version` scheitert dieser Flush stattdessen laut, als `409 DATEN_VERALTET`.
+  - **Der Ergebnisdienst verwirft den Profil-Zwischenspeicher** (über `BilanzService`), weil die
+    Bilanz in `SpielerDetails` steht. Erste Stelle, an der ein Vorgang aus `spieltag` einen
+    Zwischenspeicher aus `profil` betrifft – der Aufruf gehört deshalb in einen Dienst, nie in ein
+    Repository.
+  - **Die eigene Bilanz liest `GET /api/v1/bilanz/lesen`** (Entscheidung des Haupt-Entwicklers vom
+    12.09.2026). **Ohne Id im Pfad:** Die Identität kommt aus der Sitzung; mit einer Id wäre es ein
+    Endpunkt „fremde Bilanz lesen", über den niemand entschieden hat. Ein `GAST` bekommt die leere
+    Bilanz statt eines Fehlers – dieselbe Antwort wie ein Spieler ohne gewertete Termine.
+  - **Ein Ergebnis lässt sich nicht löschen.** A21 sieht nur die Korrektur vor; ein versehentlich
+    abgeschlossener Termin mit Ergebnis ist damit nur noch über die Datenbank zu bereinigen.
+    Bewusste Härte, gehört in die Endpunktbeschreibung.
 - **A23** Hallenmodus: E-Mail-Absage an den Hallenbetreiber über eine Vorlage, nur bis 48 Stunden
   vor dem Termin, sonst serverseitig deaktiviert.
   - **Die Vorlage startet mit einem Vorgabetext** (`V010`) – ein leeres Feld verlangte, sich unter
@@ -333,9 +361,20 @@ noch Bedingung kennen muss.
    Eintrag eine Ablehnung überleben, gehört er in den Controller, wo keine Transaktion läuft.
 2. **Ausnahmen aus dem Schreibvorgang werden nicht verschluckt** – das verschöbe den Fehler bis
    zum Commit und ersetzte die Ursache durch eine `UnexpectedRollbackException`.
-3. **Löschfrist 90 Tage** über `fubo.audit.aufbewahrung-tage`, Grund ist der Personenbezug
-   (Client-IP). **Nicht** in `configs.app_config`: Ein Admin soll die Nachvollziehbarkeit seiner
-   eigenen Änderungen nicht per Formular verkürzen können.
+3. **Löschfrist 30 Tage** über `fubo.audit.aufbewahrung-tage` (**verkürzt von 90 am 12.09.2026**,
+   Vorgabe des Haupt-Entwicklers). Zwei Gründe tragen sie: der Personenbezug (Client-IP) und der
+   Speicherplatz – der Server läuft auf einem Raspberry Pi, und `profil.audit_log` ist die einzige
+   Tabelle, die ohne Zutun dauerhaft wächst. **Nicht** in `configs.app_config`: Ein Admin soll die
+   Nachvollziehbarkeit seiner eigenen Änderungen nicht per Formular verkürzen können.
+   - **Der Preis ist benannt und angenommen:** Eine Ergebniskorrektur ist nach 30 Tagen nicht mehr
+     belegbar, und beim manuellen Generierungslauf (A24) fällt mit dem Eintrag die *gesamte*
+     Nachvollziehbarkeit – er steht nirgends sonst.
+   - **Keine Obergrenze der Zeilenzahl**, obwohl die Anforderung „begrenzt oder 30 Tage" beides
+     zuliess: Ein Deckel wirft in einem Ansturm genau die Einträge weg, die ihn belegen, und wäre
+     damit ein Mittel, das Protokoll der eigenen Versuche zu verdrängen. Die Frist wirkt
+     gleichmässig und ist nicht manipulierbar.
+   - **`fubo.reset.aufbewahrung-tage` steht damit auf derselben Frist** und darf nie länger werden
+     als das Protokoll – sonst überlebte die technische Spur ihren fachlichen Beleg.
 4. **Der Aufräumlauf schreibt sich nicht selbst ins Log** – das wäre zirkulär.
 5. **`details` verträgt geschachtelte Karten**; der Serialisierer ist handgeschrieben, andere
    zusammengesetzte Typen landen in ihrer `toString`-Form. Wer einen neuen übergibt, ergänzt einen
@@ -552,6 +591,15 @@ Repo-Wurzel, mitversioniert. **Bei Abweichungen ist sie massgeblich.**
    einzige Übergabepunkt.
 2. **Nur beschreiben, was umgesetzt ist** – spekulative Endpunkte wären ein Vertrag über etwas,
    das es nicht gibt.
+3. **Die Datei ist OpenAPI 3.1: Nullbarkeit steht als Typunion, nie als `nullable: true`.**
+   Also `"type": ["string", "null"]`, und bei einem `$ref` ein `anyOf` mit `{"type": "null"}` –
+   nicht `allOf` plus `nullable`. **`nullable` ist in 3.1 kein Schlüsselwort**: Ein Generator
+   ignoriert es kommentarlos, und der Client bekäme einen nicht-nullbaren Typ für ein Feld, das
+   `null` sein kann. Der Fehler ist stumm auf beiden Seiten – am 12.09.2026 an vier Stellen aus
+   S5 gefunden und behoben.
+4. **Ein Enum bekommt ein eigenes Schema und wird per `$ref` eingebunden** (`Rolle`, `Stage`,
+   `GastStufe`, `AlgorithmType`, `Sieger`) – der Generator des Client-Tracks macht daraus einen
+   Aufzählungstyp statt eines losen Zeichenkettenfelds.
 
 **Versionierung:** `/api/{version}/<bereich>/<ressource>/<aktion>`, mit der Bordausstattung von
 Spring Framework 7 (`ApiVersionConfigurer#usePathSegment`), nicht mit eigenem Mechanismus.
@@ -690,7 +738,10 @@ de/fubo/appserver/
 **Repositories ohne Entity sind erlaubt**, wenn die Tabelle nur angehängt oder bedingt
 aktualisiert wird (`AuditLogRepository`, `GastSlotRepository`, `SkillKategorieRepository`,
 `TeilnahmeRepository`, `SessionRepositoryImpl`, seit S5 `AufstellungRepository`,
-`KontingentRepository` und `TeamGenerierungRepository` – alle über `JdbcClient`). Bei
+`KontingentRepository` und `TeamGenerierungRepository`, seit S6 `BilanzRepository` – alle über
+`JdbcClient`). Bei `BilanzRepository` kommt ein eigener Grund hinzu: Die `Spieler`-Entity bildet
+dieselben drei Spalten bereits ab, und ein zweiter schreibender Weg über dieselben Felder machte
+es zur Glückssache, welcher zuletzt gewinnt. Bei
 `generierung_kontingent` gilt dasselbe Argument wie bei `gast_slot`: Optimistic Locking meldete
 den Wettlauf zweier gleichzeitiger Klicks erst beim Schreiben und verlangte eine Wiederholung,
 das bedingte `UPDATE` entscheidet ihn ohne. Bei `gast_slot` wäre eine
@@ -759,11 +810,14 @@ Ursache.**
 | `SMALLINT` | `short` / `Short` | keiner |
 | `BIGSERIAL` | `Long` | `@GeneratedValue(strategy = IDENTITY)` |
 
-**Die beiden `CHAR(1)`-Spalten aus `V006` bleiben ungemappt.** `team_zuteilung.team` wird seit S5
-über `JdbcClient` gelesen und geschrieben – die Tabelle wird nur angehängt und aggregiert
-gelesen, eine Entity gäbe es für das Leseergebnis ohnehin nicht (es läuft aus drei Tabellen
-zusammen). `ergebnis.sieger` folgt in S6; die Regel steht hier, damit sie dort von Anfang an
-stimmt.
+**Von den beiden `CHAR(1)`-Spalten aus `V006` ist seit S6 eine gemappt.**
+`team_zuteilung.team` bleibt ungemappt: Die Tabelle wird nur angehängt und aggregiert gelesen, und
+für das Leseergebnis gäbe es ohnehin keine Entity (es läuft aus drei Tabellen zusammen).
+`ergebnis.sieger` ist seit S6 als `Character` gemappt, weil die Korrektur `@Version` braucht.
+**Der Aufzählungstyp `Sieger` steht bewusst nicht an der Spalte:** `@Enumerated(STRING)` schriebe
+den Namen der Konstanten, was hier zufällig passte – aber nur, solange die Konstanten einbuchstabig
+heissen. Die Umsetzung liegt deshalb an einer benennbaren Stelle (`Sieger#kennung`,
+`Sieger#vonKennung`).
 
 **2. Der Validator prüft keine Zuordnung.** Zwei vertauschte Spalten desselben Typs – etwa
 `min_teilnehmer`/`max_teilnehmer` oder die beiden Session-Timer – fallen ihm nicht auf. Jede Entity
@@ -782,6 +836,12 @@ Weiter verbindlich:
   am `null` erkennt.
 - **Keine Bean-Validation-Annotationen an Entities** – die Wertebereiche stehen als CHECK in der
   Datenbank und stünden sonst an zwei Orten; die Eingabeprüfung gehört ans DTO.
+- **Liegen eine JPA-Änderung und eine native Folgeabfrage in derselben Transaktion, gehört der
+  Flush dazwischen** (`saveAndFlush`, nicht `save`). Natives SQL liest die Datenbank und sieht den
+  Persistence-Context nicht; ohne Flush rechnet die Folgeabfrage gegen den alten Stand. **Der
+  Fehler ist besonders teuer, wo das Ergebnis plausibel bleibt** – die Bilanzrechnung aus S6
+  lieferte dann schlicht falsche Zähler. Zweiter Gewinn: Der Sperrkonflikt fällt an der
+  Aufrufstelle an statt als `UnexpectedRollbackException` beim Commit.
 
 ---
 
