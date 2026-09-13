@@ -23,15 +23,14 @@
 
 ## Stand: 13.09.2026
 
-**S0 bis S7 sind gebaut, S0 bis S7 (Stand 431 Fälle) verifiziert.** `./mvnw clean verify` lief am
-13.09.2026 grün – **431 Fälle in 31 Klassen**. Danach ist der **Hauptschalter des Hallenmodus**
-nachgezogen worden (`hallen_modus_aktiv`, `V013`); dieser Nachtrag steht noch aus und **erwartet
-434 Fälle in 31 Klassen** – vorab gezählt, nicht geschätzt. Der Vertrag steht bei **38
-Endpunkten**, das Datenmodell bei **18 Tabellen** (`V001`–`V013`): `V012` war die erste Migration
-seit S3, `V013` die zweite.
+**S0 bis S7 sind abgeschlossen und verifiziert**, einschliesslich des Nachtrags „Hauptschalter".
+`./mvnw clean verify` lief am 13.09.2026 zweimal grün: **431 Fälle in 31 Klassen** (S7) und nach
+dem Nachtrag **434 Fälle in 31 Klassen**, jeweils ohne Fehlschlag und ohne übersprungenen Fall.
+Beide Male traf die vorab gezählte Zahl exakt. Der Vertrag steht bei **38 Endpunkten**, das
+Datenmodell bei **18 Tabellen** (`V001`–`V013`): `V012` war die erste Migration seit S3, `V013`
+die zweite. **Alles ist auf `dev` committet** (sieben Commits, 13.09.2026); nicht gepusht.
 
-**Als Nächstes: der Testlauf zum Nachtrag** (`./mvnw clean verify`), danach die fünf
-Handprüflisten und S8.
+**Als Nächstes: die fünf Handprüflisten** in einem Zug, danach S8.
 
 ### Was S7 gebracht hat
 
@@ -281,7 +280,7 @@ Schätzung noch nicht gab.
 | S4 | Termine & Teilnahme: Einzel/Serie, Teilnahme, `teilnehmer_version`, Min/Max + Warteschlange, Gast-Flow; dazu A7, A18, A19 | **verifiziert (31.08.2026, 331 Tests in 26 Klassen)**; zwei Handprüfungen offen, siehe 7 | 16 (17 + 3) |
 | S5 | Teamgenerator: `EXHAUSTIV` + `HEURISTIK`, Zielfunktion inkl. Torwart-Gewicht, Kontingent/Seed/Snapshot, Auswechselspieler; **dazu A24 (manueller Lauf des Admins)** | **verifiziert (12.09.2026)** – Bestätigungslauf grün; Handprüfliste 13.1 offen. Schrittsumme **24,0 h** (20,5 + 3,5 für A24) | 18 |
 | S6 | **Ergebnis und Bilanz** (umbenannt am 12.09.2026; „Ergebnis & Audit API" versprach einen Leseendpunkt fürs Protokoll, den keine Anforderung verlangt): „erster Eintrag gilt", Admin-Korrektur, Bilanz-Zähler, eigene Bilanz | **verifiziert (12.09.2026, 411 Tests in 30 Klassen)**; Handprüfliste 8.1 offen. Schrittsumme **13,0 h** (11,0 geplant plus 2,0 für die Entscheidungen vom 12.09.) | 8 |
-| S7 | **Hallenmodus**: E-Mail-Absage an den Hallenbetreiber, Vorlauffrist aus der Konfiguration (A23); dazu `V012` – die erste Migration seit S3 | **verifiziert (13.09.2026, 431 Fälle in 31 Klassen)**; der Nachtrag „Hauptschalter" (`V013`) steht noch aus und erwartet 434/31. Handprüfliste 8.1 offen. Schrittsumme **12,0 h** gegen 6,0 top-down (8,5 geplant, plus 1,5 für die Entscheidungen vom 13.09. und 2,0 für den Hauptschalter) | 6 |
+| S7 | **Hallenmodus**: E-Mail-Absage an den Hallenbetreiber, Vorlauffrist aus der Konfiguration (A23); dazu `V012` – die erste Migration seit S3 | **verifiziert (13.09.2026)** – 431/31 für S7, 434/31 nach dem Nachtrag „Hauptschalter" (`V013`). Handprüfliste 8.1 offen. Schrittsumme **12,0 h** gegen 6,0 top-down (8,5 geplant, plus 1,5 für die Entscheidungen vom 13.09. und 2,0 für den Hauptschalter) | 6 |
 | S8 | Härtung, Deployment (Docker/nginx/Cloudflared), API-Doku – Entwurf: `harness/tmp/S8_DEPLOYMENT.md` | offen | 14 |
 
 Anleitungen: `harness/tmp/S<n>_UMSETZUNG.md`. **Ausnahme S5:** Der Algorithmusteil (Zielfunktion,
@@ -630,13 +629,14 @@ docker compose -f compose.dev.yml --env-file .env up -d
 
 **Zuletzt grün am 13.09.2026 – 431 Fälle in 31 Klassen** (S7 vollständig, 0 Fehlschläge, 0
 Fehler, nichts übersprungen). Verlauf: 148/16 (22.08.), 184 (23.08.), 244/22 (29.08.), 300/25
-und 331/26 (S4, 30./31.08.), 385/29 (S5, 06.09.), 411/30 (S6, 12.09.), 431/31 (S7, 13.09.).
+und 331/26 (S4, 30./31.08.), 385/29 (S5, 06.09.), 411/30 (S6, 12.09.), 431/31 und 434/31 (S7 samt Nachtrag, 13.09.).
 
 **S7 lief am 13.09.2026 grün mit 431 Fällen in 31 Klassen** – 20 neue in `HallenmodusTests`,
 dazu die beiden Bündelfälle in `SecurityConfigTests`, die den neuen Admin-Pfad **ohne** eigene
-Methode mitprüfen. **Für den Nachtrag „Hauptschalter" stehen 434 in 31 aus:** zwei weitere in
+Methode mitprüfen. **Der Nachtrag „Hauptschalter" brachte 434 in 31:** zwei weitere in
 `HallenmodusTests` (Schalter aus, und der Schalter vor der Terminsuche) und einer in
-`KonfigurationControllerTests` (das zwölfte Feld ist Pflicht). **`PasswortResetControllerTests` muss unverändert grün sein**: Der `MailErsatz` ist
+`KonfigurationControllerTests` (das zwölfte Feld ist Pflicht). Beide Male traf die vorab
+gezählte Zahl exakt – zum neunten und zehnten Mal in Folge. **`PasswortResetControllerTests` muss unverändert grün sein**: Der `MailErsatz` ist
 aus ihr herausgezogen worden (jetzt `support.MailErsatz` samt `MailErsatzConfig`), und dass die
 Klasse danach nichts anderes tut, ist der ganze Beleg dafür, dass der Umzug nichts verändert
 hat.
@@ -688,10 +688,7 @@ Drei Punkte zur Gastverwaltung stehen in keiner Anleitung, die Bruno-Requests un
 
 ## 7. Nächste Schritte
 
-1. **Den Gesamtlauf für den Nachtrag fahren** (`./mvnw clean verify`, vorher `docker info`).
-   Erwartet werden **434 Fälle in 31 Klassen**; S7 selbst ist mit 431/31 bereits grün gelaufen.
-   **`V013` ist die zweite neue Migration in Folge** – schlägt `validate-on-migrate` fehl, die
-   Entwicklungsdatenbank neu aufsetzen. Scheitert er, zuerst die Surefire-Berichte lesen – das
+1. **Die Handprüfung zu S7 einplanen** – sie ist der einzige offene Punkt des Meilensteins. Scheitert er, zuerst die Surefire-Berichte lesen – das
    Vorgehen steht in 6.4. **Der wahrscheinlichste Bruch ist `V012`**: Eine bereits angewandte
    Migration, die sich ändert, lässt `validate-on-migrate` scheitern; dann die
    Entwicklungsdatenbank neu aufsetzen (`docker compose -f compose.dev.yml down -v`).
