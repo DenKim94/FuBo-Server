@@ -9,7 +9,8 @@ package de.fubo.appserver.domain.audit;
  * rueckwirkend.
  *
  * <p>Die Liste waechst mit den Meilensteinen (Generierungslaeufe in S5,
- * Ergebniskorrekturen in S6).
+ * Ergebniskorrekturen in S6,
+ * die Hallenabsage in S7).
  */
 public enum AuditAktion {
 
@@ -273,5 +274,31 @@ public enum AuditAktion {
      * vorherigen Wert. <b>Mehrfachkorrekturen sind nur ueber dieses Protokoll nachvollziehbar
      * - und auch das nur, solange die Loeschfrist reicht.</b>
      */
-    ERGEBNIS_KORRIGIERT
+    ERGEBNIS_KORRIGIERT,
+
+    /**
+     * Die Absage an den Hallenbetreiber ist versendet worden (A23, S7 Abschnitt 3.4).
+     *
+     * <p>Als {@code entitaet} steht {@code termin}, als {@code entitaet_id} die Termin-Id - die
+     * Absage hat keine eigene Adresse, sie haengt am Termin.
+     *
+     * <p><b>Die Empfaengeradresse steht in den Details</b>, obwohl sie in der Konfiguration
+     * steht: Sie ist veraenderlich, und "an wen ist die Absage damals gegangen" ist genau die
+     * Frage, die man spaeter stellt. Dazu Datum und Uhrzeit des Termins sowie die Zahl der
+     * Zeichen der verwendeten Vorlage.
+     *
+     * <p><b>Der Vorlagentext selbst gehoert nicht hinein</b> - dieselbe Ausnahme, die
+     * {@link #KONFIG_GEAENDERT} fuer die Vorlage macht: Ein mehrzeiliger Text in jedem Eintrag
+     * blaeht die Tabelle auf, ohne etwas zu belegen, was nicht auch die Konfiguration belegt.
+     * Die Zeichenzahl genuegt, um eine leere von einer gepflegten Vorlage zu unterscheiden.
+     *
+     * <p><b>Sagt derselbe Aufruf den Termin mit ab, entsteht daneben ein zweiter Eintrag</b>
+     * ({@link #TERMIN_ABGESAGT}). Zwei Wirkungen, zwei Eintraege: Wer das Protokoll nach
+     * abgesagten Terminen durchsieht, soll auch die Absagen finden, die ueber diesen Weg kamen.
+     *
+     * <p><b>Der Eintrag ueberlebt die Loeschfrist von 30 Tagen nicht</b> - anders als
+     * {@code termin.halle_abgesagt_am}, das den Zustand traegt. Danach ist die Empfaengeradresse
+     * von damals nicht mehr feststellbar.
+     */
+    HALLE_ABGESAGT
 }

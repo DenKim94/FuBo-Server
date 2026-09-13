@@ -6,8 +6,10 @@ import jakarta.validation.constraints.NotNull;
  * Anfragekoerper von {@code POST /api/v1/admin/termin/absagen} (S4, Abschnitt 3.4) und von
  * {@code POST /api/v1/admin/termin/entfernen} (A19, 30.08.2026).
  *
- * <p><b>Ein DTO fuer beide.</b> Sie unterscheiden sich in der Wirkung erheblich, im
- * Anfragekoerper aber gar nicht - ein zweiter Record mit demselben einen Feld waere Ballast,
+ * <p>Seit S7 bedient er einen dritten: {@code POST /api/v1/admin/halle/absagen} (A23).
+ *
+ * <p><b>Ein DTO fuer alle drei.</b> Sie unterscheiden sich in der Wirkung erheblich, im
+ * Anfragekoerper aber gar nicht - ein weiterer Record mit demselben einen Feld waere Ballast,
  * und die Beschreibungen der Endpunkte halten sie im Vertrag auseinander.
  *
  * <p>Die Id steht im Koerper und nicht im Pfad, weil das Aktionssegment am Ende des Pfades

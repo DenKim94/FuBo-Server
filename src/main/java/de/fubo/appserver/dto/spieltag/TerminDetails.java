@@ -5,7 +5,9 @@ import de.fubo.appserver.domain.spieltag.TerminMitTeilnehmern;
 import de.fubo.appserver.domain.spieltag.TerminStatus;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.OffsetDateTime;
 
 /**
  * Antwortobjekt der Einzelansicht {@code GET /api/v1/termine/{terminId}/lesen}
@@ -30,6 +32,14 @@ import java.time.LocalTime;
  * die {@code /admin/ergebnis/korrigieren} zurueckverlangt. <b>Ein dritter Aufruf nur fuer den
  * Ausgang eines Spiels waere die schlechtere Antwort</b> - das Dashboard zeigt Termin,
  * Teilnehmer, Teams und Ergebnis ohnehin zusammen.
+ *
+ * <h2>Der Hallenmodus kam mit S7 dazu</h2>
+ * Zwei Felder auf einmal, und beide additiv: {@code halleAbgesagtAm} ist eine Spalte des
+ * Termins, {@code halleAbsageMoeglichBis} eine Ableitung aus {@code datum}, {@code uhrzeit} und
+ * der Konfiguration. <b>Ein Feld "darf ich jetzt noch absagen" gibt es bewusst nicht</b> - das
+ * waere eine Berechtigungsaussage in einem rollenneutralen Antwortobjekt und erschiene bei
+ * {@code USER} und {@code GAST} bedeutungslos mit. Der Adminbildschirm rechnet die Frage aus dem
+ * Zeitpunkt selbst; durchgesetzt wird sie ohnehin serverseitig.
  *
  * <h2>Die Teilnehmerliste kam mit Paket 7 dazu (30.08.2026)</h2>
  * Als zusaetzliches Feld dieser Antwort und <b>nicht</b> als eigener Endpunkt: Wer einen
@@ -59,6 +69,17 @@ import java.time.LocalTime;
  *                           Termins bis zum Abpfiff. <b>Unabhaengig von {@code teams}:</b>
  *                           Eine Einteilung ohne Ergebnis ist der Regelfall vor dem Spiel,
  *                           ein Ergebnis ohne Einteilung kann es nicht geben
+ * @param halleAbgesagtAm    Zeitpunkt der versandten Absage an den Hallenbetreiber (A23) oder
+ *                           {@code null}, solange nichts versandt wurde. Der Wert belegt den
+ *                           <b>Versand</b>, nicht die Zustellung - eine Empfangsbestaetigung
+ *                           gibt es nicht. Ist er gesetzt, gehoert der Absageknopf
+ *                           ausgeblendet; ein zweiter Aufruf laeuft in
+ *                           {@code 409 HALLE_BEREITS_ABGESAGT}
+ * @param halleAbsageMoeglichBis spaetester Zeitpunkt, zu dem die Absage noch angenommen wird:
+ *                           {@code datum + uhrzeit} minus {@code halleVorlaufStunden}.
+ *                           <b>Immer gefuellt</b>, auch fuer vergangene und abgesagte Termine
+ *                           und auch ohne hinterlegte Hallenadresse; liegt er in der
+ *                           Vergangenheit, ist das Fenster zu. Ortszeit ohne Zone
  */
 public record TerminDetails(Long terminId,
                             Long serieId,
@@ -72,7 +93,9 @@ public record TerminDetails(Long terminId,
                             Long version,
                             Teilnehmerliste teilnehmerliste,
                             Teameinteilung teams,
-                            Ergebnis ergebnis) {
+                            Ergebnis ergebnis,
+                            OffsetDateTime halleAbgesagtAm,
+                            LocalDateTime halleAbsageMoeglichBis) {
 
     /** Bildet Termin und Teilnehmer auf den Vertrag ab. */
     public static TerminDetails von(TerminMitTeilnehmern gelesen) {
@@ -92,6 +115,8 @@ public record TerminDetails(Long terminId,
                 gelesen.einteilung() == null ? null : Teameinteilung.von(gelesen.einteilung()),
                 // Ergebnis ist hier der DTO aus diesem Paket, gelesen.ergebnis() die
                 // gleichnamige Entity aus domain.spieltag - die Zuordnung macht das Paket.
-                gelesen.ergebnis() == null ? null : Ergebnis.von(gelesen.ergebnis()));
+                gelesen.ergebnis() == null ? null : Ergebnis.von(gelesen.ergebnis()),
+                eintrag.halleAbgesagtAm(),
+                gelesen.halleAbsageMoeglichBis());
     }
 }

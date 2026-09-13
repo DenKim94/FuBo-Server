@@ -10,9 +10,20 @@ import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Locale;
+
 /**
- * Versendet die Nachrichten der Anwendung. Derzeit gibt es genau eine: die
- * Bestaetigungs-PIN beim Zuruecksetzen des Admin-Passworts (A22).
+ * Versendet die Nachrichten der Anwendung. Es sind zwei: die
+ * Bestaetigungs-PIN beim Zuruecksetzen des Admin-Passworts (A22) und die Absage des
+ * Hallentermins an den Betreiber (A23, S7).
+ *
+ * <p><b>Die zweite ist die erste, die das Projekt verlaesst.</b> Die Bestaetigungs-PIN geht an
+ * den Admin; die Hallenabsage geht an einen Fremden, und sie laesst sich nicht zuruecknehmen.
+ * Deshalb steht vor ihrem Versand jede Pruefung des {@code HallenService}, und deshalb traegt
+ * ihr Text echte Umlaute.
  *
  * <h2>Warum {@link SimpleMailMessage} und kein HTML</h2>
  * Es gibt nichts zu formatieren, keine Bilder und keinen Grund, ein Mailprogramm eine
@@ -39,6 +50,16 @@ public class MailService {
     private static final Logger LOG = LoggerFactory.getLogger(MailService.class);
 
     private static final String BETREFF_RESET = "FuBo – Zurücksetzen des Admin-Passworts";
+
+    /** Wochentag in Langform; das Sprachkennzeichen steht ausdruecklich hier (S7, 4.3). */
+    private static final DateTimeFormatter WOCHENTAG =
+            DateTimeFormatter.ofPattern("EEEE", Locale.GERMAN);
+
+    /** Datum in der Schreibweise, die ein deutschsprachiger Empfaenger erwartet. */
+    private static final DateTimeFormatter DATUM = DateTimeFormatter.ofPattern("dd.MM.yyyy");
+
+    /** Uhrzeit ohne Sekunden - sie stehen in der Spalte, sagen dem Empfaenger aber nichts. */
+    private static final DateTimeFormatter UHRZEIT = DateTimeFormatter.ofPattern("HH:mm");
 
     private final JavaMailSender versender;
     private final String absender;
@@ -89,5 +110,79 @@ public class MailService {
 
         // Bewusst ohne die PIN und ohne die Adresse: Beide gehoeren nicht ins Log.
         LOG.info("Bestaetigungs-PIN fuer das Zuruecksetzen des Admin-Passworts versendet.");
+    }
+
+    /**
+     * Schickt die Absage des gebuchten Hallentermins an den Betreiber (A23, S7 Abschnitt 4).
+     *
+     * <h2>Der Aufbau der Nachricht</h2>
+     * <pre>
+     * Betreff:  Absage Hallentermin am 14.09.2026, 19:00 Uhr
+     *
+     * Termin:   Sonntag, 14.09.2026, 19:00 Uhr
+     * Ort:      Sporthalle Musterstrasse
+     *
+     * &lt;Vorlage&gt;
+     * </pre>
+     *
+     * <p><b>Der Betreff nennt Datum und Uhrzeit.</b> Er ist die einzige Zeile, die der
+     * Hallenbetreiber in seiner Uebersicht sieht; "Absage Hallentermin" ohne Datum zwingt ihn,
+     * jede Nachricht zu oeffnen.
+     *
+     * <p><b>Der Datenblock steht ueber der Vorlage</b> (Festlegung aus {@code V010}). Die
+     * Vorlage endet mit Grussformel und Signatur; ein Datenblock darunter stuende hinter der
+     * Unterschrift.
+     *
+     * <p><b>Der Wochentag gehoert dazu</b>, obwohl das Datum ihn enthaelt: Er ist die Angabe, an
+     * der ein Mensch einen Terminirrtum bemerkt. Das Sprachkennzeichen steht ausdruecklich am
+     * Formatierer - ohne es naehme Java die Voreinstellung des Rechners, und im Container ist
+     * das nicht verlaesslich Deutsch.
+     *
+     * <p><b>Fehlt der Ort, entfaellt die Zeile ganz</b> - nicht "Ort: -" und nicht
+     * "Ort: unbekannt". Der Hallenbetreiber weiss, um welche Halle es geht; er hat nur die eine.
+     *
+     * <p><b>Reiner Text, kein HTML</b> - dieselbe Begruendung wie bei der Bestaetigungs-PIN: Es
+     * gibt nichts zu formatieren, und reiner Text kommt ueberall gleich an.
+     *
+     * @param empfaenger Adresse aus {@code configs.app_config.halle_email}; vom Aufrufer bereits
+     *                   auf leer geprueft
+     * @param datum      Datum des Termins in Ortszeit
+     * @param uhrzeit    Uhrzeit des Termins in Ortszeit
+     * @param ort        Spielort oder {@code null}
+     * @param vorlage    der wirksame Fliesstext; der Aufrufer hat die Ersatzvorlage bereits
+     *                   eingesetzt, dieser Dienst entscheidet darueber nicht
+     * @throws FachlicherFehler {@code 503}, wenn der Versand scheitert - der Aufrufer laesst
+     *                          damit seine Transaktion zurueckrollen, und der Absagevermerk
+     *                          verschwindet mit ihr
+     */
+    public void sendeHallenabsage(String empfaenger, LocalDate datum, LocalTime uhrzeit,
+                                  String ort, String vorlage) {
+
+        String zeitpunkt = "%s, %s Uhr".formatted(datum.format(DATUM), uhrzeit.format(UHRZEIT));
+
+        StringBuilder text = new StringBuilder();
+        text.append("Termin:   ").append(datum.format(WOCHENTAG)).append(", ").append(zeitpunkt)
+                .append('\n');
+        if (ort != null && !ort.isBlank()) {
+            text.append("Ort:      ").append(ort).append('\n');
+        }
+        text.append('\n').append(vorlage).append('\n');
+
+        SimpleMailMessage nachricht = new SimpleMailMessage();
+        nachricht.setFrom(absender);
+        nachricht.setTo(empfaenger);
+        nachricht.setSubject("Absage Hallentermin am " + zeitpunkt);
+        nachricht.setText(text.toString());
+
+        try {
+            versender.send(nachricht);
+        } catch (MailException e) {
+            LOG.error("Versand der Hallenabsage fehlgeschlagen.", e);
+            throw new FachlicherFehler(Fehlercode.VERSAND_FEHLGESCHLAGEN);
+        }
+
+        // Ohne die Adresse: Sie gehoert nicht ins Anwendungsprotokoll. Wer sie braucht, findet
+        // sie im Audit-Log, das der Aufrufer in derselben Transaktion schreibt.
+        LOG.info("Absage des Hallentermins am {} versendet.", zeitpunkt);
     }
 }

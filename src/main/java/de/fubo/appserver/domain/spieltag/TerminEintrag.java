@@ -2,6 +2,7 @@ package de.fubo.appserver.domain.spieltag;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.OffsetDateTime;
 
 /**
  * Ergebniszeile der Terminuebersicht (S4, Abschnitt 2.3).
@@ -26,6 +27,11 @@ import java.time.LocalTime;
  * @param zusagen           Anzahl der Zusagen; Absagen zaehlen nicht mit
  * @param eigeneRueckmeldung {@code true} zugesagt, {@code false} abgesagt,
  *                           <b>{@code null} noch nicht gemeldet</b> - drei Zustaende, nicht zwei
+ * @param halleAbgesagtAm    Zeitpunkt der versandten Absage an den Hallenbetreiber (A23) oder
+ *                           {@code null}. <b>Die Uebersicht gibt ihn nicht nach aussen</b>, die
+ *                           Einzelansicht schon - die Spalte kostet in derselben Abfrage nichts,
+ *                           und ein zweiter Lesezugriff nur fuer einen Zeitstempel waere
+ *                           Verschwendung. Dieselbe Ueberlegung wie bei {@code version}
  */
 public record TerminEintrag(Long id,
                             Long serieId,
@@ -36,5 +42,6 @@ public record TerminEintrag(Long id,
                             int teilnehmerVersion,
                             Long version,
                             int zusagen,
-                            Boolean eigeneRueckmeldung) {
+                            Boolean eigeneRueckmeldung,
+                            OffsetDateTime halleAbgesagtAm) {
 }

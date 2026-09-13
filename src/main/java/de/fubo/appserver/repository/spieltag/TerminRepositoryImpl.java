@@ -1,5 +1,6 @@
 package de.fubo.appserver.repository.spieltag;
 
+import de.fubo.appserver.domain.spieltag.Hallentermin;
 import de.fubo.appserver.domain.spieltag.TerminEintrag;
 import de.fubo.appserver.domain.spieltag.TerminStatus;
 import de.fubo.appserver.domain.spieltag.Terminzustand;
@@ -10,6 +11,7 @@ import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -66,6 +68,7 @@ class TerminRepositoryImpl implements TerminRepositoryCustom {
                    t.status,
                    t.teilnehmer_version,
                    t.version,
+                   t.halle_abgesagt_am,
                    count(*) FILTER (WHERE tn.zusage)              AS zusagen,
                    bool_or(tn.zusage) FILTER (WHERE tn.spieler_id = :spielerId
                                                  OR tn.gast_name  = :gastName)
@@ -236,6 +239,66 @@ class TerminRepositoryImpl implements TerminRepositoryCustom {
                 OR EXISTS (SELECT 1 FROM spieltag.ergebnis WHERE termin_id = :terminId)
             """;
 
+
+    /**
+     * Status, Zeitpunkt, Ort und Absagevermerk fuer den Hallenmodus (A23, S7 Abschnitt 3.2).
+     *
+     * <p>Eine eigene Abfrage neben {@link #SQL_ZUSTAND_LESEN}, obwohl beide dieselbe Zeile
+     * lesen: Die eine bedient den Generierungslauf und braucht Fixierung und
+     * Teilnehmerzaehler, die andere die Absage und braucht den Zeitpunkt fuer Betreff und
+     * Frist. Eine gemeinsame Abfrage mit sieben Spalten bediente beide halb.
+     */
+    private static final String SQL_HALLENZUSTAND = """
+            SELECT status, datum, uhrzeit, ort, halle_abgesagt_am
+              FROM spieltag.termin
+             WHERE id = :terminId
+            """;
+
+    /**
+     * Der Riegel gegen den Doppelversand (A23, S7 Abschnitt 2.3).
+     *
+     * <p><b>{@code WHERE halle_abgesagt_am IS NULL} ist die ganze Absicherung.</b> Zwei
+     * gleichzeitige Klicks laufen beide hier hinein; die Datenbank laesst genau einen von
+     * beiden eine Zeile treffen, der andere bekommt {@code 409 HALLE_BEREITS_ABGESAGT}. Eine
+     * vorgelagerte Pruefung im Dienst liesse dazwischen ein Fenster offen, und der
+     * Hallenbetreiber bekaeme zwei Mails - genau der Fehler, den dieser Meilenstein am
+     * teuersten bezahlt.
+     *
+     * <p><b>{@code version} steigt mit</b>, wie bei jeder per SQL geaenderten Versionsspalte.
+     * Folge: Im selben Vorgang darf keine verwaltete {@code Termin}-Entity geladen sein - der
+     * Absagepfad liest deshalb ueber {@link #SQL_HALLENZUSTAND}.
+     *
+     * <p><b>{@code teilnehmer_version} bleibt unberuehrt</b>: Der Teilnehmerkreis aendert sich
+     * nicht.
+     */
+    private static final String SQL_HALLE_VERMERKEN = """
+            UPDATE spieltag.termin
+               SET halle_abgesagt_am = :jetzt,
+                   version           = version + 1
+             WHERE id = :terminId
+               AND halle_abgesagt_am IS NULL
+            """;
+
+    /**
+     * Die mitlaufende Terminabsage der Hallenabsage (A23, S7 Abschnitt 3.1).
+     *
+     * <p>Dieselbe Wirkung wie {@code TerminService#absagen}, nur ohne Entity: Der Vorgang
+     * erhoeht {@code version} bereits nativ, und eine geladene Entity braechte danach einen
+     * Sperrkonflikt ohne Verursacher.
+     *
+     * <p><b>{@code status = 'GEPLANT'} macht die Anweisung zur Abfrage.</b> Der Rueckgabewert
+     * sagt, ob <i>dieser</i> Aufruf abgesagt hat - ein Termin, den der Admin vorher ueber
+     * {@code /admin/termin/absagen} abgesagt hat, wird nur noch gemeldet und bekommt keinen
+     * zweiten Protokolleintrag.
+     */
+    private static final String SQL_ABSAGEN_WENN_GEPLANT = """
+            UPDATE spieltag.termin
+               SET status  = 'ABGESAGT',
+                   version = version + 1
+             WHERE id = :terminId
+               AND status = 'GEPLANT'
+            """;
+
     private final JdbcClient jdbc;
 
     TerminRepositoryImpl(JdbcClient jdbc) {
@@ -315,6 +378,34 @@ class TerminRepositoryImpl implements TerminRepositoryCustom {
                 .single());
     }
 
+    @Override
+    public Optional<Hallentermin> hallenzustand(Long terminId) {
+        return jdbc.sql(SQL_HALLENZUSTAND)
+                .param("terminId", terminId)
+                .query((rs, zeile) -> new Hallentermin(
+                        TerminStatus.valueOf(rs.getString("status")),
+                        rs.getObject("datum", LocalDate.class),
+                        rs.getObject("uhrzeit", LocalTime.class),
+                        rs.getString("ort"),
+                        rs.getObject("halle_abgesagt_am", OffsetDateTime.class)))
+                .optional();
+    }
+
+    @Override
+    public boolean halleAbsageVermerken(Long terminId, OffsetDateTime jetzt) {
+        return jdbc.sql(SQL_HALLE_VERMERKEN)
+                .param("terminId", terminId)
+                .param("jetzt", jetzt)
+                .update() == 1;
+    }
+
+    @Override
+    public boolean absagenWennGeplant(Long terminId) {
+        return jdbc.sql(SQL_ABSAGEN_WENN_GEPLANT)
+                .param("terminId", terminId)
+                .update() == 1;
+    }
+
     /**
      * Baut eine Ergebniszeile.
      *
@@ -336,6 +427,7 @@ class TerminRepositoryImpl implements TerminRepositoryCustom {
                 rs.getInt("teilnehmer_version"),
                 rs.getLong("version"),
                 rs.getInt("zusagen"),
-                rs.getObject("eigene_rueckmeldung", Boolean.class));
+                rs.getObject("eigene_rueckmeldung", Boolean.class),
+                rs.getObject("halle_abgesagt_am", OffsetDateTime.class));
     }
 }

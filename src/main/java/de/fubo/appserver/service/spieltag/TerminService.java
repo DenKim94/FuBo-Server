@@ -12,6 +12,7 @@ import de.fubo.appserver.dto.spieltag.TerminAendernRequest;
 import de.fubo.appserver.dto.spieltag.TerminAngelegt;
 import de.fubo.appserver.repository.spieltag.TerminRepository;
 import de.fubo.appserver.service.audit.AuditService;
+import de.fubo.appserver.service.config.ConfigService;
 import de.fubo.appserver.service.ergebnis.ErgebnisService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -68,6 +69,7 @@ public class TerminService {
     private final TeilnahmeService teilnahmeService;
     private final TeamGenerierungService teamGenerierungService;
     private final ErgebnisService ergebnisService;
+    private final ConfigService configService;
     private final AuditService auditService;
     private final Clock uhr;
 
@@ -75,12 +77,14 @@ public class TerminService {
                          TeilnahmeService teilnahmeService,
                          TeamGenerierungService teamGenerierungService,
                          ErgebnisService ergebnisService,
+                         ConfigService configService,
                          AuditService auditService,
                          Clock uhr) {
         this.terminRepository = terminRepository;
         this.teilnahmeService = teilnahmeService;
         this.teamGenerierungService = teamGenerierungService;
         this.ergebnisService = ergebnisService;
+        this.configService = configService;
         this.auditService = auditService;
         this.uhr = uhr;
     }
@@ -120,6 +124,15 @@ public class TerminService {
      * <p><b>Die Teameinteilung reist aus demselben Grund mit</b> (S5, Weggabelung B) und
      * fehlt, solange niemand generiert hat - das ist der Normalzustand und kein Fehler.
      *
+     * <p><b>Die Absagefrist des Hallenmodus wird hier gerechnet</b> (A23, S7): {@code datum}
+     * und {@code uhrzeit} minus {@code halle_vorlauf_stunden}. Sie ist immer gefuellt, auch
+     * fuer vergangene oder abgesagte Termine - der Wert sagt, wann das Fenster zufaellt, nicht,
+     * ob es offen ist. <b>Und er sagt nicht, wer absagen darf:</b> Ein Feld
+     * "halleAbsageMoeglich" erschiene bei {@code USER} und {@code GAST} bedeutungslos mit, und
+     * rollenabhaengige Antwortobjekte muessten an jeder Stelle mitgedacht werden. Die
+     * Berechtigung setzt der Absagepfad selbst durch; die Client-Rechnung blendet nur einen
+     * Knopf aus.
+     *
      * @param terminId gesuchter Termin
      * @param sitzung  aufrufende Sitzung
      * @return Termin und Teilnehmer; die Version ist im Termin enthalten
@@ -132,12 +145,19 @@ public class TerminService {
                 .orElseThrow(() -> new FachlicherFehler(Fehlercode.INHALT_NICHT_GEFUNDEN,
                         "Es gibt keinen Termin mit dieser Id."));
 
-        // Vier Abfragen, eine Transaktion und damit ein Stand. Die Reihenfolge ist
-        // beliebig - keine der drei Ergaenzungen haengt von einer anderen ab.
+        // Die Absagefrist wird hier gerechnet und nicht im DTO: Sie braucht den Vorlauf aus
+        // der Konfiguration, und ein DTO, das sich einen Dienst holt, um seinen eigenen Wert zu
+        // bilden, kehrte die Abhaengigkeitsrichtung um. Der Zugriff kostet nichts - die
+        // Teilnehmerliste hat die Konfigurationszeile in derselben Transaktion bereits geladen.
+        short vorlauf = configService.lesen().getHalleVorlaufStunden();
+
+        // Fuenf Abfragen, eine Transaktion und damit ein Stand. Die Reihenfolge ist
+        // beliebig - keine der vier Ergaenzungen haengt von einer anderen ab.
         return new TerminMitTeilnehmern(termin,
                 teilnahmeService.uebersicht(terminId),
                 teamGenerierungService.einteilungLesen(terminId).orElse(null),
-                ergebnisService.lesen(terminId).orElse(null));
+                ergebnisService.lesen(terminId).orElse(null),
+                LocalDateTime.of(termin.datum(), termin.uhrzeit()).minusHours(vorlauf));
     }
 
     // ------------------------------------------------------------------ Anlegen
@@ -313,8 +333,11 @@ public class TerminService {
      * abzusagen ist folgenlos, aber nicht falsch - und die Absage ist der einzige Weg, einen
      * Termin loszuwerden, der nie stattgefunden hat.
      *
-     * <p><b>Kein E-Mail-Versand an den Hallenbetreiber.</b> Das ist der Hallenmodus aus A23
-     * samt der 48-Stunden-Regel und gehoert zu S7.
+     * <p><b>Kein E-Mail-Versand an den Hallenbetreiber.</b> Dafuer gibt es seit S7
+     * {@code HallenService#absagen} - der sagt einen geplanten Termin seinerseits mit ab,
+     * unterliegt aber der Vorlauffrist aus A23. <b>Dieser Weg hier kennt keine Frist</b>: Ein
+     * Termin bleibt nach A19 bis zuletzt absagbar, und gerade kurz vorher ist es am wichtigsten.
+     * Er laedt dafuer die Entity - was er darf, weil er keine Versionsspalte per SQL anfasst.
      *
      * @param terminId       abzusagender Termin
      * @param adminSpielerId Profil-Id des handelnden Admins, fuer das Protokoll

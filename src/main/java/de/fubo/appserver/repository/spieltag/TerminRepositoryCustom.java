@@ -1,11 +1,13 @@
 package de.fubo.appserver.repository.spieltag;
 
+import de.fubo.appserver.domain.spieltag.Hallentermin;
 import de.fubo.appserver.domain.spieltag.TerminEintrag;
 import de.fubo.appserver.domain.spieltag.Terminzustand;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -155,4 +157,62 @@ public interface TerminRepositoryCustom {
      * @return {@code true}, wenn mindestens ein Datensatz auf ihn zeigt
      */
     boolean istReferenziert(Long terminId);
+
+    /**
+     * Liest Status, Zeitpunkt, Ort und einen vorhandenen Absagevermerk (A23, S7 Abschnitt 3.2).
+     *
+     * <p><b>Nativ und nicht ueber die Entity</b>, aus demselben Grund wie {@link #zustand}: Der
+     * Absagepfad erhoeht {@code version} per SQL, und eine im selben Vorgang geladene
+     * {@code Termin}-Entity liefe danach in einen Sperrkonflikt, den niemand verursacht hat.
+     *
+     * @param terminId betroffener Termin
+     * @return der Zustand oder {@link Optional#empty()}, wenn es die Id nicht gibt
+     */
+    Optional<Hallentermin> hallenzustand(Long terminId);
+
+    /**
+     * Vermerkt den Absageversand - <b>und entscheidet damit ueber den Doppelversand</b>
+     * (A23, S7 Abschnitt 2.3).
+     *
+     * <p>Die Bedingung {@code halle_abgesagt_am IS NULL} macht aus zwei gleichzeitigen Klicks
+     * einen Gewinner: Eine betroffene Zeile heisst "wir sind die Ersten", null heisst "jemand war
+     * schneller". <b>"Erst lesen, dann schreiben, dann versenden" liesse ein Fenster offen</b>, in
+     * dem beide durchkommen - und der Hallenbetreiber bekaeme zwei Mails, der teuerste Fehler
+     * dieses Meilensteins.
+     *
+     * <p><b>Der Aufruf steht vor dem Versand</b>, beides in einer Transaktion. Scheitert der
+     * Versand, rollt der Vermerk mit zurueck; der umgekehrte Weg haette dieselbe Luecke und
+     * zusaetzlich keine Sperre gegen den Doppelklick.
+     *
+     * <p>{@code version} steigt mit - die Regel fuer jede per SQL geaenderte Versionsspalte.
+     *
+     * @param terminId betroffener Termin
+     * @param jetzt    Zeitpunkt aus der {@code Clock}-Bean, nicht aus {@code now()}: Er wird im
+     *                 selben Vorgang mit {@code datum + uhrzeit} verglichen, und zwei Uhren fuer
+     *                 denselben Sachverhalt waeren eine Fehlerquelle
+     * @return {@code true}, wenn der Vermerk gesetzt wurde; {@code false}, wenn bereits einer stand
+     */
+    boolean halleAbsageVermerken(Long terminId, OffsetDateTime jetzt);
+
+    /**
+     * Setzt einen <b>geplanten</b> Termin auf {@code ABGESAGT} (A23, S7 Abschnitt 3.1).
+     *
+     * <p>Gebraucht von der Hallenabsage, die den Termin mitabsagt (Entscheidung des
+     * Haupt-Entwicklers vom 13.09.2026): Die Nachricht behauptet, der Termin finde nicht statt -
+     * ginge sie fuer einen geplanten Termin hinaus, waere die Halle storniert, waehrend alle
+     * Beteiligten weiter eine Zusage sehen.
+     *
+     * <p><b>Nativ und bedingt statt ueber {@code TerminService#absagen}</b>, obwohl es dieselbe
+     * Wirkung hat: Jener Weg laedt die Entity, und die darf in diesem Vorgang nicht geladen sein.
+     * Die Bedingung {@code status = 'GEPLANT'} macht den Aufruf zugleich zur Abfrage - der
+     * Rueckgabewert sagt, ob dieser Aufruf den Termin abgesagt hat, und nur dann entsteht ein
+     * Protokolleintrag {@code TERMIN_ABGESAGT}.
+     *
+     * <p><b>{@code teilnehmer_version} bleibt unberuehrt.</b> Der Teilnehmerkreis aendert sich
+     * nicht; ein Ausschlag des Zaehlers setzte grundlos Generierungskontingente zurueck.
+     *
+     * @param terminId betroffener Termin
+     * @return {@code true}, wenn der Termin durch diesen Aufruf abgesagt wurde
+     */
+    boolean absagenWennGeplant(Long terminId);
 }
