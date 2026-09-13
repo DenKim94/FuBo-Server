@@ -4,7 +4,7 @@
     "title": "FuBo Server API",
     "version": "1.0.0",
     "summary": "Vertrag zwischen FuBo-Server und FuBo-Client.",
-    "description": "Maßgebliche Beschreibung der REST-Schnittstelle des FuBo-Servers.\n\n**Diese Datei ist die Quelle der Wahrheit für den Client-Track.** Server und Client liegen in getrennten Repositories; eine Vertragsänderung wird deshalb immer zuerst hier abgebildet und der Client anschließend nachgezogen.\n\n**Stand:** S2 (Auth und Session), S2b (Zugangsdatenpflege und Spielerverwaltung), S3 (Profile, Skills, Konfiguration, Gastverwaltung), **S4 vollständig**, **S5 vollständig** und **S6 vollständig** – die Ergebniserfassung: den Ausgang eines Termins eintragen (der erste Eintrag gilt), ihn als Admin korrigieren, ihn in der Einzelansicht lesen und die eigene Bilanz abrufen; dazu S5 – der Teamgenerator: die Einteilung eines Termins anstoßen und lesen, der Auswechselspieler bei ungerader Teilnehmerzahl und der manuelle Lauf des Admins ohne Termin (A24); dazu S4 – Termine lesen, Einzeltermin anlegen, ändern, absagen und entfernen, Terminserien, Zu- und Absagen von Spielern und Gästen, die Teilnehmerliste samt Warteschlange und die Skill-Stufe eines Gastes.\n\n**Noch nicht enthalten und deshalb hier nicht beschrieben:** der Hallenmodus (S7). Spekulative Endpunkte wären ein Vertrag über etwas, das es nicht gibt.\n\n**Auch das Audit-Log ist nicht enthalten**, obwohl A21 verlangt, dass Erfassung und Korrektur protokolliert werden: Sie *werden* protokolliert, aber keine Anforderung verlangt, das Protokoll abzurufen. Es trägt personenbezogene Daten und unterliegt einer Löschfrist von 30 Tagen; es nach außen zu öffnen wäre eine eigene Entscheidung mit Filter, Blätterung und Feldauswahl.\n\n**Vier Dinge geschehen ohne Zutun des Clients:** Ein Termin wird bei seinem Beginn selbsttätig fixiert und wechselt 30 Minuten später von `GEPLANT` auf `ABGESCHLOSSEN` (A18) – ab der Fixierung liefert `POST /teams/generieren` ein `409 TEAMS_FIXIERT`, und wird der Termin danach in die Zukunft verschoben, fällt die Fixierung zurück; eine erneute Zusage stellt in der Warteschlange hinten an; eine Änderung an den Skillwerten eines zugesagten Spielers erhöht die `teilnehmerVersion` seiner künftigen Termine; und **das Sperren eines Profils nimmt dessen Zusagen für künftige Termine zurück** – die Teilnehmerliste wird dadurch kürzer, ohne dass jemand abgesagt hätte.\n\n### Versionierung\nJeder fachliche Endpunkt liegt unter `/api/{version}/<bereich>/<ressource>/<aktion>`. Die Version steht als Präfix an Segment-Index 1, die Aktion als eigenes Segment am Ende. Umgesetzt mit `ApiVersionConfigurer#usePathSegment` aus Spring Framework 7.\n\n- `/api/v1/...` und `/api/1/...` werden beide als Version 1 gelesen; nach außen wird durchgängig `v1` verwendet.\n- Eine unbekannte Version (`/api/v99/...`) liefert `400`.\n- Ein fehlendes Versionssegment liefert `404` – ohne das Segment passt der Pfad schlicht auf kein Mapping.\n\n### Authentifizierung\nOpakes Session-Cookie (`FUBO_SESSION`, `HttpOnly`, `Secure`, `SameSite=Lax`, kein Ablaufdatum). Das Frontend kann den Token weder lesen noch prüfen und muss das auch nicht: Die Validierung passiert ausschließlich serverseitig in der Filterchain. Alle Aufrufe erfolgen mit `credentials: 'include'`.\n\n**Die zentrale PIN besteht aus vier Ziffern.** Das Eingabefeld im Frontend darf darauf ausgelegt werden. `POST /auth/pin/pruefen` schreibt der Eingabe trotzdem **kein** Format vor – ein abweichender Bestandswert aus der Erstkonfiguration muss eingebbar bleiben, und eine Mindestlänge im Vertrag wäre eine Auskunft über das Format der echten PIN. Verbindlich ist das Format nur beim *Setzen* über `POST /admin/pin/aendern`.\n\nDer Login ist zweistufig und wird serverseitig erzwungen:\n1. `PIN_VERIFIED` – zentrale PIN geprüft, Identität noch offen.\n2. `PROFILE_AUTHENTICATED` – erst hier existiert eine Rolle. Es führen drei Wege dorthin: Namensauswahl (`USER`), Gast-Login (`GAST`) und Admin-Login mit Passwort (`ADMIN`).\n\n**Das Adminprofil ist ein technisches Konto.** Es steht nicht in der Namensliste, nimmt an keinem Termin teil und wird nie in ein Team eingeteilt; seine Skillwerte stehen auf 0. Der Admin meldet sich deshalb über `POST /api/v1/auth/admin/anmelden` mit seinem Passwort an – die Namensauswahl lehnt das Adminprofil auch dann ab, wenn seine Id bekannt ist.\n\nBei jedem Stufenwechsel und bei jeder Erneuerung wird der Token rotiert (Schutz vor Session Fixation). Die `session.id` bleibt dabei erhalten.\n\n### Sitzungsdauer (Zwei-Timer-Modell)\n`gueltigBis` ist ein gleitendes Leerlauf-Fenster (Vorgabe 15 Minuten) und wandert bei jedem Aufruf nach hinten. `absolutGueltigBis` ist eine harte Obergrenze (Vorgabe 1 Stunde) und wird nie verschoben – auch nicht durch `/auth/session/erneuern`.\n\nHintergrundaufrufe (etwa das Pollen des Belegtstatus) sollen das Leerlauf-Fenster **nicht** verlängern und senden dazu `X-FuBo-Kein-Refresh: true`. Ohne diesen Header würde „15 Minuten Inaktivität\" den offenen Browser-Tab messen statt den Nutzer.\n\n### CORS\nFrontend und API liegen auf Subdomains derselben registrierbaren Domain (`app.<domain>` / `api.<domain>`). Der Server führt eine Allowlist mit `allowCredentials=true`; erlaubte Anfrageheader sind `Content-Type` und `X-FuBo-Kein-Refresh`, freigegebener Antwortheader ist `Retry-After`.\n\n### Datenschutz\nSkillbewertungen verlassen den Server nie in Richtung USER oder GAST (Anforderung A12). Sie erscheinen **ausschliesslich in Antworten unterhalb von `/admin/`** – heute in `GET /admin/user/lesen` – und erreichen `USER` und `GAST` nie; die Teamgenerierung läuft vollständig serverseitig.\n\n**Die Bilanz aus S6 ist davon ausgenommen**, und das ist kein Widerspruch: Siege und Niederlagen sind Statistik und keine Bewertung. Sie stehen deshalb sowohl in `SpielerDetails` als auch in `GET /bilanz/lesen`, wo jeder Angemeldete **seine eigene** abruft. A16 bleibt unberührt – Ergebnisse wirken nicht auf Skillwerte zurück.\n\nBis S2b enthielt kein Antwortobjekt dieser Beschreibung Skillwerte. Seit S3 gilt die genauere Fassung oben: Der Prüfpunkt ist nicht mehr „kommen Skillwerte vor\", sondern „kommen sie ausserhalb von `/admin/` vor\".\n\n### Nicht enthalten\n`GET /actuator/health` bleibt bewusst unversioniert und ist kein Teil der fachlichen API. Der Endpunkt dient dem Container-Healthcheck und wird von nginx nach außen abgeschottet.",
+    "description": "Maßgebliche Beschreibung der REST-Schnittstelle des FuBo-Servers.\n\n**Diese Datei ist die Quelle der Wahrheit für den Client-Track.** Server und Client liegen in getrennten Repositories; eine Vertragsänderung wird deshalb immer zuerst hier abgebildet und der Client anschließend nachgezogen.\n\n**Stand:** S2 (Auth und Session), S2b (Zugangsdatenpflege und Spielerverwaltung), S3 (Profile, Skills, Konfiguration, Gastverwaltung), **S4 vollständig**, **S5 vollständig**, **S6 vollständig** und **S7 vollständig** – der Hallenmodus: den gebuchten Hallentermin per E-Mail absagen, begrenzt durch eine Vorlauffrist aus der Konfiguration; dazu S6 – die Ergebniserfassung: den Ausgang eines Termins eintragen (der erste Eintrag gilt), ihn als Admin korrigieren, ihn in der Einzelansicht lesen und die eigene Bilanz abrufen; dazu S5 – der Teamgenerator: die Einteilung eines Termins anstoßen und lesen, der Auswechselspieler bei ungerader Teilnehmerzahl und der manuelle Lauf des Admins ohne Termin (A24); dazu S4 – Termine lesen, Einzeltermin anlegen, ändern, absagen und entfernen, Terminserien, Zu- und Absagen von Spielern und Gästen, die Teilnehmerliste samt Warteschlange und die Skill-Stufe eines Gastes.\n\n**Noch nicht enthalten und deshalb hier nicht beschrieben:** das Deployment (S8) – es bringt keine Endpunkte. Spekulative Endpunkte wären ein Vertrag über etwas, das es nicht gibt.\n\n**Auch das Audit-Log ist nicht enthalten**, obwohl A21 verlangt, dass Erfassung und Korrektur protokolliert werden: Sie *werden* protokolliert, aber keine Anforderung verlangt, das Protokoll abzurufen. Es trägt personenbezogene Daten und unterliegt einer Löschfrist von 30 Tagen; es nach außen zu öffnen wäre eine eigene Entscheidung mit Filter, Blätterung und Feldauswahl.\n\n**Vier Dinge geschehen ohne Zutun des Clients:** Ein Termin wird bei seinem Beginn selbsttätig fixiert und wechselt 30 Minuten später von `GEPLANT` auf `ABGESCHLOSSEN` (A18) – ab der Fixierung liefert `POST /teams/generieren` ein `409 TEAMS_FIXIERT`, und wird der Termin danach in die Zukunft verschoben, fällt die Fixierung zurück; eine erneute Zusage stellt in der Warteschlange hinten an; eine Änderung an den Skillwerten eines zugesagten Spielers erhöht die `teilnehmerVersion` seiner künftigen Termine; und **das Sperren eines Profils nimmt dessen Zusagen für künftige Termine zurück** – die Teilnehmerliste wird dadurch kürzer, ohne dass jemand abgesagt hätte.\n\n### Versionierung\nJeder fachliche Endpunkt liegt unter `/api/{version}/<bereich>/<ressource>/<aktion>`. Die Version steht als Präfix an Segment-Index 1, die Aktion als eigenes Segment am Ende. Umgesetzt mit `ApiVersionConfigurer#usePathSegment` aus Spring Framework 7.\n\n- `/api/v1/...` und `/api/1/...` werden beide als Version 1 gelesen; nach außen wird durchgängig `v1` verwendet.\n- Eine unbekannte Version (`/api/v99/...`) liefert `400`.\n- Ein fehlendes Versionssegment liefert `404` – ohne das Segment passt der Pfad schlicht auf kein Mapping.\n\n### Authentifizierung\nOpakes Session-Cookie (`FUBO_SESSION`, `HttpOnly`, `Secure`, `SameSite=Lax`, kein Ablaufdatum). Das Frontend kann den Token weder lesen noch prüfen und muss das auch nicht: Die Validierung passiert ausschließlich serverseitig in der Filterchain. Alle Aufrufe erfolgen mit `credentials: 'include'`.\n\n**Die zentrale PIN besteht aus vier Ziffern.** Das Eingabefeld im Frontend darf darauf ausgelegt werden. `POST /auth/pin/pruefen` schreibt der Eingabe trotzdem **kein** Format vor – ein abweichender Bestandswert aus der Erstkonfiguration muss eingebbar bleiben, und eine Mindestlänge im Vertrag wäre eine Auskunft über das Format der echten PIN. Verbindlich ist das Format nur beim *Setzen* über `POST /admin/pin/aendern`.\n\nDer Login ist zweistufig und wird serverseitig erzwungen:\n1. `PIN_VERIFIED` – zentrale PIN geprüft, Identität noch offen.\n2. `PROFILE_AUTHENTICATED` – erst hier existiert eine Rolle. Es führen drei Wege dorthin: Namensauswahl (`USER`), Gast-Login (`GAST`) und Admin-Login mit Passwort (`ADMIN`).\n\n**Das Adminprofil ist ein technisches Konto.** Es steht nicht in der Namensliste, nimmt an keinem Termin teil und wird nie in ein Team eingeteilt; seine Skillwerte stehen auf 0. Der Admin meldet sich deshalb über `POST /api/v1/auth/admin/anmelden` mit seinem Passwort an – die Namensauswahl lehnt das Adminprofil auch dann ab, wenn seine Id bekannt ist.\n\nBei jedem Stufenwechsel und bei jeder Erneuerung wird der Token rotiert (Schutz vor Session Fixation). Die `session.id` bleibt dabei erhalten.\n\n### Sitzungsdauer (Zwei-Timer-Modell)\n`gueltigBis` ist ein gleitendes Leerlauf-Fenster (Vorgabe 15 Minuten) und wandert bei jedem Aufruf nach hinten. `absolutGueltigBis` ist eine harte Obergrenze (Vorgabe 1 Stunde) und wird nie verschoben – auch nicht durch `/auth/session/erneuern`.\n\nHintergrundaufrufe (etwa das Pollen des Belegtstatus) sollen das Leerlauf-Fenster **nicht** verlängern und senden dazu `X-FuBo-Kein-Refresh: true`. Ohne diesen Header würde „15 Minuten Inaktivität\" den offenen Browser-Tab messen statt den Nutzer.\n\n### CORS\nFrontend und API liegen auf Subdomains derselben registrierbaren Domain (`app.<domain>` / `api.<domain>`). Der Server führt eine Allowlist mit `allowCredentials=true`; erlaubte Anfrageheader sind `Content-Type` und `X-FuBo-Kein-Refresh`, freigegebener Antwortheader ist `Retry-After`.\n\n### Datenschutz\nSkillbewertungen verlassen den Server nie in Richtung USER oder GAST (Anforderung A12). Sie erscheinen **ausschliesslich in Antworten unterhalb von `/admin/`** – heute in `GET /admin/user/lesen` – und erreichen `USER` und `GAST` nie; die Teamgenerierung läuft vollständig serverseitig.\n\n**Die Bilanz aus S6 ist davon ausgenommen**, und das ist kein Widerspruch: Siege und Niederlagen sind Statistik und keine Bewertung. Sie stehen deshalb sowohl in `SpielerDetails` als auch in `GET /bilanz/lesen`, wo jeder Angemeldete **seine eigene** abruft. A16 bleibt unberührt – Ergebnisse wirken nicht auf Skillwerte zurück.\n\nBis S2b enthielt kein Antwortobjekt dieser Beschreibung Skillwerte. Seit S3 gilt die genauere Fassung oben: Der Prüfpunkt ist nicht mehr „kommen Skillwerte vor\", sondern „kommen sie ausserhalb von `/admin/` vor\".\n\n### Nicht enthalten\n`GET /actuator/health` bleibt bewusst unversioniert und ist kein Teil der fachlichen API. Der Endpunkt dient dem Container-Healthcheck und wird von nginx nach außen abgeschottet.",
     "contact": {
       "name": "FuBo-Server",
       "url": "https://github.com/DenKim94/FuBo-Server"
@@ -70,6 +70,10 @@
     {
       "name": "Ergebnis",
       "description": "Den Ausgang eines Termins erfassen und korrigieren (A21) sowie die eigene Bilanz lesen. **Gelesen wird das Ergebnis eines Termins nicht hier**, sondern als Feld `ergebnis` in `GET /termine/{terminId}/lesen` – dieselbe Überlegung wie bei der Teameinteilung."
+    },
+    {
+      "name": "Hallenmodus",
+      "description": "Den gebuchten Hallentermin beim Betreiber per E-Mail absagen (A23). **Genau ein Endpunkt** – eine Buchung anzulegen oder zu verwalten sieht A23 nicht vor, und es gibt genau eine Halle: `halleEmail` steht in der Konfiguration, nicht am Termin. **Gelesen wird der Zustand nicht hier**, sondern als Feld `halleAbgesagtAm` in `GET /termine/{terminId}/lesen` – dieselbe Überlegung wie bei Teameinteilung und Ergebnis."
     }
   ],
   "security": [
@@ -1421,6 +1425,7 @@
                   "halleEmail": null,
                   "halleAbsageVorlage": null,
                   "halleVorlaufStunden": 48,
+                  "hallenModusAktiv": false,
                   "geaendertAm": "2026-08-29T17:04:12.317+02:00",
                   "version": 3
                 }
@@ -1443,7 +1448,7 @@
         ],
         "operationId": "konfigurationAendern",
         "summary": "Admin-Konfiguration ändern (Voll-Update)",
-        "description": "Schreibt die Konfiguration vollständig. Verlangt die Rolle `ADMIN`.\n\n**Ablauf:** `/admin/config/lesen` → Formular → alle zehn Felder samt `version` zurück. Weicht die `version` vom gespeicherten Stand ab, antwortet der Server `409 DATEN_VERALTET`, ohne etwas zu schreiben – zwei geöffnete Browser-Tabs überschreiben einander damit nicht lautlos.\n\n**Was eine Änderung sofort bewirkt:**\n\n| Feld | Wirkung auf laufende Sitzungen |\n|---|---|\n| `sessionLeerlaufMinuten` | sofort |\n| `sessionMaximalStunden` | **nicht rückwirkend** – bestehende Sitzungen behalten ihre alte Obergrenze |\n| `anzGuests` | sofort; eine Erhöhung legt fehlende Gastplätze mit an, eine Senkung löscht keine |\n| übrige Felder | betrifft Termine, Teamgenerator und Hallenmodus – heute noch ohne auswertenden Endpunkt |\n\nDer Vorgang wird im Audit-Log als `KONFIG_GEAENDERT` mit altem und neuem Wert je geändertem Feld vermerkt; `halleAbsageVorlage` nur als Vermerk, ohne den Text.",
+        "description": "Schreibt die Konfiguration vollständig. Verlangt die Rolle `ADMIN`.\n\n**Ablauf:** `/admin/config/lesen` → Formular → alle **zwölf** änderbaren Felder samt `version` zurück. `halleAbsageVorlageEffektiv` gehört **nicht** dazu – es ist nur lesbar und wird hier ignoriert. Weicht die `version` vom gespeicherten Stand ab, antwortet der Server `409 DATEN_VERALTET`, ohne etwas zu schreiben – zwei geöffnete Browser-Tabs überschreiben einander damit nicht lautlos.\n\n**Was eine Änderung sofort bewirkt:**\n\n| Feld | Wirkung auf laufende Sitzungen |\n|---|---|\n| `sessionLeerlaufMinuten` | sofort |\n| `sessionMaximalStunden` | **nicht rückwirkend** – bestehende Sitzungen behalten ihre alte Obergrenze |\n| `anzGuests` | sofort; eine Erhöhung legt fehlende Gastplätze mit an, eine Senkung löscht keine |\n| `hallenModusAktiv` | sofort – der Absageendpunkt liest den Wert bei jedem Aufruf neu |\n| übrige Felder | wirken beim nächsten Aufruf des jeweiligen Endpunkts |\n\nDer Vorgang wird im Audit-Log als `KONFIG_GEAENDERT` mit altem und neuem Wert je geändertem Feld vermerkt; `halleAbsageVorlage` nur als Vermerk, ohne den Text.\n\n**Brechende Änderung vom 13.09.2026:** `hallenModusAktiv` ist als zwölftes Feld **Pflicht**. Ein Formular, das es nicht mitschickt, bekommt `400` – bewusst, denn ein stillschweigendes `false` schaltete den Hallenmodus bei jedem Speichern ab.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1462,7 +1467,8 @@
                 "sessionMaximalStunden": 1,
                 "halleEmail": "halle@example.invalid",
                 "halleAbsageVorlage": null,
-                "halleVorlaufStunden": 48
+                "halleVorlaufStunden": 48,
+                "hallenModusAktiv": false
               }
             }
           }
@@ -1848,7 +1854,7 @@
         ],
         "operationId": "terminAbsagen",
         "summary": "Termin absagen",
-        "description": "Setzt einen Termin auf `ABGESAGT`. Verlangt die Rolle `ADMIN`.\n\n**Ein Termin wird nie gelöscht.** Fünf Tabellen hängen mit `ON DELETE CASCADE` an ihm – Teilnahmen, Generierungsläufe, Kontingente, Zuteilungen und ab S6 die Ergebnisse. Ein `DELETE` räumte lautlos den halben Spieltag ab. Dazu kommt: Ohne die Zeile wäre nicht mehr nachvollziehbar, wer zugesagt hatte.\n\n**Die Absage ist endgültig** – es gibt keinen Weg zurück nach `GEPLANT`. Das gehört in die Bestätigungsabfrage der Oberfläche.\n\n**Ohne `version`:** Der Vorgang setzt ein Feld auf einen festen Wert und ist wiederholbar in seiner Wirkung, nicht in seinem Ergebnis – ein zweiter Aufruf läuft in `409`. Es gibt hier nichts, was eine gleichzeitige Änderung überschreiben könnte.\n\n**Kein E-Mail-Versand an den Hallenbetreiber.** Das ist der Hallenmodus aus A23 und gehört zu S7.",
+        "description": "Setzt einen Termin auf `ABGESAGT`. Verlangt die Rolle `ADMIN`.\n\n**Ein Termin wird nie gelöscht.** Fünf Tabellen hängen mit `ON DELETE CASCADE` an ihm – Teilnahmen, Generierungsläufe, Kontingente, Zuteilungen und ab S6 die Ergebnisse. Ein `DELETE` räumte lautlos den halben Spieltag ab. Dazu kommt: Ohne die Zeile wäre nicht mehr nachvollziehbar, wer zugesagt hatte.\n\n**Die Absage ist endgültig** – es gibt keinen Weg zurück nach `GEPLANT`. Das gehört in die Bestätigungsabfrage der Oberfläche.\n\n**Ohne `version`:** Der Vorgang setzt ein Feld auf einen festen Wert und ist wiederholbar in seiner Wirkung, nicht in seinem Ergebnis – ein zweiter Aufruf läuft in `409`. Es gibt hier nichts, was eine gleichzeitige Änderung überschreiben könnte.\n\n**Kein E-Mail-Versand an den Hallenbetreiber.** Dafür gibt es `POST /admin/halle/absagen` (A23) – der sagt einen geplanten Termin seinerseits mit ab, unterliegt aber der Vorlauffrist. **Dieser Endpunkt hier kennt keine Frist**: Ein Termin bleibt bis zuletzt absagbar (A19), gerade kurz vorher ist es am wichtigsten.",
         "requestBody": {
           "required": true,
           "content": {
@@ -2505,6 +2511,73 @@
           }
         }
       }
+    },
+    "/api/v1/admin/halle/absagen": {
+      "post": {
+        "tags": [
+          "Hallenmodus"
+        ],
+        "operationId": "hallenterminAbsagen",
+        "summary": "Hallentermin absagen",
+        "description": "Schickt die Absage an den Hallenbetreiber und vermerkt am Termin, dass sie hinaus ist (A23). Verlangt die Rolle `ADMIN`.\n\n**Der Hallenmodus muss eingeschaltet sein** (`hallenModusAktiv` in `/admin/config/lesen`), sonst `409 HALLE_MODUS_INAKTIV` – geprüft als Erstes, noch vor der Suche nach dem Termin. **Bei ausgeschaltetem Modus liefert deshalb auch eine unbekannte Termin-Id diesen Code und nicht `404`.**\n\n**Der Versand ist nicht zurücknehmbar.** Es gibt keinen Endpunkt, der eine versandte Absage zurücknimmt, und keinen Weg, die Mail ungeschehen zu machen – fällt der Termin doch nicht aus, greift der Admin zum Telefon. **Das gehört in die Bestätigungsabfrage**, zusammen mit dem Hinweis, dass die Nachricht sofort hinausgeht.\n\n**Ein `GEPLANT`-Termin wird mit abgesagt**, in derselben Transaktion und mit eigenem Protokolleintrag. Ein Termin, der schon über `POST /admin/termin/absagen` abgesagt wurde, wird nur noch gemeldet. **Zwei Aufrufe sind also nicht nötig, aber erlaubt** – und für eine Absage nach Fristende sind sie der einzige Weg: `/admin/termin/absagen` kennt die Frist nicht, ein Termin bleibt jederzeit absagbar (A19).\n\n**Ein `ABGESCHLOSSEN`-Termin wird abgelehnt** (`409 TERMIN_GESCHLOSSEN`): Die Nachricht behauptet, der Termin finde nicht statt.\n\n**Die Frist steht in der Konfiguration**, nicht im Code: zulässig, solange bis zum Beginn mindestens `halleVorlaufStunden` verbleiben (Vorgabe 48; `0` heisst „bis zum Anpfiff“). Den Zeitpunkt, an dem das Fenster zufällt, liefert `halleAbsageMoeglichBis` in `GET /termine/{terminId}/lesen`. **Ein vergangener Termin fällt automatisch darunter.**\n\n**Der Fließtext kommt aus `halleAbsageVorlage`**; ist sie leer, nimmt der Server seine Ersatzvorlage – sichtbar als `halleAbsageVorlageEffektiv` in `/admin/config/lesen`. Betreff, Datum, Wochentag und Ort setzt der Server selbst; eine fehlende Ortsangabe entfällt ersatzlos.\n\n**`409 HALLE_BEREITS_ABGESAGT` ist kein Bedienfehler**, sondern die Antwort auf den Doppelklick: Entschieden wird er in der Datenbank, nicht im Dienst, und es geht höchstens eine Nachricht hinaus. Die Oberfläche zeigt „ist schon raus“ und den Zeitpunkt aus `halleAbgesagtAm`.\n\n**Bei `503` bleibt nichts zurück:** Der Vermerk wird vor dem Versand gesetzt, beides in einer Transaktion – scheitert der Versand, rollt sie zurück, `halleAbgesagtAm` bleibt `null` und ein `GEPLANT`-Termin bleibt geplant. Der Aufruf lässt sich unverändert wiederholen.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TerminIdRequest"
+              },
+              "example": {
+                "terminId": 12
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Versandt. Kein Inhalt. `halleAbgesagtAm` ist danach gesetzt, ein zuvor geplanter Termin steht auf `ABGESAGT`."
+          },
+          "400": {
+            "$ref": "#/components/responses/EingabeUngueltig"
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
+          },
+          "404": {
+            "description": "Kein Termin mit dieser Id (`INHALT_NICHT_GEFUNDEN`).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Fünf Fälle, in der Reihenfolge, in der der Server prüft:\n\n- `HALLE_MODUS_INAKTIV` – der Hallenmodus ist abgeschaltet. **Vor allem anderen**, auch vor der Terminsuche.\n- `TERMIN_GESCHLOSSEN` – der Termin ist `ABGESCHLOSSEN`; `detail` nennt den Status.\n- `HALLE_FRIST_ABGELAUFEN` – bis zum Beginn bleiben weniger als `halleVorlaufStunden`; `detail` nennt den geltenden Vorlauf und den spätesten Zeitpunkt.\n- `HALLE_NICHT_KONFIGURIERT` – `halleEmail` ist leer. **Die Frist wird zuerst geprüft**: Wer beides falsch hat, soll zuerst erfahren, was er nicht mehr ändern kann.\n- `HALLE_BEREITS_ABGESAGT` – es ist bereits eine Absage hinausgegangen; `detail` nennt den Zeitpunkt.\n\n**In keinem dieser Fälle entsteht eine Nachricht.**",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`VERSAND_FEHLGESCHLAGEN` – der Mailserver hat die Nachricht nicht angenommen. Die Anwendung ist in Ordnung, ein nachgelagerter Dienst ist es nicht; der Aufruf lässt sich unverändert wiederholen, es bleibt kein Zustand zurück.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2679,7 +2752,11 @@
           "TEAMS_FIXIERT",
           "ERGEBNIS_VORHANDEN",
           "TERMIN_NICHT_ABGESCHLOSSEN",
-          "KEINE_EINTEILUNG"
+          "KEINE_EINTEILUNG",
+          "HALLE_FRIST_ABGELAUFEN",
+          "HALLE_NICHT_KONFIGURIERT",
+          "HALLE_BEREITS_ABGESAGT",
+          "HALLE_MODUS_INAKTIV"
         ]
       },
       "Stage": {
@@ -3203,11 +3280,19 @@
             ],
             "description": "Vordefinierter Absagetext (A23) oder `null`."
           },
+          "halleAbsageVorlageEffektiv": {
+            "type": "string",
+            "description": "Der Fließtext, den `POST /admin/halle/absagen` **tatsächlich** verwenden würde. Er entspricht `halleAbsageVorlage`, solange die gepflegt ist, und ist sonst die Ersatzvorlage des Servers.\n\n**Nur lesbar.** Das Feld gehört nicht in den Anfragekörper von `/admin/config/aendern` und wird dort ignoriert; gespeichert wird ausschließlich `halleAbsageVorlage`. Beides zu speichern höbe das Leeren der Vorlage auf – und genau dafür ist das Voll-Update gebaut.\n\n**Wozu das Feld da ist:** Eine leere Vorlage ist kein Fehler, der Versand läuft trotzdem. Ohne dieses Feld erführe der Admin erst beim Hallenbetreiber, welcher Text stattdessen hinausging."
+          },
           "halleVorlaufStunden": {
             "type": "integer",
             "format": "int32",
             "description": "Vorlauf in Stunden, bis zu dem eine Absage zulässig ist (A23). Vorgabe 48.",
             "minimum": 0
+          },
+          "hallenModusAktiv": {
+            "type": "boolean",
+            "description": "Hauptschalter des Hallenmodus (A23). **Vorgabe `false`** – auch für bestehende Installationen: Der Absageendpunkt verschickt eine Nachricht an einen Aussenstehenden, die sich nicht zurücknehmen lässt, und die sichere Richtung ist „aus, bis jemand es einschaltet\".\n\n**Steht er aus, lehnt `POST /admin/halle/absagen` jede Absage ab** (`409 HALLE_MODUS_INAKTIV`) – als erste Prüfung, noch vor der Suche nach dem Termin. Der Knopf gehört dann ausgeblendet; dass der Server die Regel selbst durchsetzt, ist die eigentliche Absicherung.\n\n**Unabhängig von `halleEmail`:** Der Modus lässt sich einschalten, bevor eine Adresse hinterlegt ist. Der fehlende Empfänger fällt erst beim Absagen als `409 HALLE_NICHT_KONFIGURIERT` auf."
           },
           "geaendertAm": {
             "type": "string",
@@ -3231,7 +3316,9 @@
           "sessionMaximalStunden",
           "halleEmail",
           "halleAbsageVorlage",
+          "halleAbsageVorlageEffektiv",
           "halleVorlaufStunden",
+          "hallenModusAktiv",
           "geaendertAm",
           "version"
         ]
@@ -3321,6 +3408,10 @@
             "format": "int32",
             "description": "Vorlauf in Stunden, bis zu dem eine Absage zulässig ist (A23). Vorgabe 48.",
             "minimum": 0
+          },
+          "hallenModusAktiv": {
+            "type": "boolean",
+            "description": "Hauptschalter des Hallenmodus (A23). **Vorgabe `false`** – auch für bestehende Installationen: Der Absageendpunkt verschickt eine Nachricht an einen Aussenstehenden, die sich nicht zurücknehmen lässt, und die sichere Richtung ist „aus, bis jemand es einschaltet\".\n\n**Steht er aus, lehnt `POST /admin/halle/absagen` jede Absage ab** (`409 HALLE_MODUS_INAKTIV`) – als erste Prüfung, noch vor der Suche nach dem Termin. Der Knopf gehört dann ausgeblendet; dass der Server die Regel selbst durchsetzt, ist die eigentliche Absicherung.\n\n**Unabhängig von `halleEmail`:** Der Modus lässt sich einschalten, bevor eine Adresse hinterlegt ist. Der fehlende Empfänger fällt erst beim Absagen als `409 HALLE_NICHT_KONFIGURIERT` auf.\n\n**Pflichtfeld im Voll-Update.** Ein fehlendes Feld ist `400` mit dem Schlüssel `hallenModusAktiv` im Block `felder` – es wird ausdrücklich **nicht** als `false` gelesen, sonst schaltete ein Client, der das Feld nicht kennt, den Hallenmodus bei jedem Speichern ab."
           }
         },
         "required": [
@@ -3335,7 +3426,8 @@
           "sessionMaximalStunden",
           "halleEmail",
           "halleAbsageVorlage",
-          "halleVorlaufStunden"
+          "halleVorlaufStunden",
+          "hallenModusAktiv"
         ]
       },
       "GastPlatzInfo": {
@@ -3538,15 +3630,28 @@
                   }
                 ],
                 "description": "Der erfasste Ausgang oder **`null`, solange niemand erfasst hat** – kein Fehler, sondern der Normalzustand jedes Termins bis zum Abpfiff.\n\n**Unabhängig von `teams`:** Eine Einteilung ohne Ergebnis ist der Regelfall vor dem Spiel; ein Ergebnis ohne Einteilung kann es dagegen nicht geben – `POST /ergebnis/erfassen` lehnt das mit `409 KEINE_EINTEILUNG` ab.\n\n**Hier steht die `version`, die `/admin/ergebnis/korrigieren` zurückverlangt.**"
+              },
+              "halleAbgesagtAm": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "description": "Zeitpunkt, zu dem die Absage an den Hallenbetreiber hinausgegangen ist (A23), oder **`null`, solange nichts versandt wurde** – der Normalzustand jedes Termins.\n\n**Der Wert belegt den Versand, nicht die Zustellung.** Eine Empfangsbestätigung gibt es nicht; wer sichergehen will, fragt beim Betreiber nach.\n\n**Er ist nicht zurücknehmbar.** Ist er gesetzt, gehört der Absageknopf ausgeblendet und der Zeitpunkt angezeigt; ein zweiter Aufruf läuft in `409 HALLE_BEREITS_ABGESAGT`.\n\n**Ein zweiter Versand überschriebe den Wert** – die Zeile sagt, wie es *ist*; wer wann welchen Text verschickt hat, steht im Audit-Log."
+              },
+              "halleAbsageMoeglichBis": {
+                "type": "string",
+                "description": "Spätester Zeitpunkt, zu dem `POST /admin/halle/absagen` die Absage noch annimmt: `datum` + `uhrzeit` minus `halleVorlaufStunden` (A23).\n\n**Ortszeit ohne Zone**, Format `YYYY-MM-DDTHH:MM:SS` – wie `datum` und `uhrzeit`, aus denen er entsteht. Client und Server stehen in derselben Zeitzone (`fubo.zeitzone`, Vorgabe `Europe/Berlin`).\n\n**Immer gefüllt**, auch für vergangene oder abgesagte Termine und auch dann, wenn gar keine `halleEmail` konfiguriert ist. Liegt der Zeitpunkt in der Vergangenheit, ist das Fenster zu.\n\n**Es ist eine Tatsache über den Termin, keine Berechtigungsaussage.** Ein Feld „darf ich jetzt noch absagen“ stünde bei `USER` und `GAST` bedeutungslos mit in der Antwort; deshalb rechnet der Adminbildschirm die Frage selbst aus. **Der Server setzt die Regel trotzdem durch** – die Client-Rechnung blendet einen Knopf aus, sie ist keine Sicherung."
               }
             },
             "required": [
               "version",
-              "teilnehmerliste"
+              "teilnehmerliste",
+              "halleAbsageMoeglichBis"
             ]
           }
         ],
-        "description": "Die Einzelansicht eines Termins: dieselben Felder wie in der Liste, dazu die `version` und die Teilnehmerliste.\n\n**Die Teilnehmerliste hat keinen eigenen Endpunkt.** Wer einen Termin öffnet, will die Teilnehmer sehen, und zwei Aufrufe für eine Ansicht sind zwei Gelegenheiten für einen inkonsistenten Stand – zwischen ihnen kann jemand zusagen, und die Zahl im Kopf passte dann nicht mehr zur Liste darunter.\n\n**Mit S5 kam `teams` dazu** – ein nullbares Feld und damit additiv: Bestehende Clients müssen nichts zurücknehmen.\n\n**Mit S6 kam `ergebnis` dazu** – wieder ein nullbares Feld und damit additiv."
+        "description": "Die Einzelansicht eines Termins: dieselben Felder wie in der Liste, dazu die `version` und die Teilnehmerliste.\n\n**Die Teilnehmerliste hat keinen eigenen Endpunkt.** Wer einen Termin öffnet, will die Teilnehmer sehen, und zwei Aufrufe für eine Ansicht sind zwei Gelegenheiten für einen inkonsistenten Stand – zwischen ihnen kann jemand zusagen, und die Zahl im Kopf passte dann nicht mehr zur Liste darunter.\n\n**Mit S5 kam `teams` dazu** – ein nullbares Feld und damit additiv: Bestehende Clients müssen nichts zurücknehmen.\n\n**Mit S6 kam `ergebnis` dazu** – wieder ein nullbares Feld und damit additiv.\n\n**Mit S7 kamen `halleAbgesagtAm` und `halleAbsageMoeglichBis` dazu** – das erste nullbar, das zweite immer gefüllt und aus Feldern abgeleitet, die der Client schon hat. Beide sind additiv. **Damit stehen fünf Zusatzfelder über den Stammdaten; der nächste gehört geprüft, nicht angehängt.**"
       },
       "TerminAnlegenRequest": {
         "type": "object",
