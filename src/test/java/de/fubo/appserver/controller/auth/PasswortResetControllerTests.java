@@ -6,23 +6,19 @@ import de.fubo.appserver.domain.auth.Stage;
 import de.fubo.appserver.service.auth.BruteForceService;
 import de.fubo.appserver.service.auth.PasswortResetService;
 import de.fubo.appserver.service.auth.SessionService;
+import de.fubo.appserver.support.MailErsatz;
+import de.fubo.appserver.support.MailErsatzConfig;
 import de.fubo.appserver.utils.TokenGenerator;
-import jakarta.mail.internet.MimeMessage;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.mail.MailSendException;
 import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers;
 import org.springframework.test.web.servlet.MockMvc;
@@ -30,10 +26,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
-import java.io.InputStream;
 import java.time.OffsetDateTime;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -55,12 +48,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *
  * <h2>Der Mailversand wird durch einen handgeschriebenen Ersatz ausgetauscht</h2>
  * Kein Mockito und keine zusaetzliche Abhaengigkeit - dasselbe Vorgehen wie beim
- * {@code SessionService}-Ersatz in {@code SessionAuthFilterTests}. Der Ersatz merkt sich die
- * Nachrichten und kann auf Wunsch scheitern; nebenbei ist er der einzige Weg, im Test an die
- * erzeugte PIN zu kommen - sie steht nirgends sonst im Klartext.
+ * {@code SessionService}-Ersatz in {@code SessionAuthFilterTests}. Der Ersatz ist der einzige Weg, im
+ * Test an die erzeugte PIN zu kommen - sie steht nirgends sonst im Klartext.
+ *
+ * <p><b>Seit S7 liegt er in {@code support.MailErsatz}</b> und wird ueber
+ * {@code MailErsatzConfig} eingebunden. Er war bis dahin eine paketprivate, verschachtelte
+ * Klasse dieser Testklasse; der Hallenmodus braucht ihn in einem anderen Paket, und eine zweite
+ * Kopie liefe frueher oder spaeter auseinander. <b>An dieser Klasse aendert der Umzug sonst
+ * nichts</b> - dass sie danach unveraendert gruen ist, ist der Beleg dafuer.
  */
 @SpringBootTest
-@Import(TestcontainersConfiguration.class)
+@Import({TestcontainersConfiguration.class, MailErsatzConfig.class})
 class PasswortResetControllerTests {
 
     private static final String COOKIE = "FUBO_SESSION";
@@ -491,84 +489,5 @@ class PasswortResetControllerTests {
         return jdbc.queryForObject("""
                 SELECT id FROM profil.spieler WHERE rolle = 'USER' AND aktiv ORDER BY name LIMIT 1
                 """, Long.class);
-    }
-
-    // ------------------------------------------------------------------ Mailersatz
-
-    @TestConfiguration
-    static class MailErsatzConfig {
-
-        /**
-         * {@code @Primary} sticht die Bean aus {@code MailConfig}: Beide sind vom Typ
-         * {@code JavaMailSender}, und ohne Vorrang waere die Einspeisung mehrdeutig.
-         */
-        @Bean
-        @Primary
-        MailErsatz mailErsatz() {
-            return new MailErsatz();
-        }
-    }
-
-    /**
-     * Handgeschriebener Ersatz fuer den {@link JavaMailSender}.
-     *
-     * <p>Nur {@link #send(SimpleMailMessage)} wird gebraucht - alles Uebrige gehoert zum
-     * MIME-Teil der Schnittstelle, den die Anwendung nicht benutzt. Die Methoden werfen
-     * deshalb ausdruecklich, statt still nichts zu tun: Griffe die Anwendung eines Tages doch
-     * darauf zu, soll das auffallen.
-     */
-    static class MailErsatz implements JavaMailSender {
-
-        private final List<SimpleMailMessage> nachrichten = new ArrayList<>();
-        private boolean scheitert;
-
-        List<SimpleMailMessage> nachrichten() {
-            return nachrichten;
-        }
-
-        void zuruecksetzen() {
-            nachrichten.clear();
-            scheitert = false;
-        }
-
-        /** Stellt den Versandfehler nach, den Abschnitt 3.4 mit {@code 503} beantwortet. */
-        void laesstScheitern(boolean scheitert) {
-            this.scheitert = scheitert;
-        }
-
-        @Override
-        public void send(SimpleMailMessage simpleMessage) {
-            if (scheitert) {
-                throw new MailSendException("Versand im Test absichtlich fehlgeschlagen.");
-            }
-            nachrichten.add(simpleMessage);
-        }
-
-        @Override
-        public void send(SimpleMailMessage... simpleMessages) {
-            for (SimpleMailMessage nachricht : simpleMessages) {
-                send(nachricht);
-            }
-        }
-
-        @Override
-        public MimeMessage createMimeMessage() {
-            throw new UnsupportedOperationException("Die Anwendung versendet ausschliesslich einfachen Text.");
-        }
-
-        @Override
-        public MimeMessage createMimeMessage(InputStream contentStream) {
-            throw new UnsupportedOperationException("Die Anwendung versendet ausschliesslich einfachen Text.");
-        }
-
-        @Override
-        public void send(MimeMessage mimeMessage) {
-            throw new UnsupportedOperationException("Die Anwendung versendet ausschliesslich einfachen Text.");
-        }
-
-        @Override
-        public void send(MimeMessage... mimeMessages) {
-            throw new UnsupportedOperationException("Die Anwendung versendet ausschliesslich einfachen Text.");
-        }
     }
 }
