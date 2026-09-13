@@ -72,6 +72,9 @@ class ConfigServiceTests {
         assertThat(cfg.getHalleAbsageVorlage())
                 .isNotNull();
         assertThat(cfg.getHalleVorlaufStunden()).isEqualTo((short) 48);
+        assertThat(cfg.isHallenModusAktiv())
+                .as("V013 legt den Hallenmodus abgeschaltet an - die sichere Richtung")
+                .isFalse();
 
         // Aenderungsverfolgung
         assertThat(cfg.getGeaendertVon()).isNull();
@@ -172,7 +175,8 @@ class ConfigServiceTests {
                 bestand.getSessionMaximalStunden(),
                 bestand.getHalleEmail(),
                 bestand.getHalleAbsageVorlage(),
-                bestand.getHalleVorlaufStunden());
+                bestand.getHalleVorlaufStunden(),
+                bestand.isHallenModusAktiv());
     }
 
     /** Profil-Id des Admins - Fremdschluessel des Audit-Eintrags. */

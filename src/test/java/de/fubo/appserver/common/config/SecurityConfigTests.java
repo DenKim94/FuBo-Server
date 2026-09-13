@@ -376,6 +376,13 @@ class SecurityConfigTests {
 
         mockMvc.perform(get("/api/v1/bilanz/lesen"))
                 .andExpect(status().isUnauthorized());
+
+        // S7: Der Hallenmodus ist der einzige Endpunkt, der das System verlaesst. Er steht
+        // namentlich hier, weil sein Pfad neu ist und die Platzhalterpruefung /api/*/admin/**
+        // eine davorgesetzte, offenere Regel nicht bemerken wuerde.
+        mockMvc.perform(post("/api/v1/admin/halle/absagen")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isUnauthorized());
     }
 
     /**
@@ -445,6 +452,14 @@ class SecurityConfigTests {
         // (/api/v1/ergebnis/erfassen) steht bewusst allen Rollen offen - siehe
         // userUndGastDuerfenGeschuetzteEndpunkteAufrufen.
         mockMvc.perform(post("/api/v1/admin/ergebnis/korrigieren")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}")
+                        .cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))
+                .andExpect(status().isForbidden());
+
+        // A23: Die Hallenabsage gibt A23 ausdruecklich dem Admin, und sie verlaesst das
+        // System. Hier gibt es keinen offenen Gegenpart - anders als bei Generierung und
+        // Ergebnis ist dieser Endpunkt allein.
+        mockMvc.perform(post("/api/v1/admin/halle/absagen")
                         .contentType(MediaType.APPLICATION_JSON).content("{}")
                         .cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))
                 .andExpect(status().isForbidden());

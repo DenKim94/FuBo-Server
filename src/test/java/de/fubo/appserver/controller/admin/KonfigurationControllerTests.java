@@ -57,11 +57,17 @@ class KonfigurationControllerTests {
 
     private static final String COOKIE = "FUBO_SESSION";
 
-    /** Die elf aenderbaren Felder in der Reihenfolge des Vertrags. */
+    /**
+     * Die zwoelf aenderbaren Felder in der Reihenfolge des Vertrags.
+     *
+     * <p><b>{@code halleAbsageVorlageEffektiv} steht bewusst nicht hier</b> - es ist nur lesbar.
+     * Der Helfer {@code aktuellerKoerper()} baut den Anfragekoerper aus genau dieser Liste;
+     * stuende es darin, schickte jeder Test ein Feld zurueck, das der Vertrag nicht kennt.
+     */
     private static final List<String> AENDERBAR = List.of(
             "minTeilnehmer", "maxTeilnehmer", "anzGuests", "algorithmType", "auswechselModus",
             "anzTeamGenerator", "sessionLeerlaufMinuten", "sessionMaximalStunden", "halleEmail",
-            "halleAbsageVorlage", "halleVorlaufStunden");
+            "halleAbsageVorlage", "halleVorlaufStunden", "hallenModusAktiv");
 
     @Autowired
     private WebApplicationContext kontext;
@@ -111,6 +117,9 @@ class KonfigurationControllerTests {
                 .as("Seit V010 steht hier ein Vorgabetext statt null (A23)")
                 .asString().startsWith("Sehr geehrte Damen und Herren,");
         assertThat(zahl(konfiguration, "halleVorlaufStunden")).isEqualTo(48);
+        assertThat(konfiguration.get("hallenModusAktiv"))
+                .as("V013 legt den Hallenmodus abgeschaltet an")
+                .isEqualTo(false);
 
         assertThat(konfiguration.get("geaendertAm")).isNotNull();
         assertThat(konfiguration.get("version")).isNotNull();
@@ -130,9 +139,9 @@ class KonfigurationControllerTests {
 
     // --------------------------------------------------------------------- Aendern
 
-    /** Ein Voll-Update schreibt alle elf Felder in die Datenbank. */
+    /** Ein Voll-Update schreibt alle zwoelf Felder in die Datenbank. */
     @Test
-    void aendernSchreibtAlleElfFelder() throws Exception {
+    void aendernSchreibtAlleZwoelfFelder() throws Exception {
         Map<String, Object> koerper = aktuellerKoerper();
         koerper.put("minTeilnehmer", 8);
         koerper.put("maxTeilnehmer", 20);
@@ -145,6 +154,7 @@ class KonfigurationControllerTests {
         koerper.put("halleEmail", "halle@example.invalid");
         koerper.put("halleAbsageVorlage", "Der Termin faellt leider aus.");
         koerper.put("halleVorlaufStunden", 24);
+        koerper.put("hallenModusAktiv", true);
 
         aendern(koerper).andExpect(status().isNoContent());
 
@@ -160,6 +170,35 @@ class KonfigurationControllerTests {
         assertThat(zeile.get("halle_email")).isEqualTo("halle@example.invalid");
         assertThat(zeile.get("halle_absage_vorlage")).isEqualTo("Der Termin faellt leider aus.");
         assertThat(spalte(zeile, "halle_vorlauf_stunden")).isEqualTo(24);
+        assertThat(zeile.get("hallen_modus_aktiv")).isEqualTo(true);
+    }
+
+    /**
+     * <b>Das zwoelfte Feld ist Pflicht</b> - ein Koerper ohne {@code hallenModusAktiv} liefert
+     * {@code 400} und wird nicht als {@code false} gelesen.
+     *
+     * <p>Das ist der Grund, aus dem der Record dort einen {@code Boolean} und kein
+     * {@code boolean} fuehrt: Ein primitiver Wahrheitswert waere bei einem fehlenden Feld
+     * stillschweigend {@code false}, und ein Client, der das Feld nicht kennt, schaltete den
+     * Hallenmodus bei jedem Speichern ab. Bei den Zahlenfeldern faengt das {@code @Min} ab;
+     * fuer einen Wahrheitswert gibt es keine Untergrenze.
+     */
+    @Test
+    void aendernOhneHallenModusLiefert400() throws Exception {
+        jdbc.update("""
+                UPDATE configs.app_config
+                   SET hallen_modus_aktiv = true, version = version + 1
+                 WHERE id = 1
+                """);
+
+        Map<String, Object> koerper = aktuellerKoerper();
+        koerper.remove("hallenModusAktiv");
+
+        aendern(koerper).andExpect(status().isBadRequest());
+
+        assertThat(konfigurationsZeile().get("hallen_modus_aktiv"))
+                .as("der abgelehnte Aufruf hat nichts geschrieben")
+                .isEqualTo(true);
     }
 
     /**
