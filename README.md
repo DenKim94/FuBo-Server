@@ -9,7 +9,7 @@ Das zugehörige Frontend liegt in einem eigenen Repository: `FuBo-Client`.
 
 ### Start der Umgebung mit Testdaten
 ```
-cd ~/Projects/PRJ_FuBo/server
+cd ~/PRJ_FuBo/server
 // .env anpassen/ergänzen: DB_USER=..., DB_PASSWORD=...
 
 // Docker Container löschen
