@@ -4,8 +4,8 @@
 > Gesamtspezifikation und Datenmodell bleibt `/PRJ_FuBo/harness/AGENT.md`, für den Kontrakt
 > `server/fubo-api.json`, für Stand und Fallstricke `CONTEXT_HANDOFF_SERVER.md`.
 >
-> **Am 05.09.2026 verdichtet, am 06.09.2026 um die Regeln aus S5 und am 12.09.2026 um die
-> Regeln aus S6 ergänzt.** Jede Regel steht hier mit dem *einen* Grund, der sie trägt – wer
+> **Am 05.09.2026 verdichtet, am 06.09.2026 um die Regeln aus S5, am 12.09.2026 um die
+> Regeln aus S6 und am 13.09.2026 um die Regeln aus S7 ergänzt.** Jede Regel steht hier mit dem *einen* Grund, der sie trägt – wer
 > sie ändern will, muss den Grund entkräften, nicht die Zeile löschen. **Vorfälle, Daten und
 > ausführliche Herleitungen stehen nicht mehr hier**, sondern in `CONTEXT_HANDOFF_SERVER.md`
 > (6.2 Festlegungen, 6.3 Fallstricke), in `harness/tmp/S<n>_UMSETZUNG.md` und in
@@ -152,6 +152,15 @@ Ergänzungen des Entwicklers sind als *Ergänzung* gekennzeichnet.
     Bewusste Härte, gehört in die Endpunktbeschreibung.
 - **A23** Hallenmodus: E-Mail-Absage an den Hallenbetreiber über eine Vorlage, nur bis 48 Stunden
   vor dem Termin, sonst serverseitig deaktiviert.
+  - **Der Hauptschalter ist `configs.app_config.hallen_modus_aktiv`** (`V013`, Vorgabe `false`).
+    Steht er aus, lehnt der Absageendpunkt ab (`409 HALLE_MODUS_INAKTIV`) – **das ist die
+    „serverseitige Deaktivierung", die A23 verlangt.** Ein Flag, das nur der Client auswertet,
+    wäre ein ausgeblendeter Knopf: Ein alter Browser-Tab, ein Bruno-Aufruf oder ein Skript kämen
+    daran vorbei, und am Ende steht eine Mail bei einem Fremden.
+  - **Er ist unabhängig von `halle_email`** (Entscheidung vom 13.09.2026). Ein aktiver Modus ohne
+    Adresse ist erlaubt und läuft in `409 HALLE_NICHT_KONFIGURIERT`; eine Kopplung im
+    Speicherformular hinderte den Admin daran, den Modus einzuschalten und die Adresse danach zu
+    pflegen.
   - **Die Vorlage startet mit einem Vorgabetext** (`V010`) – ein leeres Feld verlangte, sich unter
     Zeitdruck einen Absagebrief auszudenken.
   - **Der Vorgabewert steht in der Migration, nicht in der Eingabebereinigung** – dort griffe er
@@ -161,6 +170,22 @@ Ergänzungen des Entwicklers sind als *Ergänzung* gekennzeichnet.
     Mail.
   - **Nutzerseitige Texte tragen echte Umlaute**, auch in Migrationen – anders als Kommentare und
     Commit-Nachrichten.
+  - **Die Frist kommt aus `configs.app_config.halle_vorlauf_stunden`, nie als Konstante.** 48 ist
+    der Vorgabewert, nicht die Regel; `0` heisst „bis zum Anpfiff" und ist kein Fehlerfall.
+    Gerechnet wird in Ortszeit über die `Clock`-Bean – mit UTC wäre die Antwort im Sommer zwei
+    Stunden falsch, und der Fehler beträfe nur einen schmalen Zeitstreifen am Tag. **Ein
+    vergangener Termin fällt automatisch heraus**, es braucht keine zweite Prüfung.
+  - **Die leere Vorlage ist kein Fehler, die leere `halle_email` schon.** Ohne Adresse gibt es
+    kein Ziel; ohne Fliesstext setzt der Server seine Ersatzvorlage ein (Vorgabe des
+    Haupt-Entwicklers vom 13.09.2026). **Die Entscheidung, welcher Text gilt, steht an genau
+    einer Stelle** (`utils/Absagevorlage#wirksam`) – Absagepfad und Konfigurationsansicht
+    schöpfen aus derselben; zwei Orte zeigten dem Formular und dem Betreiber verschiedene Texte.
+  - **Der Ersatztext steht wortgleich ein zweites Mal in `V010`.** Migrationen sind
+    unveränderlich, der Wortlaut lässt sich dort nicht nachziehen. **Ein Testfall vergleicht die
+    Konstante mit dem Spaltenvorgabewert aus der Datenbank** – ohne ihn schickte eine bestehende
+    Installation den einen Text und eine frische den anderen, und es fiele niemandem auf.
+  - **Fehlt der Ort, entfällt die Zeile ganz** – nicht „Ort: —" und nicht „Ort: unbekannt". Der
+    Betreiber hat nur die eine Halle.
 
 ---
 
@@ -353,6 +378,71 @@ noch Bedingung kennen muss.
     Sitzung endet – ein Zwangsabmelden mitten in einer Rückmeldung wäre unverhältnismässig. Der
     Vorgang gehört ins Log.
 
+### Der Hallenmodus (A23, S7)
+
+**Der Versand ist die einzige Schreiboperation des Servers, die sich nicht zurücknehmen lässt.**
+Jede andere lässt sich rückgängig machen oder wenigstens korrigieren; eine Mail beim
+Hallenbetreiber nicht, und niemand im Projekt erfährt davon, wenn sie falsch war. Daraus folgen
+drei Regeln, die zusammen gelten oder gar nicht:
+
+1. **Jede Prüfung läuft vor dem Versand**, ausnahmslos. Es gibt keinen Fall, in dem erst
+   versendet und danach abgelehnt wird. Die Reihenfolge ist: **Hauptschalter**
+   (`409 HALLE_MODUS_INAKTIV`) → Existenz (`404`) → Status (`409 TERMIN_GESCHLOSSEN`) → Frist
+   (`409 HALLE_FRIST_ABGELAUFEN`) → Adresse (`409 HALLE_NICHT_KONFIGURIERT`) → bedingter
+   `UPDATE` (`409 HALLE_BEREITS_ABGESAGT`) → Versand. **Frist vor Adresse:** Wer beides falsch
+   hat, soll zuerst erfahren, was er nicht mehr ändern kann. **Der Hauptschalter steht vor der
+   Terminsuche:** Ist die Funktion aus, spielt der einzelne Termin keine Rolle – Folge, die man
+   kennen muss: Dann liefert auch eine unbekannte Id diesen Code und nicht `404`.
+2. **Der Doppelversand wird in der Datenbank entschieden, nicht im Dienst.** Der bedingte
+   `UPDATE` mit `WHERE halle_abgesagt_am IS NULL` lässt von zwei gleichzeitigen Klicks genau
+   einen durch; eine betroffene Zeile heisst „wir sind die Ersten", null heisst „jemand war
+   schneller". **„Erst lesen, dann schreiben, dann versenden" liesse ein Fenster offen** – und
+   der Betreiber bekäme zwei Absagen für denselben Termin. Das ist der teuerste Fehler dieses
+   Meilensteins, teurer als eine ausgebliebene Nachricht. `version` steigt mit; **im selben
+   Vorgang darf deshalb keine `Termin`-Entity geladen sein**, der Pfad liest nativ.
+3. **Der Vermerk steht vor dem Versand, beides in einer Transaktion.** Scheitert der Versand,
+   rollt sie zurück und es bleibt nichts zurück (`503`); gelingt der Versand und scheitert der
+   Commit danach, ist die Mail draussen und der Vermerk nicht. **Die umgekehrte Reihenfolge wäre
+   schlechter, nicht besser:** Dort führte jeder Fehler nach dem Versand zum selben Ergebnis, und
+   zusätzlich gäbe es keine Sperre gegen den Doppelklick. **Gewählt wird die Richtung, in der
+   höchstens eine Mail zu viel ausbleibt, nie eine zu viel ankommt.**
+
+**Die Absage setzt einen geplanten Termin mit ab** (Entscheidung des Haupt-Entwicklers vom
+13.09.2026), in derselben Transaktion und mit eigenem Protokolleintrag. **Die Nachricht behauptet
+etwas:** In ihr steht, dass der Termin nicht stattfindet – ginge sie für einen geplanten Termin
+hinaus, wäre die Halle storniert, während alle Beteiligten weiter eine Zusage sehen.
+
+- **Der Endpunkt nimmt `GEPLANT` und `ABGESAGT` an und lehnt nur `ABGESCHLOSSEN` ab.** Ein
+  bereits abgesagter Termin wird nur noch gemeldet; das ist kein Sonderfall, sondern der Weg für
+  die Absage nach Fristende.
+- **`/admin/termin/absagen` bleibt frei von der Frist.** Ein Termin muss nach A19 jederzeit
+  absagbar bleiben, gerade kurz vorher ist es am wichtigsten. Beide Aufrufe zu koppeln hätte
+  diese Möglichkeit genommen; sie nur zu koppeln, wenn es passt, nimmt sie nicht.
+- **Ein zweiter Protokolleintrag entsteht nur, wenn dieser Aufruf den Status geändert hat** – das
+  Protokoll belegt vollzogene Änderungen. Der bedingte `UPDATE` auf `status = 'GEPLANT'` ist
+  zugleich die Abfrage danach.
+- **`TERMIN_GESCHLOSSEN` wird wiederverwendet, nicht neu benannt.** Der Code bedeutet „nimmt
+  keine Änderung mehr an", und das trifft auf einen abgeschlossenen Termin zu – anders als bei
+  `TERMIN_NICHT_ABGESCHLOSSEN` aus S6 ist die Polarität hier nicht umgedreht.
+
+**Der Zustand ist eine Spalte, kein Protokolleintrag.** `spieltag.termin.halle_abgesagt_am`
+(`V012`, nullbar) beantwortet drei Fragen auf einmal: Doppelversand, Anzeige und
+Nachvollziehbarkeit über die Löschfrist hinaus. **Das Audit-Log taugt dafür nicht** – es wird
+nach 30 Tagen gelöscht, und ein Eintrag ist Beleg, nicht Zustand. Die Spalte ist **kein Zähler**:
+Ein zweiter Versand überschriebe sie. Sie belegt den **Versuch**, nicht die Zustellung.
+
+**Der Ablaufzeitpunkt geht als Tatsache nach aussen, die Berechtigung nicht.**
+`halleAbsageMoeglichBis` steht in `TerminDetails` und ist immer gefüllt; ein Feld
+`halleAbsageMoeglich` gibt es bewusst nicht – es wäre eine Berechtigungsaussage in einem
+rollenneutralen Antwortobjekt und erschiene bei `USER` und `GAST` bedeutungslos mit. **Der Server
+setzt die Regel trotzdem durch**; die Client-Rechnung blendet einen Knopf aus, sie ist keine
+Sicherung.
+
+**Im Audit-Eintrag steht die Empfängeradresse, nicht der Vorlagentext.** Die Adresse ist
+veränderlich, und „an wen ist die Absage damals gegangen" ist genau die Frage, die man später
+stellt; der Text bläht die Tabelle auf, ohne etwas zu belegen, was nicht auch die Konfiguration
+belegt. Zeichenzahl und ein Kennzeichen für die Ersatzvorlage genügen.
+
 ### Audit-Log
 
 1. **Ausbreitung immer `REQUIRED`, nie `REQUIRES_NEW`** – ein Eintrag belegt eine *vollzogene*
@@ -465,6 +555,12 @@ BCrypt-Hash in einer Migration wäre ein Geheimnis in der unveränderlichen Git-
 5. **Ein Dienst nimmt das DTO entgegen, sobald die Alternative eine lange Reihe gleichartiger
    Argumente wäre** – bei sieben `short` in Folge kompilieren zwei vertauschte fehlerfrei und
    schreiben still das Falsche. Regelfall bleibt die Übergabe von Einzelwerten.
+6. **Ein Wahrheitswert gehört als Wrapper-Typ mit `@NotNull` ans DTO**, nicht als primitiver
+   `boolean`. Bei den Zahlenfeldern fängt `@Min` ein fehlendes Feld ab – eine fehlende Zahl
+   kommt als `0` an und fällt durch die Untergrenze. **Für einen Wahrheitswert gibt es diese
+   Untergrenze nicht:** Ein primitiver `boolean` wäre stillschweigend `false`, und ein Client,
+   der `hallenModusAktiv` nicht kennt, schaltete den Hallenmodus bei jedem Speichern ab, ohne
+   dass es jemandem auffiele. Gilt für jedes Voll-Update, nicht nur für dieses Feld.
 
 ### Externe Zugänge und Betrieb
 
@@ -809,6 +905,12 @@ Ursache.**
 | `TIMESTAMPTZ` | `OffsetDateTime` | keiner; `LocalDateTime` verlöre die Zeitzone |
 | `SMALLINT` | `short` / `Short` | keiner |
 | `BIGSERIAL` | `Long` | `@GeneratedValue(strategy = IDENTITY)` |
+
+**`spieltag.termin.halle_abgesagt_am` aus `V012` bleibt ungemappt** (S7). Der Absagepfad
+schreibt die Spalte nativ und erhöht dabei `version`; stünde sie an der Entity, verleitete das
+dazu, sie über `save` zu setzen – und genau das darf sie nicht, weil im selben Vorgang keine
+`Termin`-Entity geladen sein darf. Gelesen wird sie über den Record `Hallentermin` und über die
+Abfrage der Einzelansicht.
 
 **Von den beiden `CHAR(1)`-Spalten aus `V006` ist seit S6 eine gemappt.**
 `team_zuteilung.team` bleibt ungemappt: Die Tabelle wird nur angehängt und aggregiert gelesen, und

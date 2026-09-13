@@ -15,79 +15,49 @@
 > - **Herleitung und Schritt für Schritt** → `harness/tmp/S<n>_UMSETZUNG.md`, für den
 >   Algorithmusteil von S5 zusätzlich `harness/tmp/S5_ALGORITHMUS.md`
 > - **Historie** → Git und `harness/archive/`; die Vorfassung ist
->   `CONTEXT_HANDOFF_SERVER_2026-09-12_v19_S6-abgeschlossen.md`, die letzte Langfassung mit allen
+>   `CONTEXT_HANDOFF_SERVER_2026-09-12_v18_S6-Pakete1-4.md`, die letzte Langfassung mit allen
 >   Herleitungen `CONTEXT_HANDOFF_SERVER_2026-08-31_v14_S4-abgeschlossen.md`
 >
 > Was hier steht, steht **nur** hier. Wird eine Festlegung zur Architekturregel, wandert sie
 > nach `AGENT_SERVER.md` und **verschwindet hier** – sonst laufen beide auseinander.
 
-## Stand: 13.09.2026
+## Stand: 12.09.2026
 
-**S0 bis S7 sind gebaut, S0 bis S7 (Stand 431 Fälle) verifiziert.** `./mvnw clean verify` lief am
-13.09.2026 grün – **431 Fälle in 31 Klassen**. Danach ist der **Hauptschalter des Hallenmodus**
-nachgezogen worden (`hallen_modus_aktiv`, `V013`); dieser Nachtrag steht noch aus und **erwartet
-434 Fälle in 31 Klassen** – vorab gezählt, nicht geschätzt. Der Vertrag steht bei **38
-Endpunkten**, das Datenmodell bei **18 Tabellen** (`V001`–`V013`): `V012` war die erste Migration
-seit S3, `V013` die zweite.
+**S0 bis S6 sind abgeschlossen und verifiziert.** Letzter Lauf: **411 Fälle in 30 Klassen,
+grün** – keine Fehler, keine Abbrüche, nichts übersprungen. Der Vertrag steht bei **37
+Endpunkten**, das Datenmodell unverändert bei **18 Tabellen** (`V001`–`V011`): S5 **und** S6 sind
+ohne Migration ausgekommen.
 
-**Als Nächstes: der Testlauf zum Nachtrag** (`./mvnw clean verify`), danach die fünf
-Handprüflisten und S8.
+**Als Nächstes: S7 (Hallenmodus, A23).** Anleitung: `harness/tmp/S7_UMSETZUNG.md`.
 
-### Was S7 gebracht hat
+### Was S6 gebracht hat
 
-Die Absage des gebuchten Hallentermins beim Betreiber (`POST /admin/halle/absagen`), die
-Vorlauffrist aus der Konfiguration, der Absagevermerk `spieltag.termin.halle_abgesagt_am`
-(`V012`) und zwei neue Felder in der Einzelansicht. **Nachtrag vom 13.09.2026:** der
-Hauptschalter `configs.app_config.hallen_modus_aktiv` (`V013`, Vorgabe `false`). Vier neue
-Fehlercodes (`HALLE_MODUS_INAKTIV`, `HALLE_FRIST_ABGELAUFEN`, `HALLE_NICHT_KONFIGURIERT`,
-`HALLE_BEREITS_ABGESAGT`), eine neue Audit-Aktion (`HALLE_ABGESAGT`).
+Die Ergebniserfassung (`POST /ergebnis/erfassen`, offen für jeden Angemeldeten – „der erste
+Eintrag gilt"), die Admin-Korrektur (`POST /admin/ergebnis/korrigieren`), die Bilanzrechnung mit
+eigenem Lesepfad (`GET /bilanz/lesen`) und das Ergebnis als nullbares Feld der Einzelansicht.
+Drei neue Fehlercodes (`ERGEBNIS_VORHANDEN`, `TERMIN_NICHT_ABGESCHLOSSEN`, `KEINE_EINTEILUNG`),
+zwei neue Audit-Aktionen (`ERGEBNIS_ERFASST`, `ERGEBNIS_KORRIGIERT`). `ergebnis.sieger` ist die
+zweite `CHAR(1)`-Spalte des Schemas und seit S6 als `Character` gemappt.
 
-**Zum Hauptschalter, weil er zwei Dinge festlegt, die sich später nur mit einer
-Vertragsänderung zurückdrehen liessen:** Er **sperrt den Endpunkt serverseitig**
-(`409 HALLE_MODUS_INAKTIV`) und zwar **als erste Prüfung, noch vor der Terminsuche** – A23
-verlangt eine serverseitige Abschaltung, und ein Flag, das nur der Client auswertet, wäre ein
-ausgeblendeter Knopf. **Folge, die man kennen muss:** Bei ausgeschaltetem Modus liefert auch
-eine unbekannte Termin-Id diesen Code und nicht `404`. Er ist **unabhängig von `halleEmail`**;
-ein aktiver Modus ohne Adresse läuft weiterhin in `409 HALLE_NICHT_KONFIGURIERT`. Und er ist das
-**zwölfte Pflichtfeld** im Voll-Update der Konfiguration – **eine brechende Änderung für das
-Adminformular.**
+**Drei Entscheidungen vom 12.09.2026:**
 
-**S7 ist der erste Meilenstein, der den Server nach aussen sprechen lässt** – nicht zu einem
-Client, sondern zu einem Fremden. **Der Versand ist nicht zurückrollbar**, und niemand im Projekt
-erfährt davon, wenn er falsch war. Daraus folgen drei Dinge, die den ganzen Meilenstein prägen:
-jede Prüfung läuft **vor** dem Versand; der **Doppelversand ist der teuerste Fehler**, teurer als
-ein ausgebliebener; und wo Versand und Datenbankzustand auseinanderfallen können, wird die
-Richtung gewählt, in der höchstens eine Nachricht zu viel **ausbleibt**.
-
-**Vier Entscheidungen vom 13.09.2026** – drei davon **gegen** die Empfehlung im Fliesstext der
-Anleitung, alle vier vor der ersten Zeile Code als Rückfrage gestellt:
-
-1. **Woran der Server erkennt, dass schon abgesagt wurde:** an der neuen Spalte
-   `halle_abgesagt_am` (`V012`), nicht am Audit-Log. Entlang der Empfehlung. Das Protokoll wird
-   nach 30 Tagen gelöscht – ein Termin, der weiter in der Zukunft liegt, verlöre seinen Zustand,
-   während er noch bevorsteht; und ein Eintrag ist Beleg, nicht Zustand.
-2. **Die Hallenabsage sagt einen geplanten Termin mit ab** (gegen die Empfehlung, die einen
-   bereits abgesagten Termin verlangte). Umgesetzt so, dass die Gegengründe der Anleitung nicht
-   greifen: Der Endpunkt nimmt `GEPLANT` **und** `ABGESAGT` an, lehnt nur `ABGESCHLOSSEN` ab, und
-   `/admin/termin/absagen` bleibt unberührt – **damit bleibt A19 gewahrt**, ein Termin ist
-   weiterhin jederzeit absagbar, auch innerhalb der Frist. Folge: Der in der Anleitung
-   vorgesehene Code `TERMIN_NICHT_ABGESAGT` **entfällt**; es sind drei neue Fehlercodes statt
-   vier.
-3. **Der Server liefert den Ablaufzeitpunkt der Frist mit** (gegen die Empfehlung, die ihn den
-   Client rechnen lassen wollte): `halleAbsageMoeglichBis` in `TerminDetails`, Datum und Uhrzeit
-   in Ortszeit ohne Zone, immer gefüllt. **Ein Feld „darf ich jetzt noch absagen" gibt es
-   trotzdem nicht** – das wäre eine Berechtigungsaussage in einem rollenneutralen Antwortobjekt.
-4. **Bei leerer Vorlage wird eine Ersatzvorlage verwendet und dem Admin angezeigt** (gegen die
-   Empfehlung, ohne Fliesstext zu versenden). Sichtbar als `halleAbsageVorlageEffektiv` in
-   `/admin/config/lesen` – **nur lesbar**, damit das Voll-Update unberührt bleibt und die Vorlage
-   weiterhin leerbar ist.
+1. **Die eigene Bilanz bekommt einen eigenen Endpunkt** (`GET /api/v1/bilanz/lesen`, ohne Id im
+   Pfad). Die Anleitung widersprach sich – 4.5 sagte „auch die registrierten Spieler", 5.3 und 6
+   sagten „vorerst nur unter `/admin/`". Additiv ging es nicht: Die API kennt **keinen**
+   Endpunkt, über den ein `USER` sein eigenes Profil liest.
+2. **Die Löschfrist des Audit-Logs geht von 90 auf 30 Tage**, ohne Obergrenze der Zeilenzahl –
+   ein Deckel würfe in einem Ansturm genau die Einträge weg, die ihn belegen.
+   `fubo.reset.aufbewahrung-tage` steht damit auf derselben Frist und **darf nie länger werden
+   als das Protokoll.**
+3. **Der Meilenstein heisst „Ergebnis und Bilanz"** – der alte Name versprach einen Leseendpunkt
+   fürs Protokoll, den keine Anforderung verlangt.
 
 ### Drei Handprüflisten sind aufgeschoben, nicht vergessen
 
 `S6_UMSETZUNG.md` 8.1, `S5_UMSETZUNG.md` 13.1, `S4_UMSETZUNG.md` 11.1 und die drei Punkte zur
-Gastverwaltung aus 6.4; **seit S7 kommt `S7_UMSETZUNG.md` 8.1 dazu**. Alle brauchen eine laufende
-Anwendung und werden in einem Zug abgearbeitet. **Bei S7 mit besonderer Vorsicht:** Dort gehen
-echte Mails raus – vor dem ersten Versuch `halle_email` auf eine eigene Adresse setzen.
+Gastverwaltung aus 6.4. **Alle brauchen eine laufende Anwendung** und werden in einem Zug
+abgearbeitet. Der Aufbau für S6 braucht Geduld oder SQL: Ein Termin muss `ABGESCHLOSSEN` sein
+*und* eine Einteilung haben – der Weg dorthin steht im Bruno-Ordnerkommentar `ergebnis/`.
 
 ---
 
@@ -137,8 +107,8 @@ Vollständige Liste in `CONTEXT_HANDOFF.md`, Abschnitt 3. Serverseitig besonders
 **Maßgeblich ist `server/fubo-api.json`** – OpenAPI 3.1 in JSON auf der Repo-Wurzel und damit
 mitversioniert. **Bei Abweichungen gilt die Datei, nicht dieses Dokument.**
 
-**Umfang: 38 Endpunkte** (Tabelle in 6.1). Aufgenommen wird nur, was umgesetzt ist; S8
-bringt keine weiteren – es ist Härtung und Deployment. Kernpunkte: REST/JSON, getrennte Origins mit CORS-Allowlist
+**Umfang: 37 Endpunkte** (Tabelle in 6.1). Aufgenommen wird nur, was umgesetzt ist; S7 trägt
+seine bei Fertigstellung nach. Kernpunkte: REST/JSON, getrennte Origins mit CORS-Allowlist
 (`allowCredentials`), HttpOnly-Session-Cookie, `401`/`403`-Semantik, DTOs ohne Skillwerte für
 USER und GAST, Belegtstatus zum Pollen, einheitliches Fehler-JSON nach RFC 9457.
 
@@ -157,9 +127,8 @@ eine Stelle, an der eine naheliegende Annahme falsch ist. Wann sie dazukam, steh
 
 | Punkt | Bedeutung für den Client |
 |---|---|
-| **Vier brechende Änderungen** | `anmeldename` in `AdminLoginRequest`, vollständige `skills` in `SpielerAnlegenRequest`, `auswechselModus` und – seit dem 13.09.2026 – `hallenModusAktiv` im Konfigurations-Voll-Update. Alle vier betreffen Formulare, alle vier liefern sonst `400` |
-| `hallenModusAktiv` | **Pflichtfeld, kein stillschweigendes `false`.** Wer es weglässt, bekommt `400` mit dem Schlüssel im Block `felder` – sonst schaltete ein Client, der das Feld nicht kennt, den Hallenmodus bei jedem Speichern ab |
-| `/admin/config/aendern` | **Voll-Update**: vorher `lesen`, dann alle **zwölf** änderbaren Felder samt `version` zurückschicken. `halleAbsageVorlageEffektiv` gehört **nicht** dazu – nur lesbar |
+| **Drei brechende Änderungen** | `anmeldename` in `AdminLoginRequest`, vollständige `skills` in `SpielerAnlegenRequest`, `auswechselModus` im Konfigurations-Voll-Update. Alle drei betreffen Formulare, alle drei liefern sonst `400` |
+| `/admin/config/aendern` | **Voll-Update**: vorher `lesen`, dann alle elf Felder samt `version` zurückschicken |
 | `/admin/ergebnis/korrigieren` | ebenfalls **Voll-Update** mit `version` – auch das unveränderte Feld mitschicken. Grund ist `deutlich`: Bei einem `boolean` wäre „weggelassen" nicht von `false` zu unterscheiden |
 | `/admin/termin/aendern` | **feldweise**, anders als die beiden darüber. Weglassen heisst „nicht ändern"; `ort: ""` leert den Ort. Ein Körper ohne jedes zu ändernde Feld liefert `400` |
 | `DATEN_VERALTET` (`409`) | heisst **„neu laden und erneut speichern", nicht „Eingabe falsch"**. Gilt für Konfiguration, Termine und Ergebnisse. Die `version` kommt aus dem jeweiligen `lesen` – beim Ergebnis auch aus der Antwort des Erfassens |
@@ -175,7 +144,6 @@ eine Stelle, an der eine naheliegende Annahme falsch ist. Wann sie dazukam, steh
 | `teams` in `TerminDetails` | `null` heisst „noch nicht generiert" und ist kein Fehler. `veraltet: true` heisst „noch anzeigen, aber nicht mehr aktuell" |
 | `ergebnis` in `TerminDetails` | `null` heisst „noch nicht erfasst" – der Normalzustand jedes Termins bis zum Abpfiff. **Unabhängig von `teams`:** Eine Einteilung ohne Ergebnis ist der Regelfall, ein Ergebnis ohne Einteilung kann es nicht geben |
 | `korrigiertAm` im `Ergebnis` | `null` heisst „nie korrigiert". Es führt **keine Historie** – jede weitere Korrektur überschreibt den Wert |
-| `halleAbgesagtAm` in `TerminDetails` | `null` heisst „noch keine Absage an den Hallenbetreiber" – der Normalzustand. Gesetzt heisst: **Knopf ausblenden**, Zeitpunkt anzeigen. Der Wert belegt den Versand, nicht die Zustellung |
 
 **Sitzung und Fehlerbehandlung**
 
@@ -196,7 +164,6 @@ eine Stelle, an der eine naheliegende Annahme falsch ist. Wann sie dazukam, steh
 | `TerminStatus` | `GEPLANT`, `ABGESAGT`, `ABGESCHLOSSEN`. **Eine Absage ist endgültig** – kein Weg zurück nach `GEPLANT` |
 | `/admin/termin/entfernen` | löscht endgültig, aber nur ohne Verweise (`409 TERMIN_IN_VERWENDUNG`). **Der einzige Weg zurück aus einer versehentlichen Absage** – ein abgesagter Termin belegt seinen Zeitpunkt weiter |
 | **Ein Ergebnis lässt sich nicht löschen** | A21 sieht nur die Korrektur vor. Es gibt keinen Endpunkt dafür, und es wird keinen geben, ohne dass jemand ihn anfordert |
-| **Eine versandte Hallenabsage lässt sich nicht zurücknehmen** | Es gibt keinen Endpunkt und keinen Weg, die Mail ungeschehen zu machen. Die Bestätigungsabfrage muss sagen, dass die Nachricht **sofort** hinausgeht |
 
 **Wo die Reihenfolge zählt – und wo nicht**
 
@@ -206,7 +173,6 @@ eine Stelle, an der eine naheliegende Annahme falsch ist. Wann sie dazukam, steh
 | Warteschlange | **Eine erneute Zusage stellt hinten an.** Eine Absage lässt die Meldezeit unberührt |
 | `teamA`/`teamB` | **keine Rangfolge**, darf frei sortiert werden |
 | `SerieAngelegt` | nennt die erzeugten **und** die übersprungenen Zeitpunkte. Kollisionen lassen die Serie nicht scheitern; die zweite Liste muss angezeigt werden |
-| Termin absagen und Halle absagen | **Ein Aufruf genügt:** `/admin/halle/absagen` sagt einen geplanten Termin mit ab. Zwei Aufrufe sind erlaubt und nach Fristende der einzige Weg – `/admin/termin/absagen` kennt keine Frist |
 
 **Was der Server von selbst tut**
 
@@ -228,17 +194,6 @@ eine Stelle, an der eine naheliegende Annahme falsch ist. Wann sie dazukam, steh
 | `GET /bilanz/lesen` | liefert die **eigene** Bilanz, **ohne Id** – mit einer Id wäre es „fremde Bilanz lesen". Ein `GAST` bekommt dreimal `0`, kein Fehler |
 | `POST /admin/teams/generieren` | **nur `ADMIN`** (A24), unterscheidet sich vom offenen Endpunkt **nur im Präfix**. Auswahl aus `/admin/user/lesen`; kein neuer Listenendpunkt |
 | `bilanz` in `SpielerDetails` | die Bilanz **aller** Spieler, admin-only – aber **kein A12-Fall**: Sie ist Statistik, kein Skillwert |
-
-**Fristen und Vorlagen (S7)**
-
-| Punkt | Bedeutung für den Client |
-|---|---|
-| `halleAbsageMoeglichBis` | Spätester Zeitpunkt der Absage, **immer gefüllt** – auch für vergangene, abgesagte und nicht konfigurierte Hallen. Ortszeit **ohne Zone**, Format `YYYY-MM-DDTHH:MM:SS`. Liegt er in der Vergangenheit, ist das Fenster zu |
-| **Es gibt kein `halleAbsageMoeglich`** | Eine Berechtigungsaussage gehört nicht in ein rollenneutrales Antwortobjekt. Der Adminbildschirm rechnet sie selbst – **das blendet einen Knopf aus, es ist keine Sicherung.** Der Server lehnt unabhängig davon mit `409` ab |
-| `halleAbsageVorlageEffektiv` | **Nur lesbar.** Zeigt, welchen Fliesstext der Server verwenden würde – die gepflegte Vorlage oder seinen Ersatz. **Gehört nicht in das Voll-Update** von `/admin/config/aendern`; dort wird er ignoriert |
-| `hallenModusAktiv` in der Konfiguration | Hauptschalter. Steht er aus, ist der Absageknopf auszublenden – und der Server lehnt unabhängig davon mit `409 HALLE_MODUS_INAKTIV` ab. **Bei ausgeschaltetem Modus kommt dieser Code auch für eine unbekannte Termin-Id**, nicht `404` |
-| `HALLE_BEREITS_ABGESAGT` (`409`) | **kein Bedienfehler**, sondern die Antwort auf den Doppelklick. Oberfläche: „ist schon raus" plus Zeitpunkt |
-| `VERSAND_FEHLGESCHLAGEN` (`503`) | Es bleibt **kein** Zustand zurück: kein Vermerk, und ein geplanter Termin bleibt geplant. Der Aufruf lässt sich unverändert wiederholen |
 
 **Zahlen, die anders heissen, als sie sind**
 
@@ -267,7 +222,7 @@ Es braucht ein zweites Eingabefeld. Drei Punkte gehören dabei ins Frontend:
 
 Mid-Level-Entwickler, KI-gestützt, ca. 6,5 h/Woche. **Die Summe der Einzelschritte war jedes Mal
 verlässlicher als die Top-down-Schätzung** (S2: 18 → 23, S2b: 6 → 10, S4: 16 → 17 plus 3,
-S5: 18 → 24, S6: 8 → 13, S7: 6 → 12). **Sieben von sieben** – die Top-down-Zahl lag bei S6 um 62 % daneben,
+S5: 18 → 24, S6: 8 → 13). **Sechs von sechs** – die Top-down-Zahl lag bei S6 um 62 % daneben,
 die Schrittsumme um 18 %, und deren Abweichung bestand zur Hälfte aus Arbeit, die es bei der
 Schätzung noch nicht gab.
 
@@ -281,7 +236,7 @@ Schätzung noch nicht gab.
 | S4 | Termine & Teilnahme: Einzel/Serie, Teilnahme, `teilnehmer_version`, Min/Max + Warteschlange, Gast-Flow; dazu A7, A18, A19 | **verifiziert (31.08.2026, 331 Tests in 26 Klassen)**; zwei Handprüfungen offen, siehe 7 | 16 (17 + 3) |
 | S5 | Teamgenerator: `EXHAUSTIV` + `HEURISTIK`, Zielfunktion inkl. Torwart-Gewicht, Kontingent/Seed/Snapshot, Auswechselspieler; **dazu A24 (manueller Lauf des Admins)** | **verifiziert (12.09.2026)** – Bestätigungslauf grün; Handprüfliste 13.1 offen. Schrittsumme **24,0 h** (20,5 + 3,5 für A24) | 18 |
 | S6 | **Ergebnis und Bilanz** (umbenannt am 12.09.2026; „Ergebnis & Audit API" versprach einen Leseendpunkt fürs Protokoll, den keine Anforderung verlangt): „erster Eintrag gilt", Admin-Korrektur, Bilanz-Zähler, eigene Bilanz | **verifiziert (12.09.2026, 411 Tests in 30 Klassen)**; Handprüfliste 8.1 offen. Schrittsumme **13,0 h** (11,0 geplant plus 2,0 für die Entscheidungen vom 12.09.) | 8 |
-| S7 | **Hallenmodus**: E-Mail-Absage an den Hallenbetreiber, Vorlauffrist aus der Konfiguration (A23); dazu `V012` – die erste Migration seit S3 | **verifiziert (13.09.2026, 431 Fälle in 31 Klassen)**; der Nachtrag „Hauptschalter" (`V013`) steht noch aus und erwartet 434/31. Handprüfliste 8.1 offen. Schrittsumme **12,0 h** gegen 6,0 top-down (8,5 geplant, plus 1,5 für die Entscheidungen vom 13.09. und 2,0 für den Hauptschalter) | 6 |
+| S7 | Hallenmodus: E-Mail-Absage an den Hallenbetreiber, 48-Stunden-Regel (A23) | **als Nächstes**; Anleitung steht (`harness/tmp/S7_UMSETZUNG.md`, 12.09.2026). Schrittsumme **8,5 h** gegen 6,0 top-down – **S7 braucht als erster Meilenstein seit S3 wieder eine Migration** (`V012`) | 6 |
 | S8 | Härtung, Deployment (Docker/nginx/Cloudflared), API-Doku – Entwurf: `harness/tmp/S8_DEPLOYMENT.md` | offen | 14 |
 
 Anleitungen: `harness/tmp/S<n>_UMSETZUNG.md`. **Ausnahme S5:** Der Algorithmusteil (Zielfunktion,
@@ -290,7 +245,7 @@ Anleitungen: `harness/tmp/S<n>_UMSETZUNG.md`. **Ausnahme S5:** Der Algorithmuste
 **die Abschnittsnummern sind beibehalten**, ein Verweis „3.1" meint dieselbe Stelle wie zuvor.
 Beide Dateien zusammen sind die Anleitung für S5.
 
-## 6. Code-Zustand (13.09.2026, Branch `dev`)
+## 6. Code-Zustand (12.09.2026, Branch `dev`)
 
 ### 6.1 Was steht
 
@@ -301,11 +256,11 @@ ist nach 6.2 und 6.3 gewandert; die Langfassung liegt in
 
 ```
 server/                        Repo-Wurzel (remote: FuBo-Server, oeffentlich)
-  fubo-api.json                Endpunktkontrakt, 38 Endpunkte
+  fubo-api.json                Endpunktkontrakt, 37 Endpunkte
   compose.dev.yml              postgres:17
   .env / .env.example          DB-Zugang, FUBO_INITIAL_PIN, ADMIN_*, SMTP_*
   scripts/                     seed-lokal.sh + anonymisierter 30er-Datensatz
-  src/main/resources/db/       migration/ V001-V013, demodata/ (nur dev und test)
+  src/main/resources/db/       migration/ V001-V011, demodata/ (nur dev und test)
   src/main/java/de/fubo/appserver/
     common/      config error security
     controller/  auth admin spieltag ergebnis profil
@@ -454,20 +409,6 @@ Empfehlung: `ZULETZT_ANGEMELDET` wählt aus dem **Überzahl-Team** · die Eintei
 aber unterhalb von `/admin/` · das **Adminprofil darf generieren**, mit eigenem Kontingent. Damit
 ist `S5_UMSETZUNG.md`, 15 auf zwei Punkte zusammengeschmolzen.
 
-**Die vier Weggabelungen für S7 sind am 13.09.2026 entschieden** – drei davon **gegen** die
-Empfehlung im Fliesstext, Einzelheiten im Stand-Abschnitt oben und in `S7_UMSETZUNG.md`, 0.5.
-Was daraus für den Code folgt und nicht anders hätte ausfallen können, sobald es entschieden war:
-`halle_abgesagt_am` als Spalte statt Audit-Abfrage · die Kopplung von Hallen- und Terminabsage
-**in eine Richtung** (der Endpunkt nimmt beide Zustände an, `/admin/termin/absagen` bleibt frei
-von der Frist) · der Ablaufzeitpunkt als Tatsache im rollenneutralen DTO, **ohne** ein Feld für
-die Berechtigung · die Ersatzvorlage an genau einer Stelle im Code, sichtbar über ein nur
-lesbares Konfigurationsfeld.
-
-**Der Fehlercode `TERMIN_NICHT_ABGESAGT` existiert nicht.** Die Anleitung sah ihn vor; mit
-Entscheidung 2 gibt es den Zustand nicht mehr, den er beschrieben hätte. Ein abgeschlossener
-Termin läuft in `TERMIN_GESCHLOSSEN` – der Code bedeutet „nimmt keine Änderung mehr an", und das
-trifft zu. **Wer ihn im Client vorgesehen hat, nimmt ihn wieder heraus.**
-
 **Abweichungen aus S1, die im Datenmodell sichtbar sind:** `min_teilnehmer = 6`,
 `anz_team_generator = 1`, `session_maximal_stunden = 1` (statt 8/2/8); `session.stage` heisst in
 der zweiten Stufe `PROFILE_AUTHENTICATED`, weil auch Gäste sie erreichen.
@@ -543,23 +484,11 @@ Jeder Punkt hat schon mindestens einmal Zeit gekostet.
   braucht ihren eigenen Zeitstreifen in **beiden** Achsen. Vergeben: `TerminControllerTests`
   40 Tage/18:15, `TerminVerwaltungControllerTests` 120 Tage/19:45, `TeilnehmerlisteTests`
   200 Tage/17:30, `SpielerControllerTests` 300 Tage/16:05, seit S5 `TeamGeneratorTests`
-  500 Tage/20:15, seit S6 `ErgebnisControllerTests` 600 Tage **rückwärts**/21:30 und seit S7
-  `HallenmodusTests` 700 Tage **vorwärts**/19:00. **`ManuelleGenerierungTests` braucht keinen** – A24 ist terminfrei, und sobald
+  500 Tage/20:15. **`ManuelleGenerierungTests` braucht keinen** – A24 ist terminfrei, und sobald
   die Klasse einen Streifen braucht, hat sich eine Terminabhängigkeit eingeschlichen. Das ist die
   schnellste Gegenprobe, die es dafür gibt. Wer eine weitere anlegt, vergibt den nächsten. **Beide Achsen zählen** – ein
   bereits vergebener Tag mit anderer Uhrzeit hielte zwar am Constraint, kollidiert aber mit dem
   Nächsten, der nur die Tage vergleicht.
-- **Eine Testklasse ohne `@Transactional` sieht die geplanten Aufträge.** Ohne Test-Transaktion
-  sind angelegte Termine wirklich geschrieben, und der A18-Auftrag setzt geplante Termine nach
-  Beginn auf `ABGESCHLOSSEN` – alle fünf Minuten. **Ein vergangener Termin, der `GEPLANT` bleiben
-  soll, wird zur Zeitbombe:** Der Fall prüft dann mal das eine und mal das andere.
-  `HallenmodusTests` legt ihn deshalb als `ABGESAGT` an.
-- **Ein Rollback lässt sich in einer `@Transactional`-Testklasse nicht prüfen.** Die
-  `@Transactional`-Methode des Dienstes nimmt an der Test-Transaktion teil; beim Scheitern
-  markiert sie diese nur als „rollback-only", die Änderung steht aber weiterhin in der Zeile. Ein
-  Fall wie „der Versand scheitert, und es bleibt kein Zustand zurück" prüft dort das Gegenteil
-  dessen, was er soll – **und wäre grün.** Deshalb trägt `HallenmodusTests` kein
-  `@Transactional` und räumt von Hand auf.
 - **Termine für Lesetests entstehen per SQL, nicht über den Adminendpunkt.** Der Lesepfad soll
   unabhängig vom Schreibpfad prüfbar bleiben – und ein Termin in der Vergangenheit lässt sich
   über den Endpunkt gar nicht anlegen.
@@ -628,18 +557,9 @@ docker compose -f compose.dev.yml --env-file .env up -d
 ./mvnw clean verify
 ```
 
-**Zuletzt grün am 13.09.2026 – 431 Fälle in 31 Klassen** (S7 vollständig, 0 Fehlschläge, 0
-Fehler, nichts übersprungen). Verlauf: 148/16 (22.08.), 184 (23.08.), 244/22 (29.08.), 300/25
-und 331/26 (S4, 30./31.08.), 385/29 (S5, 06.09.), 411/30 (S6, 12.09.), 431/31 (S7, 13.09.).
-
-**S7 lief am 13.09.2026 grün mit 431 Fällen in 31 Klassen** – 20 neue in `HallenmodusTests`,
-dazu die beiden Bündelfälle in `SecurityConfigTests`, die den neuen Admin-Pfad **ohne** eigene
-Methode mitprüfen. **Für den Nachtrag „Hauptschalter" stehen 434 in 31 aus:** zwei weitere in
-`HallenmodusTests` (Schalter aus, und der Schalter vor der Terminsuche) und einer in
-`KonfigurationControllerTests` (das zwölfte Feld ist Pflicht). **`PasswortResetControllerTests` muss unverändert grün sein**: Der `MailErsatz` ist
-aus ihr herausgezogen worden (jetzt `support.MailErsatz` samt `MailErsatzConfig`), und dass die
-Klasse danach nichts anderes tut, ist der ganze Beleg dafür, dass der Umzug nichts verändert
-hat.
+**Zuletzt grün am 12.09.2026 – 411 Fälle in 30 Klassen** (S6 vollständig). Verlauf: 148/16
+(22.08.), 184 (23.08.), 244/22 (29.08.), 300/25 und 331/26 (S4, 30./31.08.), 385/29 (S5,
+06.09.), 411/30 (S6, 12.09.).
 
 **Beide Zahlen immer gleich ermitteln, nach dem Lauf aus den Berichten** – die Klassenzahl war
 einmal falsch, weil sie fortgeschrieben statt gezählt wurde:
@@ -688,21 +608,7 @@ Drei Punkte zur Gastverwaltung stehen in keiner Anleitung, die Bruno-Requests un
 
 ## 7. Nächste Schritte
 
-1. **Den Gesamtlauf für den Nachtrag fahren** (`./mvnw clean verify`, vorher `docker info`).
-   Erwartet werden **434 Fälle in 31 Klassen**; S7 selbst ist mit 431/31 bereits grün gelaufen.
-   **`V013` ist die zweite neue Migration in Folge** – schlägt `validate-on-migrate` fehl, die
-   Entwicklungsdatenbank neu aufsetzen. Scheitert er, zuerst die Surefire-Berichte lesen – das
-   Vorgehen steht in 6.4. **Der wahrscheinlichste Bruch ist `V012`**: Eine bereits angewandte
-   Migration, die sich ändert, lässt `validate-on-migrate` scheitern; dann die
-   Entwicklungsdatenbank neu aufsetzen (`docker compose -f compose.dev.yml down -v`).
-2. **Die Handprüfung zu S7 einplanen** (`S7_UMSETZUNG.md`, 8.1). **Achtung: Hier gehen echte
-   Mails raus.** Vor dem ersten Versuch `halle_email` auf eine eigene Adresse setzen. Die beiden
-   Punkte, die sich nicht automatisiert prüfen lassen:
-   - **Die Mail im Posteingang lesen** – Umlaute, Datenblock über der Vorlage, keine leere
-     Ortszeile, Betreff mit Datum und Uhrzeit.
-   - **Die Sommer-/Winterzeitgrenze**: Ein Termin kurz nach der Umstellung muss die Frist in
-     Ortszeit rechnen. Das ist die Stelle, die am ehesten **still** falsch ist.
-3. **Die vier übrigen Handprüflisten in einem Zug abarbeiten** – `S6_UMSETZUNG.md` 8.1,
+1. **Die vier Handprüflisten in einem Zug abarbeiten** – `S6_UMSETZUNG.md` 8.1,
    `S5_UMSETZUNG.md` 13.1, `S4_UMSETZUNG.md` 11.1 und die drei Punkte aus 6.4. Entschieden am
    06.09.2026, weil eine halbe Generierung nichts zeigt, was sich prüfen liesse. Die beiden
    wertvollsten Punkte:
@@ -711,15 +617,24 @@ Drei Punkte zur Gastverwaltung stehen in keiner Anleitung, die Bruno-Requests un
    - **S6:** Die SQL-Gegenprobe, die die Bilanz gegen die Ergebnisse zählt – sie steht
      wiederholbar im Bruno-Ordnerkommentar `ergebnis/`, **mit `LEFT JOIN`**: Ohne ihn findet sie
      genau den Fehler nicht, bei dem eine Bilanz stehen bleibt, obwohl sie auf null gehörte.
-4. **Client-Track informieren** – die Tabelle in 4.1, dazu zwei Punkte aus S7: Der Vertrag steht
-   bei 38 Endpunkten, und **`TERMIN_NICHT_ABGESAGT` gibt es nicht**, obwohl die Anleitung ihn
-   vorsah. Weiter gilt der Hinweis auf die vier `nullable`-Korrekturen: Wer vor dem 12.09.2026
-   generiert hat, generiert neu.
-5. **S8 danach** (Härtung und Deployment, 14 h): Entwurf in `harness/tmp/S8_DEPLOYMENT.md`. Drei
-   Punkte aus S5 bis S7 gehören dort hinein: die **Messung von `MAX_EXHAUSTIV` auf der
-   Zielhardware**, die Frage, ob 30 Tage Audit-Aufbewahrung für den Speicher des Pi reichen, und
-   **ein Satz zum Absender in der Betriebsdokumentation** – mit S7 erscheint `SMTP_ABSENDER` zum
-   ersten Mal ausserhalb des Projekts, nämlich beim Hallenbetreiber.
+2. **Client-Track informieren** – die Tabelle in 4.1, dazu der Hinweis auf die vier
+   `nullable`-Korrekturen: Wer vor dem 12.09.2026 generiert hat, generiert neu.
+3. **S7 bauen** (Hallenmodus, A23, 6 h veranschlagt): E-Mail-Absage an den Hallenbetreiber über
+   die Vorlage aus `V010`, nur bis 48 Stunden vor dem Termin. Anleitung:
+   `harness/tmp/S7_UMSETZUNG.md`. **Was S7 vorfindet und was es kostet:**
+   - **Die Mail-Infrastruktur steht** (`MailConfig`, `JavaMailSender`, Bindung unter `fubo.mail.*`
+     mit Startprüfung) – S2b hat sie für die Bestätigungs-PIN gebaut. S7 braucht **keine** neue
+     Bean, nur einen zweiten Versender.
+   - **Die Konfigurationsfelder stehen** seit `V004`/`V010`: `halle_email`,
+     `halle_absage_vorlage` (mit Vorgabetext) und `halle_vorlauf_stunden` (Default 48). Eine
+     **Hallenadresse gibt es nicht** – nur die E-Mail-Adresse des Betreibers.
+   - **S7 braucht trotzdem eine Migration** (`V012`), die erste seit S3: Dass eine Absage
+     versandt wurde, steht heute nirgends. Herleitung in `S7_UMSETZUNG.md`, 0.5 Weggabelung A.
+   - **Der teuerste Teil ist die 48-Stunden-Regel**, nicht die Mail: Sie hängt an derselben
+     Ortszeit-Frage wie A18 und muss serverseitig durchgesetzt werden, nicht nur ausgeblendet.
+4. **S8 danach** (Härtung und Deployment, 14 h): Entwurf in `harness/tmp/S8_DEPLOYMENT.md`. Zwei
+   Punkte aus S5/S6 gehören dort hinein: die **Messung von `MAX_EXHAUSTIV` auf der Zielhardware**
+   und die Frage, ob 30 Tage Audit-Aufbewahrung für den Speicher des Pi reichen.
 
 **Offene Punkte, die keine Aufgabe für heute sind:**
 
@@ -741,8 +656,8 @@ Drei Punkte zur Gastverwaltung stehen in keiner Anleitung, die Bruno-Requests un
   Läufe.** Die Einteilung bleibt unberührt (A20b führt den Modus als Anzeigeregel). Wer das
   anders will, braucht `auswechsel_teilnahme_id` in `team_generierung` – und damit `V012`.
 - **Die Zeitzone der Datenbanksitzung ist nicht gesetzt.** Ohne Folge, solange alle Zeitvergleiche
-  über die `Clock`-Bean laufen; S5 und S7 halten das durchgängig ein und übergeben jeden
-  Zeitpunkt als Parameter. Sobald eine Abfrage `current_date` oder `current_time` benutzt, gehört `TimeZone` in
+  über die `Clock`-Bean laufen; S5 hält das durchgängig ein und übergibt jeden Zeitpunkt als
+  Parameter. Sobald eine Abfrage `current_date` oder `current_time` benutzt, gehört `TimeZone` in
   die Datenbankkonfiguration.
 - **Betriebsaufgabe ohne Code:** Custom Domain `app.<domain>` in Cloudflare Pages einrichten. Ohne
   sie funktioniert die Anmeldung produktiv nicht – `pages.dev` steht auf der Public Suffix List und
