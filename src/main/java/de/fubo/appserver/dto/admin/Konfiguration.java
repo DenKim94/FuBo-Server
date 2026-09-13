@@ -3,17 +3,25 @@ package de.fubo.appserver.dto.admin;
 import de.fubo.appserver.domain.config.AlgorithmType;
 import de.fubo.appserver.domain.config.AuswechselModus;
 import de.fubo.appserver.domain.config.AppConfig;
+import de.fubo.appserver.utils.Absagevorlage;
 
 import java.time.OffsetDateTime;
 
 /**
  * Antwortobjekt von {@code GET /api/v1/admin/config/lesen} (S3, Abschnitt 5).
  *
- * <h2>Elf aenderbare Felder, zwei Zusatzangaben</h2>
- * Die ersten elf Komponenten stehen in derselben Reihenfolge und unter denselben Namen wie in
+ * <h2>Zwoelf aenderbare Felder, drei Zusatzangaben</h2>
+ * Die zwoelf aenderbaren Komponenten stehen in derselben Reihenfolge und unter denselben Namen wie in
  * {@link KonfigurationAendernRequest}: Der Client laedt diese Antwort, aendert einzelne Werte im
  * Formular und schickt das veraenderte Ganze zurueck. Waeren die Namen verschieden, muesste er
  * eine Umbenennungstabelle pflegen.
+ *
+ * <p><b>{@code halleAbsageVorlageEffektiv} steht dazwischen und ist trotzdem nicht aenderbar.</b>
+ * Es steht neben der Vorlage, auf die es sich bezieht - wer im Formular das Textfeld leert, soll
+ * daneben sehen, was der Hallenbetreiber stattdessen bekaeme, und nicht erst an dessen Rueckruf.
+ * Zurueckgeschickt wird es nicht ausgewertet: {@link KonfigurationAendernRequest} kennt das Feld
+ * nicht, und unbekannte Eigenschaften laesst die Serialisierung fallen. <b>Beides zu speichern
+ * hoebe das Leeren der Vorlage auf</b> - und genau dafuer ist das Voll-Update gebaut.
  *
  * <p>Dazu kommen {@code geaendertAm} und {@code version}. <b>{@code geaendertVon} bleibt
  * draussen:</b> Es gibt genau einen Admin ({@code uq_spieler_genau_ein_admin}), die Auskunft
@@ -41,7 +49,13 @@ import java.time.OffsetDateTime;
  * @param sessionMaximalStunden  harte Obergrenze der Sitzungsdauer in Stunden (A14)
  * @param halleEmail             Empfaengeradresse des Hallenbetreibers oder {@code null} (A23)
  * @param halleAbsageVorlage     vordefinierter Absagetext oder {@code null} (A23)
+ * @param halleAbsageVorlageEffektiv der Fliesstext, den die Absage tatsaechlich verwenden
+ *                               wuerde: die gepflegte Vorlage oder der Ersatz des Servers (A23).
+ *                               <b>Nur lesbar</b> - er gehoert nicht in
+ *                               {@link KonfigurationAendernRequest}
  * @param halleVorlaufStunden    Vorlauf, bis zu dem eine Absage zulaessig ist (A23)
+ * @param hallenModusAktiv       Hauptschalter des Hallenmodus (A23); steht er aus, lehnt
+ *                               {@code /admin/halle/absagen} jede Absage ab
  * @param geaendertAm            Zeitpunkt des letzten Speichervorgangs
  * @param version                Stand des Datensatzes; Eingabewert von {@code aendern}
  */
@@ -55,7 +69,9 @@ public record Konfiguration(short minTeilnehmer,
                             short sessionMaximalStunden,
                             String halleEmail,
                             String halleAbsageVorlage,
+                            String halleAbsageVorlageEffektiv,
                             short halleVorlaufStunden,
+                            boolean hallenModusAktiv,
                             OffsetDateTime geaendertAm,
                             Long version) {
 
@@ -71,6 +87,11 @@ public record Konfiguration(short minTeilnehmer,
      * DTO ein Wertobjekt, weil die Abfrage mehr liefert, als nach aussen darf. Die Konfiguration
      * hat nichts Geheimes: Von fuenfzehn Spalten bleiben nur {@code id} und {@code geaendertVon}
      * draussen, und beide sind inhaltsleer statt vertraulich.
+     *
+     * <p><b>Die Ersatzvorlage wird hier eingesetzt und nicht im Dienst</b>: Die Entscheidung,
+     * welcher Text gilt, faellt in {@link Absagevorlage#wirksam} und damit an genau einer
+     * Stelle - derselben, aus der auch der Absagepfad schoepft. Zwei Orte gaeben dem Formular
+     * und dem Hallenbetreiber verschiedene Texte.
      */
     public static Konfiguration von(AppConfig konfiguration) {
         return new Konfiguration(
@@ -84,7 +105,9 @@ public record Konfiguration(short minTeilnehmer,
                 konfiguration.getSessionMaximalStunden(),
                 konfiguration.getHalleEmail(),
                 konfiguration.getHalleAbsageVorlage(),
+                Absagevorlage.wirksam(konfiguration.getHalleAbsageVorlage()),
                 konfiguration.getHalleVorlaufStunden(),
+                konfiguration.isHallenModusAktiv(),
                 konfiguration.getGeaendertAm(),
                 konfiguration.getVersion());
     }

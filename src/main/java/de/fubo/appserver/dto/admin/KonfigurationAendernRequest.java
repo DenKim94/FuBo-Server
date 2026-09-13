@@ -60,6 +60,14 @@ import jakarta.validation.constraints.Size;
  * Eine feldeuebergreifende Regel - {@code maxTeilnehmer >= minTeilnehmer} - kann Bean Validation
  * nicht; sie liegt im Dienst.
  *
+ * <h2>Warum {@code hallenModusAktiv} ein {@code Boolean} mit {@code @NotNull} ist</h2>
+ * Die uebrigen Zahlenfelder sind primitiv und werden ueber {@code @Min} abgesichert - eine
+ * fehlende Zahl kommt dort als {@code 0} an und faellt durch die Untergrenze. <b>Bei einem
+ * Wahrheitswert gibt es diese Untergrenze nicht:</b> Ein primitiver {@code boolean} waere bei
+ * einem fehlenden Feld stillschweigend {@code false}, und ein Client, der das zwoelfte Feld
+ * nicht kennt, schaltete den Hallenmodus bei jedem Speichern ab, ohne dass es jemandem
+ * auffiele. Der Wrapper-Typ macht das Weglassen zu einem {@code 400} mit Feldangabe.
+ *
  * @param version                Stand, auf dem die Aenderung aufsetzt
  * @param minTeilnehmer          Mindestteilnehmerzahl (A10)
  * @param maxTeilnehmer          Hoechstteilnehmerzahl (A11); nicht unter {@code minTeilnehmer}
@@ -72,6 +80,8 @@ import jakarta.validation.constraints.Size;
  * @param halleEmail             Empfaengeradresse des Hallenbetreibers oder {@code null} (A23)
  * @param halleAbsageVorlage     vordefinierter Absagetext oder {@code null} (A23)
  * @param halleVorlaufStunden    Vorlauf, bis zu dem eine Absage zulaessig ist (A23)
+ * @param hallenModusAktiv       Hauptschalter des Hallenmodus (A23, {@code V013}); steht er
+ *                               aus, lehnt {@code /admin/halle/absagen} jede Absage ab
  */
 public record KonfigurationAendernRequest(
 
@@ -112,7 +122,10 @@ public record KonfigurationAendernRequest(
         String halleAbsageVorlage,
 
         @Min(value = 0, message = "Der Vorlauf darf nicht negativ sein.")
-        short halleVorlaufStunden) {
+        short halleVorlaufStunden,
+
+        @NotNull(message = "Die Angabe, ob der Hallenmodus aktiv ist, fehlt.")
+        Boolean hallenModusAktiv) {
 
     /**
      * Die Hallenadresse ohne Randleerzeichen; {@code null}, wenn nichts uebrig bleibt.

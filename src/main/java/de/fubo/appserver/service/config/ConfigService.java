@@ -24,7 +24,7 @@ import java.util.Objects;
  *
  * <h2>Warum die Aenderung das DTO entgegennimmt und keine Einzelwerte</h2>
  * Sonst ist es in diesem Projekt umgekehrt: {@code SpielerVerwaltungService#bearbeiten} bekommt
- * seine Werte einzeln, damit der Dienst den Vertrag nicht kennen muss. Hier waeren das elf
+ * seine Werte einzeln, damit der Dienst den Vertrag nicht kennen muss. Hier waeren das zwoelf
  * Argumente, davon sieben vom Typ {@code short} - eine Liste, in der zwei vertauschte Werte
  * fehlerfrei kompilieren und stillschweigend das Falsche schreiben. Genau diese Verwechslung ist
  * der Grund, aus dem es {@code ConfigServiceTests} ueberhaupt gibt (JPA-Mapping-Regel 2). Ein
@@ -121,9 +121,13 @@ public class ConfigService {
      *   <tr><td>{@code anzGuests}</td>
      *       <td><b>sofort</b> ueber {@code id <= :maxGaeste}; eine Erhoehung legt die fehlenden
      *           Plaetze mit an, eine Senkung loescht keine</td></tr>
+     *   <tr><td>{@code hallenModusAktiv}</td>
+     *       <td><b>sofort</b> - {@code HallenService} liest den Wert bei jedem Absageversuch
+     *           neu. Steht er aus, antwortet der Endpunkt {@code 409 HALLE_MODUS_INAKTIV},
+     *           bevor er ueberhaupt einen Termin sucht</td></tr>
      *   <tr><td>uebrige Felder</td>
-     *       <td>betrifft S4 bis S7; heute ohne Wirkung, weil die auswertenden Endpunkte noch
-     *           nicht existieren</td></tr>
+     *       <td>betrifft S4 bis S7; sie wirken beim naechsten Aufruf des jeweiligen
+     *           Endpunkts</td></tr>
      * </table>
      * Die zweite Zeile ist die ueberraschende: Wer die harte Obergrenze von einer Stunde auf acht
      * setzt, wundert sich sonst, warum die eigene Sitzung trotzdem nach einer Stunde endet.
@@ -133,7 +137,7 @@ public class ConfigService {
      * diesem Grund <b>nicht</b> dort steht: Ein Admin soll die Nachvollziehbarkeit seiner eigenen
      * Aenderungen nicht per Formular verkuerzen koennen.
      *
-     * @param anfrage        alle elf aenderbaren Felder samt der Version, auf der sie aufsetzen
+     * @param anfrage        alle zwoelf aenderbaren Felder samt der Version, auf der sie aufsetzen
      * @param adminSpielerId Profil-Id des handelnden Admins, fuer das Protokoll
      * @param clientIp       Adresse des Aufrufers, fuer das Protokoll
      * @throws FachlicherFehler {@code 400 EINGABE_UNGUELTIG}, wenn die Maximalzahl unter der
@@ -175,6 +179,7 @@ public class ConfigService {
         bestand.setHalleEmail(anfrage.halleEmailBereinigt());
         bestand.setHalleAbsageVorlage(anfrage.halleAbsageVorlageBereinigt());
         bestand.setHalleVorlaufStunden(anfrage.halleVorlaufStunden());
+        bestand.setHallenModusAktiv(anfrage.hallenModusAktiv());
         bestand.setGeaendertVon(ADMIN_KONTO_ID);
         bestand.setGeaendertAm(OffsetDateTime.now());
 
@@ -251,6 +256,8 @@ public class ConfigService {
         vergleiche(felder, "halleEmail", bestand.getHalleEmail(), anfrage.halleEmailBereinigt());
         vergleiche(felder, "halleVorlaufStunden",
                 bestand.getHalleVorlaufStunden(), anfrage.halleVorlaufStunden());
+        vergleiche(felder, "hallenModusAktiv",
+                bestand.isHallenModusAktiv(), anfrage.hallenModusAktiv());
 
         if (!Objects.equals(bestand.getHalleAbsageVorlage(), anfrage.halleAbsageVorlageBereinigt())) {
             felder.put("halleAbsageVorlage", "geaendert");

@@ -298,6 +298,83 @@ public enum Fehlercode {
     KEINE_EINTEILUNG(HttpStatus.CONFLICT,
             "Für diesen Termin wurde keine Teameinteilung erzeugt."),
 
+    /**
+     * Der Hallenmodus ist abgeschaltet (A23, Ergaenzung vom 13.09.2026).
+     *
+     * <p>{@code configs.app_config.hallen_modus_aktiv} steht auf {@code false}; der Verein
+     * spielt zurzeit nicht in einer gebuchten Halle. <b>A23 verlangt, dass sich der Modus
+     * serverseitig abschalten laesst</b> - ein Flag, das nur der Client auswertet, waere ein
+     * ausgeblendeter Knopf und keine Abschaltung. Ein alter Browser-Tab, ein Bruno-Aufruf oder
+     * ein Skript kaemen daran vorbei, und am Ende steht eine Mail bei einem Aussenstehenden,
+     * die sich nicht zuruecknehmen laesst.
+     *
+     * <p><b>Diese Pruefung steht als erste</b>, noch vor der Suche nach dem Termin: Ist die
+     * Funktion aus, spielt es keine Rolle, welchen Termin der Aufruf meint - und eine
+     * Datenbankabfrage fuer einen Vorgang, der ohnehin abgelehnt wird, waere verschenkt.
+     * <b>Folge, die man kennen muss:</b> Bei ausgeschaltetem Modus liefert auch eine unbekannte
+     * Termin-Id diesen Code und nicht {@code 404}.
+     *
+     * <p>{@code 409} und nicht {@code 403}: Es fehlt keine Berechtigung - der Admin darf, die
+     * Funktion ist nur aus. Und es aendert sich mit einer Einstellung, nicht mit der Rolle.
+     */
+    HALLE_MODUS_INAKTIV(HttpStatus.CONFLICT,
+            "Der Hallenmodus ist nicht aktiv."),
+
+    /**
+     * Die Vorlauffrist fuer die Hallenabsage ist abgelaufen (A23, S7 Abschnitt 3.3).
+     *
+     * <p>Zulaessig ist die Absage, solange bis zum Terminbeginn mindestens
+     * {@code configs.app_config.halle_vorlauf_stunden} verbleiben. <b>{@code detail} nennt den
+     * geltenden Vorlauf und den spaetesten Zeitpunkt</b> - "zu spaet" ohne Zahlen zwingt den
+     * Admin, die Konfiguration nachzuschlagen.
+     *
+     * <p><b>Ein bereits vergangener Termin faellt automatisch darunter</b>; es braucht keine
+     * zweite Pruefung auf die Vergangenheit, die Differenz ist dann negativ. Das gilt auch bei
+     * einem Vorlauf von {@code 0}, der "bis zum Anpfiff" bedeutet.
+     *
+     * <p>{@code 409} und nicht {@code 400}: Die Anfrage ist in Ordnung, der Zeitpunkt ist es
+     * nicht. Anders als bei {@link #TERMIN_GESCHLOSSEN} hilft Warten hier nie - die Frist
+     * laeuft in die falsche Richtung.
+     */
+    HALLE_FRIST_ABGELAUFEN(HttpStatus.CONFLICT,
+            "Die Frist für die Absage beim Hallenbetreiber ist abgelaufen."),
+
+    /**
+     * Es ist keine Empfaengeradresse fuer den Hallenbetreiber hinterlegt (A23, S7 Abschnitt 3.2).
+     *
+     * <p>{@code configs.app_config.halle_email} ist nullbar und ohne sie gibt es kein Ziel.
+     * <b>Die leere Adresse ist ein Fehler, die leere Vorlage nicht</b> - eine Nachricht mit
+     * Betreff und Datenblock ist eine vollstaendige Absage, eine Nachricht ohne Empfaenger ist
+     * keine.
+     *
+     * <p><b>Geprueft wird erst nach der Frist</b>: Wer beides falsch hat, soll zuerst erfahren,
+     * was er nicht mehr aendern kann. Umgekehrt schickte man ihn in die Konfiguration, nur damit
+     * er danach erfaehrt, dass es ohnehin zu spaet ist.
+     */
+    HALLE_NICHT_KONFIGURIERT(HttpStatus.CONFLICT,
+            "Es ist keine E-Mail-Adresse für den Hallenbetreiber hinterlegt."),
+
+    /**
+     * Fuer diesen Termin ist die Absage an den Hallenbetreiber bereits hinausgegangen
+     * (A23, S7 Abschnitt 2.3).
+     *
+     * <p><b>Das ist kein Bedienfehler</b>, sondern die Antwort auf den Doppelklick - dieselbe
+     * Lage wie bei {@link #ERGEBNIS_VORHANDEN}. Die Oberflaeche zeigt "ist schon raus" und den
+     * Zeitpunkt, den {@code detail} nennt und den die Einzelansicht als {@code halleAbgesagtAm}
+     * fuehrt.
+     *
+     * <p>Entschieden wird der Wettlauf in der Datenbank: Der bedingte {@code UPDATE} mit
+     * {@code WHERE halle_abgesagt_am IS NULL} trifft genau eine oder keine Zeile. "Erst lesen,
+     * dann schreiben, dann versenden" liesse ein Fenster offen, in dem zwei gleichzeitige Klicks
+     * beide durchkommen - <b>und der Hallenbetreiber bekaeme zwei Mails.</b> Das ist der
+     * teuerste Fehler dieses Meilensteins, teurer als eine ausgebliebene Nachricht.
+     *
+     * <p><b>Es gibt keinen Weg zurueck.</b> Eine versandte Absage laesst sich nicht zuruecknehmen;
+     * faellt der Termin doch nicht aus, bleibt nur der Anruf beim Betreiber.
+     */
+    HALLE_BEREITS_ABGESAGT(HttpStatus.CONFLICT,
+            "Für diesen Termin wurde bereits eine Absage an den Hallenbetreiber versendet."),
+
     EINGABE_UNGUELTIG(HttpStatus.BAD_REQUEST, "Ungültige Eingabedaten."),
     INTERNER_FEHLER(HttpStatus.INTERNAL_SERVER_ERROR, "Ein unerwarteter Fehler ist aufgetreten."),
     INHALT_NICHT_GEFUNDEN(HttpStatus.NOT_FOUND, "Der gesuchte Inhalt wurde nicht gefunden.");

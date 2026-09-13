@@ -106,6 +106,27 @@ public class AppConfig {
     @Column(name = "halle_vorlauf_stunden", nullable = false)
     private short halleVorlaufStunden;
 
+    /**
+     * Hauptschalter des Hallenmodus (A23, {@code V013}); Vorgabe {@code false}.
+     *
+     * <p><b>Steht er aus, lehnt {@code /admin/halle/absagen} ab</b>
+     * ({@code 409 HALLE_MODUS_INAKTIV}) - und zwar vor jeder anderen Pruefung. A23 verlangt,
+     * dass der Hallenmodus <i>serverseitig</i> abschaltbar ist; ein Flag, das nur der Client
+     * auswertet, waere keine Abschaltung, sondern ein ausgeblendeter Knopf.
+     *
+     * <p><b>Primitiver {@code boolean} und kein {@code Boolean}:</b> Die Spalte ist
+     * {@code NOT NULL}, ein dritter Zustand existiert nicht. Beim Optimistic Locking ist das
+     * anders - dort erkennt Hibernate am {@code null} der Wrapper-Version den ungespeicherten
+     * Zustand.
+     *
+     * <p><b>Unabhaengig von {@link #halleEmail}</b> (Entscheidung vom 13.09.2026): Der Modus
+     * laesst sich einschalten, bevor eine Adresse hinterlegt ist - das Formular blockiert
+     * niemanden, und der fehlende Empfaenger faellt beim Absagen als
+     * {@code 409 HALLE_NICHT_KONFIGURIERT} auf.
+     */
+    @Column(name = "hallen_modus_aktiv", nullable = false)
+    private boolean hallenModusAktiv;
+
     // ---------------------------------------------------------------- Aenderungsverfolgung
 
     /**
@@ -228,6 +249,14 @@ public class AppConfig {
 
     public void setHalleVorlaufStunden(short halleVorlaufStunden) {
         this.halleVorlaufStunden = halleVorlaufStunden;
+    }
+
+    public boolean isHallenModusAktiv() {
+        return hallenModusAktiv;
+    }
+
+    public void setHallenModusAktiv(boolean hallenModusAktiv) {
+        this.hallenModusAktiv = hallenModusAktiv;
     }
 
     public Short getGeaendertVon() {
