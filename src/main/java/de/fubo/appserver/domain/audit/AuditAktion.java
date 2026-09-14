@@ -9,8 +9,17 @@ package de.fubo.appserver.domain.audit;
  * rueckwirkend.
  *
  * <p>Die Liste waechst mit den Meilensteinen (Generierungslaeufe in S5,
- * Ergebniskorrekturen in S6,
- * die Hallenabsage in S7).
+ * Ergebniskorrekturen in S6, die Hallenabsage in S7, die beiden Push-Versandlaeufe in S8) -
+ * seit S8 auf <b>29</b> Werte.
+ *
+ * <p><b>Es sind zwei neue und nicht vier</b> (Entscheidung vom 14.09.2026): An- und Abmeldung
+ * eines Abonnements werden <i>nicht</i> protokolliert. {@code AGENT.md} sah
+ * {@code PUSH_ABO_ANGELEGT} und {@code PUSH_ABO_ENTFERNT} vor; beide widersprechen der Regel
+ * "Adminaktionen ja, Nutzerhandlungen nein", und zwar schaerfer als die Rueckmeldungen aus S4:
+ * Der Zustand steht mit {@code erstellt_am} und {@code deaktiviert_am} vollstaendig in
+ * {@code profil.push_abo}, die Endpoint-Adresse ist personenbezogen, und der Protokolleintrag
+ * <b>ueberlebt den Zustand nicht einmal</b> - die Loeschfrist betraegt 30 Tage, die Tabelle
+ * bleibt.
  */
 public enum AuditAktion {
 
@@ -300,5 +309,52 @@ public enum AuditAktion {
      * {@code termin.halle_abgesagt_am}, das den Zustand traegt. Danach ist die Empfaengeradresse
      * von damals nicht mehr feststellbar.
      */
-    HALLE_ABGESAGT
+    HALLE_ABGESAGT,
+
+    /**
+     * Ein Lauf des Erinnerungsauftrags hat Benachrichtigungen versendet (A25b, Anlass 1; S8
+     * Abschnitt 8.6).
+     *
+     * <p>Als {@code entitaet} steht {@code termin}, als {@code entitaet_id} die Termin-Id - die
+     * Erinnerung hat keine eigene Adresse, sie haengt am Termin.
+     *
+     * <p><b>Je Lauf und Termin, nicht je Empfaenger.</b> Bei dreissig Spielern waeren das
+     * sonst dreissig Zeilen fuer einen Vorgang, und die Loeschfrist von 30 Tagen traefe sie
+     * ohnehin alle. Die Details nennen die Zahl der Empfaenger und der angesprochenen Geraete.
+     *
+     * <p><b>Handelnder ist das System</b>, nicht ein Nutzer: Der Auftrag laeuft alle fuenf
+     * Minuten von selbst. {@code akteur_spieler_id} bleibt leer, {@code akteur_bezeichnung}
+     * nennt den Auftrag - die Spalte ist {@code NOT NULL}.
+     *
+     * <p><b>Kein Eintrag, wenn nichts hinausgegangen ist.</b> Der Normalzustand vieler Spieler
+     * ist "keine Nachricht"; ein Eintrag je Termin ohne Empfaenger fuellte das Protokoll mit
+     * Zeilen, die nichts belegen. <b>Der Vermerk {@code termin.push_erinnerung_am} steht
+     * trotzdem</b> - er sichert den Einmalversand und ist nicht vom Protokoll abhaengig.
+     *
+     * <p><b>Der Eintrag belegt den Versand, nicht die Zustellung.</b> Web Push kennt keine
+     * Zustellbestaetigung - dieselbe Einschraenkung wie bei {@link #HALLE_ABGESAGT}.
+     */
+    PUSH_ERINNERUNG_VERSANDT,
+
+    /**
+     * Zu einer Terminabsage sind Benachrichtigungen versendet worden (A25b, Anlass 2; S8
+     * Abschnitt 9.3).
+     *
+     * <p>Als {@code entitaet} steht {@code termin}, als {@code entitaet_id} die Termin-Id.
+     * <b>Er steht neben {@link #TERMIN_ABGESAGT}</b>, das dieselbe Id traegt: Zwei Wirkungen,
+     * zwei Eintraege - die Absage selbst mit ihrem Handelnden, der Versand als deren Folge.
+     *
+     * <p><b>Handelnder ist auch hier das System.</b> Der Versand laeuft nach dem Commit, und
+     * der Admin, der abgesagt hat, steht mit Client-Adresse schon im Eintrag
+     * {@link #TERMIN_ABGESAGT} daneben. Ihn ein zweites Mal zu fuehren verdoppelte
+     * personenbezogene Daten ohne Gewinn.
+     *
+     * <p><b>Kein Eintrag, wenn niemand zugesagt hatte</b> - dieselbe Ueberlegung wie bei
+     * {@link #PUSH_ERINNERUNG_VERSANDT}.
+     *
+     * <p><b>Der Probeversand wird nicht protokolliert.</b> Er geht an die eigenen Geraete des
+     * Admins, aendert nichts und belegt nichts, was jemand spaeter nachvollziehen muesste; er
+     * steht in der Anwendungsprotokollierung.
+     */
+    PUSH_ABSAGE_VERSANDT
 }

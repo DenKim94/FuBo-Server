@@ -1,5 +1,6 @@
 package de.fubo.appserver.repository.spieltag;
 
+import de.fubo.appserver.domain.spieltag.Erinnerungstermin;
 import de.fubo.appserver.domain.spieltag.Hallentermin;
 import de.fubo.appserver.domain.spieltag.TerminEintrag;
 import de.fubo.appserver.domain.spieltag.Terminzustand;
@@ -215,4 +216,55 @@ public interface TerminRepositoryCustom {
      * @return {@code true}, wenn der Termin durch diesen Aufruf abgesagt wurde
      */
     boolean absagenWennGeplant(Long terminId);
+
+    /**
+     * Liefert die Termine, deren Erinnerung an offene Rueckmeldungen faellig ist (A25b,
+     * Anlass 1; S8 Abschnitt 8.2).
+     *
+     * <p><b>Das Zeitfenster ist beidseitig begrenzt</b>, und die untere Grenze ist nicht
+     * optional: Nach einem laengeren Stillstand traefe eine einseitige Bedingung auch Termine,
+     * die bereits begonnen haben. Der A18-Auftrag schliesst sie zwar innerhalb von 30 bis 35
+     * Minuten ab, aber die Reihenfolge zweier Auftraege ist nicht zugesichert - und <b>eine
+     * Erinnerung an ein laufendes Spiel ist schlechter als keine</b>.
+     *
+     * <p><b>Beide Zeitpunkte kommen als Parameter</b> und nie aus {@code current_timestamp}:
+     * {@code termin.datum} und {@code .uhrzeit} sind {@code DATE} und {@code TIME} <b>ohne</b>
+     * Zone, also Ortszeit. Ein Container auf UTC verschoebe die Erinnerung um ein bis zwei
+     * Stunden, und der Fehler betraefe nur einen schmalen Zeitstreifen am Tag - er fiele weder
+     * im Test noch im Betrieb verlaesslich auf. Dieselbe Falle, die S7 an der
+     * 48-Stunden-Frist schon einmal umschifft hat.
+     *
+     * <p>{@code push_erinnerung_am IS NULL} schliesst aus, was schon erinnert wurde - der
+     * Einmalversand haengt daran.
+     *
+     * @param jetzt  Zeitpunkt aus der {@code Clock}-Bean; Termine davor fallen heraus
+     * @param grenze {@code jetzt} plus konfigurierter Vorlauf; Termine danach sind noch nicht
+     *               faellig
+     * @return faellige Termine, nach Beginn sortiert; leere Liste, wenn keiner passt - der
+     *         Normalfall
+     */
+    List<Erinnerungstermin> faelligeFuerPushErinnerung(LocalDateTime jetzt, LocalDateTime grenze);
+
+    /**
+     * Vermerkt den Versand der Erinnerung - <b>und entscheidet damit ueber den
+     * Doppelversand</b> (A25b; S8 Abschnitt 8.3).
+     *
+     * <p>Dasselbe Muster und dieselbe Begruendung wie {@link #halleAbsageVermerken}: Die
+     * Bedingung {@code push_erinnerung_am IS NULL} laesst genau einen Lauf durch, eine
+     * betroffene Zeile heisst "wir sind die Ersten".
+     *
+     * <p><b>Der Aufruf steht vor dem Versand</b>, und die Reihenfolge ist bewusst gewaehlt: Ein
+     * Absturz mitten im Versand kostet einzelne Nachrichten - markierte man erst danach,
+     * bekaemen nach einem Neustart <b>alle</b> Empfaenger die Nachricht ein zweites Mal.
+     *
+     * <p>{@code version} steigt mit; im selben Vorgang darf deshalb keine {@code Termin}-Entity
+     * geladen sein. <b>{@code teilnehmer_version} bleibt unberuehrt</b> - der Teilnehmerkreis
+     * aendert sich nicht.
+     *
+     * @param terminId betroffener Termin
+     * @param jetzt    Zeitpunkt aus der {@code Clock}-Bean
+     * @return {@code true}, wenn der Vermerk gesetzt wurde; {@code false}, wenn bereits einer
+     *         stand
+     */
+    boolean pushErinnerungVermerken(Long terminId, OffsetDateTime jetzt);
 }

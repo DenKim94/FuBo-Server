@@ -5,6 +5,7 @@ import de.fubo.appserver.common.error.Fehlercode;
 import de.fubo.appserver.domain.audit.AuditAktion;
 import de.fubo.appserver.domain.auth.AktiveSitzung;
 import de.fubo.appserver.domain.spieltag.Termin;
+import de.fubo.appserver.domain.spieltag.TerminAbgesagtEreignis;
 import de.fubo.appserver.domain.spieltag.TerminEintrag;
 import de.fubo.appserver.domain.spieltag.TerminMitTeilnehmern;
 import de.fubo.appserver.domain.spieltag.TerminStatus;
@@ -16,6 +17,7 @@ import de.fubo.appserver.service.config.ConfigService;
 import de.fubo.appserver.service.ergebnis.ErgebnisService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -71,6 +73,23 @@ public class TerminService {
     private final ErgebnisService ergebnisService;
     private final ConfigService configService;
     private final AuditService auditService;
+
+    /**
+     * Veroeffentlicht {@link TerminAbgesagtEreignis} (A25b, Anlass 2; S8 Abschnitt 9.1).
+     *
+     * <p><b>Zwei der drei Wege von {@code GEPLANT} nach {@code ABGESAGT} liegen in dieser
+     * Klasse</b> - {@link #absagen} und {@link #aendern} mit Zielstatus {@code ABGESAGT}; der
+     * dritte ist {@code HallenService#absagen} seit S7. Haenge die Benachrichtigung am
+     * Endpunkt, blieben zwei davon stumm, und es fiele niemandem auf: Eine ausbleibende
+     * Benachrichtigung ist der Normalfall.
+     *
+     * <p><b>Der Empfaenger laeuft nach dem Commit</b>
+     * ({@code @TransactionalEventListener(AFTER_COMMIT)}). Bei einem Rollback geht also nichts
+     * hinaus - eine Absage, die fachlich nie stattgefunden hat, liesse sich nicht
+     * zurueckrollen. Dieser Dienst muss davon nichts wissen; er stellt nur fest, dass es
+     * geschehen ist.
+     */
+    private final ApplicationEventPublisher ereignisse;
     private final Clock uhr;
 
     public TerminService(TerminRepository terminRepository,
@@ -79,6 +98,7 @@ public class TerminService {
                          ErgebnisService ergebnisService,
                          ConfigService configService,
                          AuditService auditService,
+                         ApplicationEventPublisher ereignisse,
                          Clock uhr) {
         this.terminRepository = terminRepository;
         this.teilnahmeService = teilnahmeService;
@@ -86,6 +106,7 @@ public class TerminService {
         this.ergebnisService = ergebnisService;
         this.configService = configService;
         this.auditService = auditService;
+        this.ereignisse = ereignisse;
         this.uhr = uhr;
     }
 
@@ -283,6 +304,22 @@ public class TerminService {
             // verdreht und setzte das Flag, statt es zu loeschen. Der unerreichbare Zweig hat
             // den Fehler gedeckt, bis der Test ihn traf.
             termin.setTeamsFixiert(false);
+
+            // Und dieselbe Bedingung gilt fuer den Erinnerungsvermerk (A25b, Entscheidung vom
+            // 14.09.2026): Ist die Erinnerung schon hinaus, nennt sie ein Datum, das nicht
+            // mehr gilt - und ohne Ruecksetzen bekaeme der Termin nie wieder eine, obwohl die
+            // erste falsch war. Es ist KEIN dritter Versandanlass: Empfaenger bleiben
+            // ausschliesslich die, die noch nicht geantwortet haben.
+            //
+            // Preis, den man kennen muss: Wer denselben Termin mehrfach verschiebt, erzeugt
+            // mehrere Erinnerungen an dieselben Nichtantworter. Begrenzt durch die Zahl der
+            // Verschiebungen, und jede ist eine bewusste Adminhandlung.
+            //
+            // Hier ueber die Entity und nicht per SQL - anders als im Erinnerungsauftrag. Das
+            // ist der Grund, warum die Spalte ueberhaupt gemappt ist: Ein natives UPDATE auf
+            // eine Versionsspalte neben dieser geladenen Entity waere die verbotene
+            // Kombination.
+            termin.setPushErinnerungAm(null);
         }
         if (neuerStatus != null) {
             termin.setStatus(neuerStatus);
@@ -308,6 +345,16 @@ public class TerminService {
 
         auditService.protokolliere(adminSpielerId, clientIp, aktion,
                 ENTITAET, termin.getId(), geaenderteFelder);
+
+        if (neuerStatus == TerminStatus.ABGESAGT) {
+            // Der zweite der drei Ausloeserpfade (A19). Der Termin war vorher GEPLANT - jeder
+            // andere Zustand ist oben abgelehnt worden -, es ist also ein echter Wechsel.
+            // Datum und Uhrzeit kommen aus dem Stand NACH dem Vorgang: Derselbe Aufruf kann
+            // sie geaendert haben, und die Nachricht soll den Termin nennen, der abgesagt
+            // wurde.
+            ereignisse.publishEvent(new TerminAbgesagtEreignis(termin.getId(),
+                    termin.getDatum(), termin.getUhrzeit(), termin.getOrt()));
+        }
     }
 
     // ------------------------------------------------------------------ Absagen
@@ -366,6 +413,10 @@ public class TerminService {
                 ENTITAET, termin.getId(),
                 Map.of("datum", termin.getDatum().toString(),
                         "uhrzeit", termin.getUhrzeit().toString()));
+
+        // Der erste der drei Ausloeserpfade - der einzige, den AGENT.md nennt (A25b).
+        ereignisse.publishEvent(new TerminAbgesagtEreignis(termin.getId(), termin.getDatum(),
+                termin.getUhrzeit(), termin.getOrt()));
     }
 
     // ------------------------------------------------------------------ Entfernen

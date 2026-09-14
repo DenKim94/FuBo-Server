@@ -1,5 +1,6 @@
 package de.fubo.appserver.repository.spieltag;
 
+import de.fubo.appserver.domain.spieltag.Erinnerungstermin;
 import de.fubo.appserver.domain.spieltag.Hallentermin;
 import de.fubo.appserver.domain.spieltag.TerminEintrag;
 import de.fubo.appserver.domain.spieltag.TerminStatus;
@@ -299,6 +300,56 @@ class TerminRepositoryImpl implements TerminRepositoryCustom {
                AND status = 'GEPLANT'
             """;
 
+    /**
+     * Die faelligen Termine des Erinnerungsauftrags (A25b, S8 Abschnitt 8.2).
+     *
+     * <p><b>{@code (datum + uhrzeit) > :jetzt} ist die Bedingung, die leicht fehlt</b> - und
+     * sie faellt erst nach einem Stillstand auf: Ohne sie traefe die Abfrage auch Termine, die
+     * bereits begonnen haben. Der A18-Auftrag schliesst diese zwar ab, aber die Reihenfolge
+     * zweier Auftraege ist nicht zugesichert.
+     *
+     * <p>{@code datum + uhrzeit} ergibt in PostgreSQL einen {@code timestamp} ohne Zone und
+     * passt damit auf den {@code LocalDateTime}-Parameter. <b>Kein {@code current_timestamp}:</b>
+     * Die Zeitzone der Datenbanksitzung ist nicht gesetzt, und die Anwendung rechnet in
+     * {@code fubo.zeitzone}.
+     *
+     * <p>Sortiert nach Beginn: Liegen mehrere Termine im Fenster, gehen die Nachrichten in der
+     * Reihenfolge hinaus, in der die Termine anstehen.
+     */
+    private static final String SQL_PUSH_FAELLIG = """
+            SELECT id, datum, uhrzeit, ort
+              FROM spieltag.termin
+             WHERE status = 'GEPLANT'
+               AND push_erinnerung_am IS NULL
+               AND (datum + uhrzeit) >  :jetzt
+               AND (datum + uhrzeit) <= :grenze
+             ORDER BY datum, uhrzeit
+            """;
+
+    /**
+     * Der Riegel gegen den Doppelversand der Erinnerung (A25b, S8 Abschnitt 8.3).
+     *
+     * <p>Dasselbe Muster wie {@link #SQL_HALLE_VERMERKEN}: {@code WHERE push_erinnerung_am IS
+     * NULL} laesst von zwei gleichzeitigen Laeufen genau einen eine Zeile treffen. Hier gibt es
+     * nur einen Lauf - der Auftrag laeuft in einer einzigen Serverinstanz -, aber der Riegel
+     * traegt auch den Fall "Neustart mitten im Versand": Der Termin ist dann markiert, und der
+     * naechste Lauf ueberspringt ihn.
+     *
+     * <p><b>{@code version} steigt mit</b>, wie bei jeder per SQL geaenderten Versionsspalte.
+     * Folge: Im selben Vorgang darf keine verwaltete {@code Termin}-Entity geladen sein - der
+     * Erinnerungsauftrag liest deshalb ueber {@link #SQL_PUSH_FAELLIG}.
+     *
+     * <p><b>{@code teilnehmer_version} bleibt unberuehrt</b>: Der Teilnehmerkreis aendert sich
+     * nicht, und ein Ausschlag des Zaehlers setzte grundlos Generierungskontingente zurueck.
+     */
+    private static final String SQL_PUSH_VERMERKEN = """
+            UPDATE spieltag.termin
+               SET push_erinnerung_am = :jetzt,
+                   version            = version + 1
+             WHERE id = :terminId
+               AND push_erinnerung_am IS NULL
+            """;
+
     private final JdbcClient jdbc;
 
     TerminRepositoryImpl(JdbcClient jdbc) {
@@ -403,6 +454,28 @@ class TerminRepositoryImpl implements TerminRepositoryCustom {
     public boolean absagenWennGeplant(Long terminId) {
         return jdbc.sql(SQL_ABSAGEN_WENN_GEPLANT)
                 .param("terminId", terminId)
+                .update() == 1;
+    }
+
+    @Override
+    public List<Erinnerungstermin> faelligeFuerPushErinnerung(LocalDateTime jetzt,
+                                                              LocalDateTime grenze) {
+        return jdbc.sql(SQL_PUSH_FAELLIG)
+                .param("jetzt", jetzt)
+                .param("grenze", grenze)
+                .query((rs, zeile) -> new Erinnerungstermin(
+                        rs.getLong("id"),
+                        rs.getObject("datum", LocalDate.class),
+                        rs.getObject("uhrzeit", LocalTime.class),
+                        rs.getString("ort")))
+                .list();
+    }
+
+    @Override
+    public boolean pushErinnerungVermerken(Long terminId, OffsetDateTime jetzt) {
+        return jdbc.sql(SQL_PUSH_VERMERKEN)
+                .param("terminId", terminId)
+                .param("jetzt", jetzt)
                 .update() == 1;
     }
 

@@ -5,12 +5,14 @@ import de.fubo.appserver.common.error.Fehlercode;
 import de.fubo.appserver.domain.audit.AuditAktion;
 import de.fubo.appserver.domain.config.AppConfig;
 import de.fubo.appserver.domain.spieltag.Hallentermin;
+import de.fubo.appserver.domain.spieltag.TerminAbgesagtEreignis;
 import de.fubo.appserver.domain.spieltag.TerminStatus;
 import de.fubo.appserver.repository.spieltag.TerminRepository;
 import de.fubo.appserver.service.audit.AuditService;
 import de.fubo.appserver.service.config.ConfigService;
 import de.fubo.appserver.service.mail.MailService;
 import de.fubo.appserver.utils.Absagevorlage;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -75,17 +77,30 @@ public class HallenService {
     private final ConfigService configService;
     private final MailService mailService;
     private final AuditService auditService;
+
+    /**
+     * Veroeffentlicht {@link TerminAbgesagtEreignis} (A25b, Anlass 2; S8 Abschnitt 9.1).
+     *
+     * <p><b>Der dritte der drei Ausloeserpfade, und der, den man leicht uebersieht:</b> Dieser
+     * Dienst sagt einen geplanten Termin mit ab, und er schreibt dafuer <b>nativ</b> - es
+     * entsteht also kein Entity-Ereignis, aus dem sich etwas ableiten liesse. Er
+     * veroeffentlicht deshalb ausdruecklich, und nur dann, wenn der bedingte {@code UPDATE}
+     * wirklich eine Zeile getroffen hat.
+     */
+    private final ApplicationEventPublisher ereignisse;
     private final Clock uhr;
 
     public HallenService(TerminRepository terminRepository,
                          ConfigService configService,
                          MailService mailService,
                          AuditService auditService,
+                         ApplicationEventPublisher ereignisse,
                          Clock uhr) {
         this.terminRepository = terminRepository;
         this.configService = configService;
         this.mailService = mailService;
         this.auditService = auditService;
+        this.ereignisse = ereignisse;
         this.uhr = uhr;
     }
 
@@ -227,6 +242,20 @@ public class HallenService {
 
         auditService.protokolliere(adminSpielerId, clientIp, AuditAktion.HALLE_ABGESAGT,
                 ENTITAET, terminId, details(termin, empfaenger, vorlage, terminMitAbgesagt));
+
+        if (terminMitAbgesagt) {
+            // Nur wenn DIESER Aufruf den Termin abgesagt hat (A25b, Anlass 2). Ein bereits
+            // abgesagter Termin bekommt keine zweite Benachrichtigung - die Zusager haben sie
+            // beim ersten Mal erhalten, und der bedingte UPDATE auf status = 'GEPLANT' ist
+            // zugleich die Abfrage danach.
+            //
+            // Der Versand haengt am Commit dieser Transaktion: Scheitert der Mailversand an
+            // den Hallenbetreiber, rollt sie zurueck - und dann geht auch keine
+            // Push-Nachricht hinaus. Genau dieser Fall ist der Grund fuer
+            // @TransactionalEventListener(AFTER_COMMIT) und nicht fuer einen direkten Aufruf.
+            ereignisse.publishEvent(new TerminAbgesagtEreignis(terminId, termin.datum(),
+                    termin.uhrzeit(), termin.ort()));
+        }
     }
 
     /**
