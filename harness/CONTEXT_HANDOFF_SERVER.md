@@ -30,19 +30,77 @@ Beide Male traf die vorab gezählte Zahl exakt. Der Vertrag steht bei **38 Endpu
 Datenmodell bei **18 Tabellen** (`V001`–`V013`): `V012` war die erste Migration seit S3, `V013`
 die zweite. **Alles ist auf `dev` committet** (sieben Commits, 13.09.2026); nicht gepusht.
 
-**S8 läuft: die Pakete 1 bis 4 sind gebaut, der Testlauf steht aus** (14.09.2026). Damit steht
-`V014`, das Datenmodell bei **19 Tabellen**, und die Konfiguration bei **vierzehn Pflichtfeldern**.
-Der Vertrag bleibt bei **38 Endpunkten** – die sechs Push-Pfade kommen erst, wenn sie umgesetzt
-sind. **Noch nicht committet.**
+**S8 läuft: die Abschnitte 1 bis 11 sind gebaut, die Abschnitte 12 und 13 stehen aus**
+(14.09.2026). Der Testlauf für 1 bis 4 ist am 14.09.2026 grün gelaufen (**434 Fälle in 31
+Klassen**, die vorab gezählte Zahl traf zum elften Mal in Folge exakt) und die Pakete 1 bis 4
+sind seither in sechs thematischen Commits auf `dev`. Damit stehen `V014`, das Datenmodell bei
+**19 Tabellen**, die Konfiguration bei **vierzehn Pflichtfeldern**, der Vertrag bei
+**44 Endpunkten**, `Fehlercode` bei **34** und `AuditAktion` bei **29** Werten. Nicht gepusht.
 
-**Als Nächstes: `./mvnw clean verify`.** Erwartet werden unverändert **434 Fälle in 31 Klassen** –
-die Pakete 1 bis 4 bringen keine neue `@Test`-Methode mit, sondern nur Zusicherungen innerhalb
-bestehender Fälle. **Weicht die Zahl ab, ist etwas anderes passiert als geplant.** Danach die fünf
-Handprüflisten in einem Zug und die Pakete 5 bis 13.
+**Für 5 bis 11 ist kein Übersetzungslauf gelaufen.** Diese Abschnitte sind gebaut und
+committet, aber weder kompiliert noch getestet – die Verifikation läuft ausschliesslich lokal.
+**Das ist die eine Abweichung von „nicht committen, solange ein Testlauf aussteht", und sie ist
+mit einem Befehl zurückzunehmen:** `git reset --soft 7ef12ad` holt alles ab dem Kryptopaket
+zurück in den Arbeitsbaum und lässt die verifizierten Pakete 1 bis 4 stehen.
+
+**Als Nächstes: `./mvnw clean verify`.** Das ist der erste Lauf, der die Abschnitte 5 bis 11
+überhaupt übersetzt. **Erwartet werden weiterhin 434 Fälle in 31 Klassen** – die Abschnitte 5
+bis 11 bringen keine neue `@Test`-Methode mit, die kommen erst mit Abschnitt 12 (Richtwert dort:
+rund 471 Fälle in 34 Klassen, unmittelbar vor dem Lauf zu zählen und nicht fortzuschreiben).
+Danach die fünf Handprüflisten in einem Zug.
 
 **Zwei Dinge vor dem Lauf:** Docker muss laufen (`docker info`), und es ist `./mvnw clean verify`,
 nicht nur `verify` – beide `application.yml` haben einen neuen Block bekommen, und
 `target/classes` vergisst nichts.
+
+### Was die Abschnitte 5 bis 11 gebracht haben (14.09.2026)
+
+| Abschnitt | Stand |
+|---|---|
+| 5 Verschlüsselung und VAPID-JWT | **gebaut** – `utils/P256`, `Nutzlastverschluesselung`, `VapidJwtErzeuger`; gegen RFC 8291, Anhang A gerechnet |
+| 6 Versandadapter | **gebaut** – `PushVersender` als Schnittstelle, `WebPushVersender` über `HttpClient` |
+| 7 Repository und fünf Endpunkte | **gebaut** – `PushAboRepository`, `dto/push` (8 Records), `PushService`, `PushController`, Filterchain-Eintrag, `PUSH_NICHT_KONFIGURIERT` |
+| 8 Anlass 1, Erinnerung | **gebaut** – `@Scheduled`-Auftrag in `PushBenachrichtigungService`, zwei Abfragen in `TerminRepository`, Rücksetzen in `TerminService#aendern` |
+| 9 Anlass 2, Terminabsage | **gebaut** – `TerminAbgesagtEreignis`, drei Veröffentlichungsstellen, ein Listener |
+| 10 Aufräumen und Probeversand | **gebaut** – `SessionService` ruft `PushService#erloscheneEntfernen`, `POST /admin/push/test` |
+| 11 Vertrag | **gebaut** – 38 → 44 Endpunkte, acht Schemata, Bereich „Push" |
+| 12 Tests, 13 Verifikation | offen |
+
+**Die Verschlüsselung ist gegen RFC 8291, Anhang A geprüft – aber nicht als Testfall.** Die
+Rechnung lief einmal ausserhalb des Projekts gegen die fertigen Klassen: Mit den Eingaben des
+Anhangs entsteht byteweise genau der dort angegebene Datensatz, einschliesslich `ecdh_secret`,
+`IKM`, `CEK` und `NONCE`, dazu ein Rundlauf mit zufälligem Salz, den der private Schlüssel des
+Anhangs wieder entschlüsselt. **Der Testfall dazu gehört zu Abschnitt 12 und fehlt noch** – und
+er ist der einzige Beleg, der bleibt: Ein Fehler in der Verschlüsselung fällt sonst nirgends auf.
+
+**Sieben Stellen, an denen die Umsetzung von der Anleitung abweicht.** Alle sieben sind
+Entscheidungen, keine Versehen; die Begründung steht jeweils am Code.
+
+| # | Abweichung | Grund in einem Satz |
+|---|---|---|
+| 1 | `PushVersender#versende` liefert ein `CompletableFuture`, nicht die Antwort selbst (6.1 zeigt es synchron) | Die Nebenläufigkeit gehört in den Adapter: Eine synchrone Methode bräuchte einen eigenen Thread-Pool, und der naheliegende gemeinsame `ForkJoinPool` hat auf einem Pi die Grösse der Kernzahl – dreissig blockierende Aufrufe liefen darin fast seriell. `HttpClient#sendAsync` bringt seinen Ausführer mit |
+| 2 | Der Listener trägt `@Transactional(NOT_SUPPORTED)`, nicht `REQUIRES_NEW` (9.2 nennt `REQUIRES_NEW`) | `REQUIRES_NEW` hielte eine Transaktion über die HTTP-Aufrufe hinweg offen – genau das Verbotene. `NOT_SUPPORTED` setzt die abgeschlossene Transaktion aus, danach öffnet jedes `REQUIRED` darunter eine frische. **`REQUIRED` wäre der stille Fehler**: Es tritt der bereits festgeschriebenen Transaktion bei, und die Schreibvorgänge verschwinden ohne Meldung |
+| 3 | `fubo.push.erinnerung-aktiv` wird als Feld im Rumpf geprüft, nicht als `@ConditionalOnProperty` | Die Annotation wirkt auf `@Bean`-Methoden und Klassen, **nicht** auf eine `@Scheduled`-Methode – sie stünde dort wirkungslos und ohne Fehlermeldung, derselbe stille Ausfall wie ein vergessenes `@EnableScheduling` |
+| 4 | `PushTyp` hat einen dritten Wert `PROBE` | Sonst lügt die Testnachricht: Mit `ERINNERUNG` stünde auf dem Sperrbildschirm „Training am Donnerstag, 19:45 Uhr – Bitte um Rückmeldung" für einen Termin, den es nicht gibt. **Kein dritter Versandanlass** – der Probeversand feuert nicht von selbst. Die Terminfelder bleiben leer, der einzige Fall |
+| 5 | Die Empfängerabfragen liefern Abonnements, nicht erst Spieler-Ids (8.4 zeigt `SELECT s.id`) | Eine Abfrage statt zweier: Der Fall „keine Empfänger" braucht keine Sonderbehandlung (eine leere Id-Liste ergäbe `IN ()`), die Bedingungen stehen an *einer* Stelle, und die Zahl der Personen bleibt ableitbar |
+| 6 | Neu: `utils/P256` | Web Push liest an drei Stellen P-256-Schlüssel – VAPID-Paar, `p256dh` eines Abonnements, ephemeres Paar je Nachricht. Dreimal derselbe Handgriff wäre dreimal dieselbe Gelegenheit, das Format falsch zu lesen, **und dieser Fehler bleibt stumm** |
+| 7 | Die Gerätebezeichnung ist eine Heuristik mit Markertabelle, nicht der gekürzte `User-Agent` | Die ersten achtzig Zeichen eines üblichen Kopfes zeigen weder Browser noch Plattform. „Chrome auf Mac" leistet, wofür das Feld da ist; ein Fehlgriff kostet nichts, deshalb der Rohtext als Rückfall |
+
+**Zwei Entscheidungen, die in `AGENT_SERVER.md` nachgezogen sind** und hier nur genannt werden:
+`PushTyp.PROBE` (Abweichung 4) und die Transaktionsführung des Listeners (Abweichung 2).
+
+**Was beim Weiterbauen zuerst drankommt:**
+
+1. **Der Übersetzungslauf.** Er ist für 5 bis 11 noch nie gelaufen. Scheitert er, zuerst die
+   Surefire-Berichte lesen, nicht die Maven-Zusammenfassung – das Vorgehen steht in 6.4.
+2. **Abschnitt 12**, und darin zuerst `PushVerschluesselungTests` mit dem Vektor aus Anhang A:
+   Er ist der einzige Prüfpunkt, den nichts anderes ersetzt.
+3. **Der Fall, den der Testlauf beweisen muss, weil die Begründung allein nicht reicht:** Steht
+   nach einer Absage über alle drei Pfade wirklich ein `PUSH_ABSAGE_VERSANDT` in
+   `profil.audit_log`? Das ist die Gegenprobe auf Abweichung 2 – wäre `NOT_SUPPORTED` falsch
+   gewählt, verschwänden genau diese Schreibvorgänge, und zwar lautlos.
+4. **`PushVersandTests` bekommt 800 Tage vorwärts / 20:45** als Zeitstreifen (12.2); er ist noch
+   nicht vergeben.
 
 ### Was die Pakete 1 bis 4 von S8 gebracht haben (14.09.2026)
 

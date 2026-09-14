@@ -7,7 +7,9 @@
 >
 > **Am 05.09.2026 verdichtet, am 06.09.2026 um die Regeln aus S5, am 12.09.2026 um die
 > Regeln aus S6 und am 13.09.2026 um die Regeln aus S7 ergänzt; am 14.09.2026 um den
-> serverseitigen Anteil von A25 erweitert (S8, noch nicht umgesetzt).** Jede Regel steht hier mit dem *einen* Grund, der sie trägt – wer
+> serverseitigen Anteil von A25 erweitert (S8) und am selben Tag um die Regeln ergänzt, die bei
+> der Umsetzung der Abschnitte 5 bis 11 hinzugekommen sind – Tests und Verifikation stehen
+> dort noch aus.** Jede Regel steht hier mit dem *einen* Grund, der sie trägt – wer
 > sie ändern will, muss den Grund entkräften, nicht die Zeile löschen. **Vorfälle, Daten und
 > ausführliche Herleitungen stehen nicht mehr hier**, sondern in `CONTEXT_HANDOFF_SERVER.md`
 > (6.2 Festlegungen, 6.3 Fallstricke), in `harness/tmp/S<n>_UMSETZUNG.md` und in
@@ -668,6 +670,73 @@ ist personenbezogen – ein zweiter Beleg verdoppelte sie in eine Tabelle, die n
 wird und den Zustand damit nicht einmal überlebt. Dieselbe Regel wie bei den Rückmeldungen aus S4.
 **`AuditAktion` wächst damit von 27 auf 29 Werte, nicht auf 31.**
 
+**Die Nebenläufigkeit gehört in den Adapter, nicht in den aufrufenden Dienst**
+(ergänzt am 14.09.2026 bei der Umsetzung). `PushVersender#versende` liefert deshalb ein
+`CompletableFuture`. Eine synchrone Signatur könnte die Gleichzeitigkeit nur mit einem eigenen
+Thread-Pool erreichen – und der naheliegende gemeinsame `ForkJoinPool` hat auf der Zielhardware
+die Grösse der Kernzahl: Dreissig blockierende Netzaufrufe liefen darauf in Schüben von drei und
+damit fast seriell. `HttpClient#sendAsync` bringt seinen Ausführer mit. **Für die Testdoppelung
+kostet das nichts** – `CompletableFuture.completedFuture` ist fertig, bevor der Aufrufer sie
+ansieht, also kein Wettlauf und kein Latch.
+
+**Der Versandlauf trägt kein `@Transactional`, und das ist die Regel, nicht die Lücke.** Jede
+Anweisung des `PushAboRepository` ist ihre eigene kurze Transaktion; das erfüllt „kein
+HTTP-Aufruf innerhalb einer offenen Transaktion" ohne weiteres Zutun. **Ein `@Transactional` an
+dieser Klasse wäre still schädlich** – niemand fängt es ab, und der Schaden zeigt sich erst
+unter Last.
+
+**Der `AFTER_COMMIT`-Listener trägt `@Transactional(propagation = NOT_SUPPORTED)`**
+(Festlegung vom 14.09.2026). Das ist die einzige nicht offensichtliche Zeile des Meilensteins,
+und sie verhindert einen **stillen** Datenverlust: Ein `AFTER_COMMIT`-Callback läuft *innerhalb*
+des Commits – die Transaktion ist festgeschrieben, ihre Synchronisation und ihre Verbindung sind
+aber noch gebunden. **Ein `REQUIRED` tritt deshalb der abgeschlossenen Transaktion bei, und die
+Schreibvorgänge verschwinden ohne Fehlermeldung.** `NOT_SUPPORTED` setzt sie für die Dauer der
+Methode aus; danach öffnet jedes `REQUIRED` darunter – auch das des `AuditService` – eine frische
+Transaktion. **`REQUIRES_NEW` wäre der naheliegende und hier falsche Griff:** Es löste dasselbe
+Problem, hielte aber eine Transaktion über die HTTP-Aufrufe hinweg offen, und es widerspräche der
+Regel, die `REQUIRES_NEW` allein dem Versuchszähler des Passwort-Resets zugesteht. **Die
+Gegenprobe ist ein Testfall, nicht das Lesen:** Steht nach einer Absage ein
+`PUSH_ABSAGE_VERSANDT` in `profil.audit_log`?
+
+**Ein Schalter für eine `@Scheduled`-Methode wird im Rumpf geprüft, nie als
+`@ConditionalOnProperty`** (ergänzt am 14.09.2026). Die Annotation wirkt auf `@Bean`-Methoden und
+Klassen; an einer `@Scheduled`-Methode steht sie **wirkungslos und ohne Fehlermeldung** – derselbe
+stille Ausfall wie ein vergessenes `@EnableScheduling` oder ein vergessenes `@EnableCaching`. Der
+Takt läuft dann weiter und kehrt sofort um, und genau das ist gewollt: Der Testfall ruft die
+Methode selbst auf und sieht das echte Verhalten.
+
+**Kurve und Schlüsselformat stehen genau einmal** (`utils/P256`, ergänzt am 14.09.2026). Web Push
+liest an drei Stellen P-256-Schlüssel: das VAPID-Paar aus der Umgebung, den `p256dh` eines
+Abonnements und das ephemere Paar je Nachricht. Dreimal derselbe Handgriff wäre dreimal dieselbe
+Gelegenheit, das Format falsch zu lesen – und **dieser Fehler bleibt stumm**. Die
+Kurvendefinition kommt dort aus der Laufzeitumgebung und steht nicht als Zahlen im Code. **Die
+Koordinaten werden rechtsbündig in 32 Byte gelegt**: `BigInteger#toByteArray` liefert für einen
+Wert mit gesetztem höchsten Bit 33 Byte und für einen kleinen weniger als 32; ein direktes
+Aneinanderhängen ergäbe einen Punkt, den die Gegenseite nicht entschlüsseln kann, ohne dass
+jemand einen Fehler sieht.
+
+**Die Empfängerabfragen liefern Abonnements, nicht erst Spieler-Ids** (Festlegung vom
+14.09.2026). Eine Abfrage statt zweier: Der Fall „keine Empfänger" braucht dann keine
+Sonderbehandlung – eine leere Id-Liste ergäbe `IN ()` und damit einen Syntaxfehler –, die
+Versandbedingungen stehen an *einer* Stelle beieinander, und die Zahl der **Personen** bleibt
+ableitbar, weil `spieler_id` mitkommt und sortiert ist. Im Audit-Detail stehen beide Zahlen:
+Empfänger und Geräte.
+
+**Die Gerätebezeichnung ist eine Heuristik mit Markertabelle**, nicht der gekürzte `User-Agent`
+(ergänzt am 14.09.2026). Die ersten achtzig Zeichen eines üblichen Kopfes zeigen weder Browser
+noch Plattform; „Chrome auf Mac" leistet, wofür das Feld da ist. **Die Reihenfolge der Marker ist
+tragend** – Edge nennt sich zusätzlich Chrome, Chrome nennt sich zusätzlich Safari, also
+spezifischste Kennung zuerst. **Ein Fehlgriff kostet nichts**: Es steht ein etwas falscher Name in
+einer Liste, die nur ihr Eigentümer sieht. Deshalb genügt die Tabelle, und deshalb ist der
+Rückfall der gekürzte Rohtext und keine Ausnahme.
+
+**Die Fehlversuchsgrenze (fünf) und die Aufbewahrung erloschener Abonnements (30 Tage) sind
+Konstanten im Dienst, keine Konfigurationsfelder** – wie die Aufbewahrung abgelaufener Sitzungen
+und aus demselben Grund: Es gibt keinen Anlass, sie zu verstellen, und ein weiteres Pflichtfeld im
+Voll-Update der Konfiguration wäre eine brechende Vertragsänderung für ein Detail, das niemand
+einstellen will. **Der Fehlversuchszähler fällt bei jeder erfolgreichen Nachricht auf null** –
+fünf heisst also „fünf in Folge".
+
 ### Push-Endpunkte und DTOs (A25, S8)
 
 Alle verlangen `stage = PROFILE_AUTHENTICATED`; die Rolle `GAST` erhält `403` (A25d). **Die Pfade
@@ -716,8 +785,17 @@ mit den bestehenden Codes aus.
 **Die Nutzlast ist kein DTO.** `PushNutzlast` liegt in `domain/push`, nicht in `dto/push`: `dto`
 beschreibt die Ein- und Ausgabe **an der API-Grenze**, und diese Nachricht verlässt den Server auf
 dem anderen Weg – als verschlüsselter Rumpf an einen fremden Push-Dienst. Sie trägt `typ`
-(`ERINNERUNG`, `TERMIN_ABGESAGT`), einen immer gefüllten `titel` und `text` als Rückfall, die
-Termin-Id, Datum, Uhrzeit, den optionalen `ort` (A18) und die Ziel-`url`.
+(`ERINNERUNG`, `TERMIN_ABGESAGT`, `PROBE`), einen immer gefüllten `titel` und `text` als
+Rückfall, die Termin-Id, Datum, Uhrzeit, den optionalen `ort` (A18) und die Ziel-`url`.
+
+**`PROBE` ist ein dritter `typ` und kein dritter Versandanlass** (ergänzt am 14.09.2026 bei der
+Umsetzung). Er gehört dem Probeversand, der nicht von selbst feuert und ausschliesslich an die
+eigenen Geräte des Admins geht. **Ohne ihn müsste die Testnachricht als `ERINNERUNG` gehen und
+damit lügen:** Auf dem Sperrbildschirm stünde „Training am Donnerstag, 19:45 Uhr – Bitte um
+Rückmeldung" für einen Termin, den es nicht gibt, und der Service Worker führte beim Klick auf
+eine Terminseite zu `null`. **Nur bei `PROBE` bleiben Termin-Id, Datum und Uhrzeit leer** – der
+einzige Fall; ein Service Worker, der den Wert nicht kennt, zeigt den Rückfalltext, und genau
+dafür gibt es ihn.
 
 ### Audit-Log
 
@@ -1104,7 +1182,9 @@ de/fubo/appserver/
   Fachlogik der Zugangsdatenpflege bleibt in `service/auth`.
 - **`utils` enthält nur zustandslose Helfer ohne Spring-Abhängigkeit.** `ClientIpErmittler` darf
   `jakarta.servlet` verwenden – die Regel richtet sich gegen Spring-Kontext und Zustand, nicht
-  gegen die Servlet-API.
+  gegen die Servlet-API. Seit S8 liegen dort auch `P256` (Kurve und Schlüsselformat) und
+  `GeraeteBezeichnung`; die Verschlüsselung selbst bleibt in `service/push`, weil sie eine
+  `SecureRandom`-Instanz hält und über eine paketprivate Methode prüfbar sein muss.
 
 **Zuständigkeiten, die feststehen:**
 
