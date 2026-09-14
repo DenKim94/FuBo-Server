@@ -95,6 +95,20 @@ public class SecurityConfig {
                         // 4) Adminbereich
                         .requestMatchers("/api/*/admin/**").hasRole("ADMIN")
 
+                        // 4a) Push-Benachrichtigungen (A25d): USER und ADMIN, aber NICHT GAST.
+                        //     HIER KEHRT SICH DAS UEBLICHE FEHLERBILD UM. Sonst gilt: Wer
+                        //     einen Eintrag vergisst, sperrt Berechtigte aus und merkt es
+                        //     sofort. Diese Pfade fielen ohne den Eintrag unter
+                        //     anyRequest() darunter und waeren fuer Gaeste OFFEN - ein
+                        //     vergessener Eintrag faellt also nicht als 403 auf, sondern als
+                        //     stiller Zugang. A25d verlangt 403; ein Gast hat keine Zeile in
+                        //     profil.spieler, ein Abonnement liesse sich nach Ende seiner
+                        //     Sitzung keiner Person mehr zuordnen.
+                        //
+                        //     /api/*/admin/push/** deckt die Regel darueber bereits ab - der
+                        //     Probeversand des Admins liegt dort und nicht hier.
+                        .requestMatchers("/api/*/push/**").hasAnyRole("USER", "ADMIN")
+
                         // 5) Rest: angemeldet in Stufe PROFILE_AUTHENTICATED
                         .anyRequest().hasAnyRole("USER", "ADMIN", "GAST"))
                 .exceptionHandling(e -> e

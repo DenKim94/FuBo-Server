@@ -118,6 +118,27 @@ public record PushNutzlast(PushTyp typ,
     }
 
     /**
+     * Die Testbenachrichtigung des Probeversands (S8 Abschnitt 10.2).
+     *
+     * <p><b>Der einzige Fall mit leeren Terminfeldern.</b> Ein Probeversand gehoert zu keinem
+     * Termin; ihm einen anzudichten hiesse, eine Nachricht zu verschicken, die etwas behauptet.
+     * Begruendung am Wert {@link PushTyp#PROBE}.
+     *
+     * <p><b>Der Text sagt, was der Versand belegt</b> - dass Schluessel, Verschluesselung und
+     * der Weg zum Push-Dienst tragen. Er sagt nicht, dass Spieler etwas bekommen: Dafuer
+     * muessten zusaetzlich der Anlagenschalter und der Personenschalter stehen, und die prueft
+     * der Probeversand bewusst nicht.
+     *
+     * @return die fertige Nutzlast
+     */
+    public static PushNutzlast probe() {
+        return new PushNutzlast(PushTyp.PROBE,
+                "FuBo – Testbenachrichtigung",
+                "Der Versand über diesen Server funktioniert auf diesem Gerät.",
+                null, null, null, null, "/");
+    }
+
+    /**
      * Das Klickziel der Benachrichtigung.
      *
      * <p><b>Ein Pfad und keine vollstaendige Adresse.</b> Der Service Worker loest ihn gegen

@@ -375,6 +375,32 @@ public enum Fehlercode {
     HALLE_BEREITS_ABGESAGT(HttpStatus.CONFLICT,
             "Für diesen Termin wurde bereits eine Absage an den Hallenbetreiber versendet."),
 
+    /**
+     * Push-Benachrichtigungen sind auf diesem Server nicht eingerichtet (A25b, S8
+     * Abschnitt 7.4).
+     *
+     * <p>Es fehlt mindestens eine der drei VAPID-Angaben in der Umgebung, oder sie passen
+     * nicht zueinander. {@code PushConfig} hat das beim Start protokolliert und Push
+     * abgeschaltet; die Anwendung laeuft ohne sie vollstaendig weiter.
+     *
+     * <p><b>{@code VERSAND_FEHLGESCHLAGEN} wird nicht wiederverwendet.</b> Jener Code bedeutet
+     * "ein nachgelagerter Dienst war nicht erreichbar, wiederhole den Aufruf" - hier ist
+     * nichts fehlgeschlagen, es ist nichts eingerichtet, und <b>Wiederholen hilft nie</b>. Ein
+     * Client, der die beiden nicht unterscheiden kann, baut entweder eine sinnlose
+     * Wiederholung ein oder zeigt bei einem echten Ausfall "nicht eingerichtet".
+     *
+     * <p>{@code 503} und nicht {@code 404}: Der Endpunkt existiert, die Funktion ist nur nicht
+     * betriebsbereit. Fuer die Oberflaeche heisst das <b>ausblenden</b>, nicht deaktiviert
+     * anzeigen - es gibt nichts, was der Nutzer daran aendern koennte.
+     *
+     * <p>Betroffen sind {@code GET /push/schluessel/lesen} und
+     * {@code POST /admin/push/test}. Die uebrigen Push-Endpunkte antworten weiterhin normal:
+     * Ein Abonnement anzulegen ist ohne Schluessel sinnlos, aber der Personenschalter und die
+     * Statusauskunft bleiben brauchbar.
+     */
+    PUSH_NICHT_KONFIGURIERT(HttpStatus.SERVICE_UNAVAILABLE,
+            "Push-Benachrichtigungen sind auf diesem Server nicht eingerichtet."),
+
     EINGABE_UNGUELTIG(HttpStatus.BAD_REQUEST, "Ungültige Eingabedaten."),
     INTERNER_FEHLER(HttpStatus.INTERNAL_SERVER_ERROR, "Ein unerwarteter Fehler ist aufgetreten."),
     INHALT_NICHT_GEFUNDEN(HttpStatus.NOT_FOUND, "Der gesuchte Inhalt wurde nicht gefunden.");
