@@ -1448,7 +1448,7 @@
         ],
         "operationId": "konfigurationAendern",
         "summary": "Admin-Konfiguration ändern (Voll-Update)",
-        "description": "Schreibt die Konfiguration vollständig. Verlangt die Rolle `ADMIN`.\n\n**Ablauf:** `/admin/config/lesen` → Formular → alle **zwölf** änderbaren Felder samt `version` zurück. `halleAbsageVorlageEffektiv` gehört **nicht** dazu – es ist nur lesbar und wird hier ignoriert. Weicht die `version` vom gespeicherten Stand ab, antwortet der Server `409 DATEN_VERALTET`, ohne etwas zu schreiben – zwei geöffnete Browser-Tabs überschreiben einander damit nicht lautlos.\n\n**Was eine Änderung sofort bewirkt:**\n\n| Feld | Wirkung auf laufende Sitzungen |\n|---|---|\n| `sessionLeerlaufMinuten` | sofort |\n| `sessionMaximalStunden` | **nicht rückwirkend** – bestehende Sitzungen behalten ihre alte Obergrenze |\n| `anzGuests` | sofort; eine Erhöhung legt fehlende Gastplätze mit an, eine Senkung löscht keine |\n| `hallenModusAktiv` | sofort – der Absageendpunkt liest den Wert bei jedem Aufruf neu |\n| übrige Felder | wirken beim nächsten Aufruf des jeweiligen Endpunkts |\n\nDer Vorgang wird im Audit-Log als `KONFIG_GEAENDERT` mit altem und neuem Wert je geändertem Feld vermerkt; `halleAbsageVorlage` nur als Vermerk, ohne den Text.\n\n**Brechende Änderung vom 13.09.2026:** `hallenModusAktiv` ist als zwölftes Feld **Pflicht**. Ein Formular, das es nicht mitschickt, bekommt `400` – bewusst, denn ein stillschweigendes `false` schaltete den Hallenmodus bei jedem Speichern ab.",
+        "description": "Schreibt die Konfiguration vollständig. Verlangt die Rolle `ADMIN`.\n\n**Ablauf:** `/admin/config/lesen` → Formular → alle **vierzehn** änderbaren Felder samt `version` zurück. `halleAbsageVorlageEffektiv` gehört **nicht** dazu – es ist nur lesbar und wird hier ignoriert. Weicht die `version` vom gespeicherten Stand ab, antwortet der Server `409 DATEN_VERALTET`, ohne etwas zu schreiben – zwei geöffnete Browser-Tabs überschreiben einander damit nicht lautlos.\n\n**Was eine Änderung sofort bewirkt:**\n\n| Feld | Wirkung auf laufende Sitzungen |\n|---|---|\n| `sessionLeerlaufMinuten` | sofort |\n| `sessionMaximalStunden` | **nicht rückwirkend** – bestehende Sitzungen behalten ihre alte Obergrenze |\n| `anzGuests` | sofort; eine Erhöhung legt fehlende Gastplätze mit an, eine Senkung löscht keine |\n| `hallenModusAktiv` | sofort – der Absageendpunkt liest den Wert bei jedem Aufruf neu |\n| `pushAktiv` | sofort – jeder Versandanlass liest den Wert neu |\n| übrige Felder | wirken beim nächsten Aufruf des jeweiligen Endpunkts |\n\nDer Vorgang wird im Audit-Log als `KONFIG_GEAENDERT` mit altem und neuem Wert je geändertem Feld vermerkt; `halleAbsageVorlage` nur als Vermerk, ohne den Text.\n\n**Brechende Änderung vom 13.09.2026:** `hallenModusAktiv` ist als zwölftes Feld **Pflicht**. Ein Formular, das es nicht mitschickt, bekommt `400` – bewusst, denn ein stillschweigendes `false` schaltete den Hallenmodus bei jedem Speichern ab.\n\n**Brechende Änderung vom 14.09.2026 (S8, A25):** `pushAktiv` und `pushErinnerungStunden` sind als **dreizehntes und vierzehntes** Feld ebenfalls Pflicht. Beim Wahrheitswert gilt derselbe Grund wie oben; bei der Zahl fängt `minimum` ein fehlendes Feld ab, weil es als `0` ankäme.",
         "requestBody": {
           "required": true,
           "content": {
@@ -3207,7 +3207,7 @@
       },
       "Konfiguration": {
         "type": "object",
-        "description": "Die anwendungsweite Admin-Konfiguration – genau ein Datensatz.\n\nDie elf änderbaren Felder stehen hier in derselben Form, in der `/admin/config/aendern` sie zurückerwartet; `geaendertAm` und `version` kommen hinzu. `geaendertVon` bleibt draußen: Es gibt genau einen Admin, die Auskunft „geändert von 1\" wäre inhaltsleer.",
+        "description": "Die anwendungsweite Admin-Konfiguration – genau ein Datensatz.\n\nDie vierzehn änderbaren Felder stehen hier in derselben Form, in der `/admin/config/aendern` sie zurückerwartet; `geaendertAm` und `version` kommen hinzu. `geaendertVon` bleibt draußen: Es gibt genau einen Admin, die Auskunft „geändert von 1\" wäre inhaltsleer.",
         "properties": {
           "minTeilnehmer": {
             "type": "integer",
@@ -3294,6 +3294,17 @@
             "type": "boolean",
             "description": "Hauptschalter des Hallenmodus (A23). **Vorgabe `false`** – auch für bestehende Installationen: Der Absageendpunkt verschickt eine Nachricht an einen Aussenstehenden, die sich nicht zurücknehmen lässt, und die sichere Richtung ist „aus, bis jemand es einschaltet\".\n\n**Steht er aus, lehnt `POST /admin/halle/absagen` jede Absage ab** (`409 HALLE_MODUS_INAKTIV`) – als erste Prüfung, noch vor der Suche nach dem Termin. Der Knopf gehört dann ausgeblendet; dass der Server die Regel selbst durchsetzt, ist die eigentliche Absicherung.\n\n**Unabhängig von `halleEmail`:** Der Modus lässt sich einschalten, bevor eine Adresse hinterlegt ist. Der fehlende Empfänger fällt erst beim Absagen als `409 HALLE_NICHT_KONFIGURIERT` auf."
           },
+          "pushAktiv": {
+            "type": "boolean",
+            "description": "Hauptschalter des Push-Versands (A25e). **Vorgabe `true`** – anders als bei `hallenModusAktiv`, und der Unterschied ist der Empfänger: Eine Hallenabsage geht an einen Aussenstehenden, der nie zugestimmt hat; eine Push-Nachricht erreicht ausschliesslich, wer im Browserdialog zugestimmt hat. Der Schalter kann für sich genommen nichts auslösen – ohne Abonnement und ohne eingerichtete VAPID-Schlüssel geht nichts hinaus.\n\n**Er ist die Anlagenebene von drei Bedingungen, die zusammen gelten:** Anlage (dieses Feld, der Admin entscheidet), Person (der Spieler schaltet Push für sich ab, A25f) und Gerät (mindestens ein aktives Abonnement, A25c). Fällt eine davon weg, unterbleibt der Versand **stillschweigend** – kein Fehlerfall, sondern der Normalzustand vieler Spieler."
+          },
+          "pushErinnerungStunden": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Vorlauf in Stunden, mit dem an eine offene Rückmeldung erinnert wird (A25). Vorgabe 24, Obergrenze 168 (eine Woche).\n\n**Die Obergrenze steht nur in der Eingabeprüfung, nicht in der Datenbank:** Dort verlangt der CHECK lediglich `> 0`. Ohne sie wäre ein Vorlauf von Jahren gültig, und die Erinnerung träfe auf einen Schlag jeden künftigen Termin.\n\n**Der Wert gilt anwendungsweit**, nicht je Termin – ein Feld am Termin wäre ein weiteres Pflichtfeld im Terminformular.",
+            "minimum": 1,
+            "maximum": 168
+          },
           "geaendertAm": {
             "type": "string",
             "format": "date-time",
@@ -3319,13 +3330,15 @@
           "halleAbsageVorlageEffektiv",
           "halleVorlaufStunden",
           "hallenModusAktiv",
+          "pushAktiv",
+          "pushErinnerungStunden",
           "geaendertAm",
           "version"
         ]
       },
       "KonfigurationAendernRequest": {
         "type": "object",
-        "description": "Anfragekörper von `/admin/config/aendern` – **ein Voll-Update**.\n\nDer Körper enthält **alle elf** änderbaren Felder; der Client lädt vorher `/admin/config/lesen` und schickt das veränderte Ganze zurück. Kein Feld ist optional, Weglassen ist keine Angabe.\n\n**Warum kein feldweises Update:** Zwei Felder sind `null`-fähig (`halleEmail`, `halleAbsageVorlage`). Feldweise wäre `null` nicht von „nicht angegeben\" zu unterscheiden – eine einmal gesetzte Hallenadresse liesse sich nie wieder entfernen, ohne dass der Vertrag eine Sonderregel erfindet. Beim Voll-Update ist `null` schlicht `null`. Dazu kommt: Es ist eine Zeile in einem Formular; es gibt keinen Anwendungsfall, in dem der Client nur ein Feld kennt.",
+        "description": "Anfragekörper von `/admin/config/aendern` – **ein Voll-Update**.\n\nDer Körper enthält **alle vierzehn** änderbaren Felder; der Client lädt vorher `/admin/config/lesen` und schickt das veränderte Ganze zurück. Kein Feld ist optional, Weglassen ist keine Angabe.\n\n**Warum kein feldweises Update:** Zwei Felder sind `null`-fähig (`halleEmail`, `halleAbsageVorlage`). Feldweise wäre `null` nicht von „nicht angegeben\" zu unterscheiden – eine einmal gesetzte Hallenadresse liesse sich nie wieder entfernen, ohne dass der Vertrag eine Sonderregel erfindet. Beim Voll-Update ist `null` schlicht `null`. Dazu kommt: Es ist eine Zeile in einem Formular; es gibt keinen Anwendungsfall, in dem der Client nur ein Feld kennt.",
         "properties": {
           "version": {
             "type": "integer",
@@ -3412,6 +3425,17 @@
           "hallenModusAktiv": {
             "type": "boolean",
             "description": "Hauptschalter des Hallenmodus (A23). **Vorgabe `false`** – auch für bestehende Installationen: Der Absageendpunkt verschickt eine Nachricht an einen Aussenstehenden, die sich nicht zurücknehmen lässt, und die sichere Richtung ist „aus, bis jemand es einschaltet\".\n\n**Steht er aus, lehnt `POST /admin/halle/absagen` jede Absage ab** (`409 HALLE_MODUS_INAKTIV`) – als erste Prüfung, noch vor der Suche nach dem Termin. Der Knopf gehört dann ausgeblendet; dass der Server die Regel selbst durchsetzt, ist die eigentliche Absicherung.\n\n**Unabhängig von `halleEmail`:** Der Modus lässt sich einschalten, bevor eine Adresse hinterlegt ist. Der fehlende Empfänger fällt erst beim Absagen als `409 HALLE_NICHT_KONFIGURIERT` auf.\n\n**Pflichtfeld im Voll-Update.** Ein fehlendes Feld ist `400` mit dem Schlüssel `hallenModusAktiv` im Block `felder` – es wird ausdrücklich **nicht** als `false` gelesen, sonst schaltete ein Client, der das Feld nicht kennt, den Hallenmodus bei jedem Speichern ab."
+          },
+          "pushAktiv": {
+            "type": "boolean",
+            "description": "Hauptschalter des Push-Versands (A25e). **Vorgabe `true`** – anders als bei `hallenModusAktiv`, und der Unterschied ist der Empfänger: Eine Hallenabsage geht an einen Aussenstehenden, der nie zugestimmt hat; eine Push-Nachricht erreicht ausschliesslich, wer im Browserdialog zugestimmt hat. Der Schalter kann für sich genommen nichts auslösen – ohne Abonnement und ohne eingerichtete VAPID-Schlüssel geht nichts hinaus.\n\n**Er ist die Anlagenebene von drei Bedingungen, die zusammen gelten:** Anlage (dieses Feld, der Admin entscheidet), Person (der Spieler schaltet Push für sich ab, A25f) und Gerät (mindestens ein aktives Abonnement, A25c). Fällt eine davon weg, unterbleibt der Versand **stillschweigend** – kein Fehlerfall, sondern der Normalzustand vieler Spieler.\n\n**Pflichtfeld im Voll-Update.** Ein fehlendes Feld ist `400` mit dem Schlüssel `pushAktiv` im Block `felder` – es wird ausdrücklich **nicht** als `false` gelesen, sonst schaltete ein Client, der das Feld nicht kennt, den Versand bei jedem Speichern ab. Dieselbe Regel wie bei `hallenModusAktiv`."
+          },
+          "pushErinnerungStunden": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Vorlauf in Stunden, mit dem an eine offene Rückmeldung erinnert wird (A25). Vorgabe 24, Obergrenze 168 (eine Woche).\n\n**Die Obergrenze steht nur in der Eingabeprüfung, nicht in der Datenbank:** Dort verlangt der CHECK lediglich `> 0`. Ohne sie wäre ein Vorlauf von Jahren gültig, und die Erinnerung träfe auf einen Schlag jeden künftigen Termin.\n\n**Der Wert gilt anwendungsweit**, nicht je Termin – ein Feld am Termin wäre ein weiteres Pflichtfeld im Terminformular.\n\n**Pflichtfeld im Voll-Update.** Ein fehlendes Feld ist `400` mit dem Schlüssel im Block `felder`.",
+            "minimum": 1,
+            "maximum": 168
           }
         },
         "required": [
@@ -3427,7 +3451,9 @@
           "halleEmail",
           "halleAbsageVorlage",
           "halleVorlaufStunden",
-          "hallenModusAktiv"
+          "hallenModusAktiv",
+          "pushAktiv",
+          "pushErinnerungStunden"
         ]
       },
       "GastPlatzInfo": {
