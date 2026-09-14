@@ -4,7 +4,7 @@
     "title": "FuBo Server API",
     "version": "1.0.0",
     "summary": "Vertrag zwischen FuBo-Server und FuBo-Client.",
-    "description": "Maßgebliche Beschreibung der REST-Schnittstelle des FuBo-Servers.\n\n**Diese Datei ist die Quelle der Wahrheit für den Client-Track.** Server und Client liegen in getrennten Repositories; eine Vertragsänderung wird deshalb immer zuerst hier abgebildet und der Client anschließend nachgezogen.\n\n**Stand:** S2 (Auth und Session), S2b (Zugangsdatenpflege und Spielerverwaltung), S3 (Profile, Skills, Konfiguration, Gastverwaltung), **S4 vollständig**, **S5 vollständig**, **S6 vollständig** und **S7 vollständig** – der Hallenmodus: den gebuchten Hallentermin per E-Mail absagen, begrenzt durch eine Vorlauffrist aus der Konfiguration; dazu S6 – die Ergebniserfassung: den Ausgang eines Termins eintragen (der erste Eintrag gilt), ihn als Admin korrigieren, ihn in der Einzelansicht lesen und die eigene Bilanz abrufen; dazu S5 – der Teamgenerator: die Einteilung eines Termins anstoßen und lesen, der Auswechselspieler bei ungerader Teilnehmerzahl und der manuelle Lauf des Admins ohne Termin (A24); dazu S4 – Termine lesen, Einzeltermin anlegen, ändern, absagen und entfernen, Terminserien, Zu- und Absagen von Spielern und Gästen, die Teilnehmerliste samt Warteschlange und die Skill-Stufe eines Gastes.\n\n**Noch nicht enthalten und deshalb hier nicht beschrieben:** das Deployment (S8) – es bringt keine Endpunkte. Spekulative Endpunkte wären ein Vertrag über etwas, das es nicht gibt.\n\n**Auch das Audit-Log ist nicht enthalten**, obwohl A21 verlangt, dass Erfassung und Korrektur protokolliert werden: Sie *werden* protokolliert, aber keine Anforderung verlangt, das Protokoll abzurufen. Es trägt personenbezogene Daten und unterliegt einer Löschfrist von 30 Tagen; es nach außen zu öffnen wäre eine eigene Entscheidung mit Filter, Blätterung und Feldauswahl.\n\n**Vier Dinge geschehen ohne Zutun des Clients:** Ein Termin wird bei seinem Beginn selbsttätig fixiert und wechselt 30 Minuten später von `GEPLANT` auf `ABGESCHLOSSEN` (A18) – ab der Fixierung liefert `POST /teams/generieren` ein `409 TEAMS_FIXIERT`, und wird der Termin danach in die Zukunft verschoben, fällt die Fixierung zurück; eine erneute Zusage stellt in der Warteschlange hinten an; eine Änderung an den Skillwerten eines zugesagten Spielers erhöht die `teilnehmerVersion` seiner künftigen Termine; und **das Sperren eines Profils nimmt dessen Zusagen für künftige Termine zurück** – die Teilnehmerliste wird dadurch kürzer, ohne dass jemand abgesagt hätte.\n\n### Versionierung\nJeder fachliche Endpunkt liegt unter `/api/{version}/<bereich>/<ressource>/<aktion>`. Die Version steht als Präfix an Segment-Index 1, die Aktion als eigenes Segment am Ende. Umgesetzt mit `ApiVersionConfigurer#usePathSegment` aus Spring Framework 7.\n\n- `/api/v1/...` und `/api/1/...` werden beide als Version 1 gelesen; nach außen wird durchgängig `v1` verwendet.\n- Eine unbekannte Version (`/api/v99/...`) liefert `400`.\n- Ein fehlendes Versionssegment liefert `404` – ohne das Segment passt der Pfad schlicht auf kein Mapping.\n\n### Authentifizierung\nOpakes Session-Cookie (`FUBO_SESSION`, `HttpOnly`, `Secure`, `SameSite=Lax`, kein Ablaufdatum). Das Frontend kann den Token weder lesen noch prüfen und muss das auch nicht: Die Validierung passiert ausschließlich serverseitig in der Filterchain. Alle Aufrufe erfolgen mit `credentials: 'include'`.\n\n**Die zentrale PIN besteht aus vier Ziffern.** Das Eingabefeld im Frontend darf darauf ausgelegt werden. `POST /auth/pin/pruefen` schreibt der Eingabe trotzdem **kein** Format vor – ein abweichender Bestandswert aus der Erstkonfiguration muss eingebbar bleiben, und eine Mindestlänge im Vertrag wäre eine Auskunft über das Format der echten PIN. Verbindlich ist das Format nur beim *Setzen* über `POST /admin/pin/aendern`.\n\nDer Login ist zweistufig und wird serverseitig erzwungen:\n1. `PIN_VERIFIED` – zentrale PIN geprüft, Identität noch offen.\n2. `PROFILE_AUTHENTICATED` – erst hier existiert eine Rolle. Es führen drei Wege dorthin: Namensauswahl (`USER`), Gast-Login (`GAST`) und Admin-Login mit Passwort (`ADMIN`).\n\n**Das Adminprofil ist ein technisches Konto.** Es steht nicht in der Namensliste, nimmt an keinem Termin teil und wird nie in ein Team eingeteilt; seine Skillwerte stehen auf 0. Der Admin meldet sich deshalb über `POST /api/v1/auth/admin/anmelden` mit seinem Passwort an – die Namensauswahl lehnt das Adminprofil auch dann ab, wenn seine Id bekannt ist.\n\nBei jedem Stufenwechsel und bei jeder Erneuerung wird der Token rotiert (Schutz vor Session Fixation). Die `session.id` bleibt dabei erhalten.\n\n### Sitzungsdauer (Zwei-Timer-Modell)\n`gueltigBis` ist ein gleitendes Leerlauf-Fenster (Vorgabe 15 Minuten) und wandert bei jedem Aufruf nach hinten. `absolutGueltigBis` ist eine harte Obergrenze (Vorgabe 1 Stunde) und wird nie verschoben – auch nicht durch `/auth/session/erneuern`.\n\nHintergrundaufrufe (etwa das Pollen des Belegtstatus) sollen das Leerlauf-Fenster **nicht** verlängern und senden dazu `X-FuBo-Kein-Refresh: true`. Ohne diesen Header würde „15 Minuten Inaktivität\" den offenen Browser-Tab messen statt den Nutzer.\n\n### CORS\nFrontend und API liegen auf Subdomains derselben registrierbaren Domain (`app.<domain>` / `api.<domain>`). Der Server führt eine Allowlist mit `allowCredentials=true`; erlaubte Anfrageheader sind `Content-Type` und `X-FuBo-Kein-Refresh`, freigegebener Antwortheader ist `Retry-After`.\n\n### Datenschutz\nSkillbewertungen verlassen den Server nie in Richtung USER oder GAST (Anforderung A12). Sie erscheinen **ausschliesslich in Antworten unterhalb von `/admin/`** – heute in `GET /admin/user/lesen` – und erreichen `USER` und `GAST` nie; die Teamgenerierung läuft vollständig serverseitig.\n\n**Die Bilanz aus S6 ist davon ausgenommen**, und das ist kein Widerspruch: Siege und Niederlagen sind Statistik und keine Bewertung. Sie stehen deshalb sowohl in `SpielerDetails` als auch in `GET /bilanz/lesen`, wo jeder Angemeldete **seine eigene** abruft. A16 bleibt unberührt – Ergebnisse wirken nicht auf Skillwerte zurück.\n\nBis S2b enthielt kein Antwortobjekt dieser Beschreibung Skillwerte. Seit S3 gilt die genauere Fassung oben: Der Prüfpunkt ist nicht mehr „kommen Skillwerte vor\", sondern „kommen sie ausserhalb von `/admin/` vor\".\n\n### Nicht enthalten\n`GET /actuator/health` bleibt bewusst unversioniert und ist kein Teil der fachlichen API. Der Endpunkt dient dem Container-Healthcheck und wird von nginx nach außen abgeschottet.",
+    "description": "Maßgebliche Beschreibung der REST-Schnittstelle des FuBo-Servers.\n\n**Diese Datei ist die Quelle der Wahrheit für den Client-Track.** Server und Client liegen in getrennten Repositories; eine Vertragsänderung wird deshalb immer zuerst hier abgebildet und der Client anschließend nachgezogen.\n\n**Stand:** S2 (Auth und Session), S2b (Zugangsdatenpflege und Spielerverwaltung), S3 (Profile, Skills, Konfiguration, Gastverwaltung), **S4 vollständig**, **S5 vollständig**, **S6 vollständig**, **S7 vollständig** und **S8 vollständig** – Push-Benachrichtigungen (A25): Abonnement je Gerät, ein Personenschalter, die Statusauskunft über die beiden serverseitigen Ebenen und der Probeversand des Admins; versandt wird zu zwei Anlässen, der Erinnerung an eine offene Rückmeldung und der Terminabsage; dazu S7 – der Hallenmodus: den gebuchten Hallentermin per E-Mail absagen, begrenzt durch eine Vorlauffrist aus der Konfiguration; dazu S6 – die Ergebniserfassung: den Ausgang eines Termins eintragen (der erste Eintrag gilt), ihn als Admin korrigieren, ihn in der Einzelansicht lesen und die eigene Bilanz abrufen; dazu S5 – der Teamgenerator: die Einteilung eines Termins anstoßen und lesen, der Auswechselspieler bei ungerader Teilnehmerzahl und der manuelle Lauf des Admins ohne Termin (A24); dazu S4 – Termine lesen, Einzeltermin anlegen, ändern, absagen und entfernen, Terminserien, Zu- und Absagen von Spielern und Gästen, die Teilnehmerliste samt Warteschlange und die Skill-Stufe eines Gastes.\n\n**Noch nicht enthalten und deshalb hier nicht beschrieben:** Härtung und Deployment (S9) – sie bringen keine Endpunkte. Spekulative Endpunkte wären ein Vertrag über etwas, das es nicht gibt.\n\n**Der Inhalt einer Push-Nachricht steht ebenfalls nicht hier**, obwohl der Server ihn bestimmt: Er verlässt den Server nicht über diese Schnittstelle, sondern als nach RFC 8291 verschlüsselter Rumpf an den Push-Dienst des Browserherstellers. Der Service Worker des Clients wertet ihn aus; er trägt immer einen fertigen Titel und einen Rückfalltext und ist damit ohne Rückfrage anzeigbar – **das muss er sein**, denn die Erinnerung geht rund 24 Stunden vor dem Termin hinaus, und die Sitzung des Empfängers ist dann längst abgelaufen.\n\n**Auch das Audit-Log ist nicht enthalten**, obwohl A21 verlangt, dass Erfassung und Korrektur protokolliert werden: Sie *werden* protokolliert, aber keine Anforderung verlangt, das Protokoll abzurufen. Es trägt personenbezogene Daten und unterliegt einer Löschfrist von 30 Tagen; es nach außen zu öffnen wäre eine eigene Entscheidung mit Filter, Blätterung und Feldauswahl.\n\n**Vier Dinge geschehen ohne Zutun des Clients:** Ein Termin wird bei seinem Beginn selbsttätig fixiert und wechselt 30 Minuten später von `GEPLANT` auf `ABGESCHLOSSEN` (A18) – ab der Fixierung liefert `POST /teams/generieren` ein `409 TEAMS_FIXIERT`, und wird der Termin danach in die Zukunft verschoben, fällt die Fixierung zurück; eine erneute Zusage stellt in der Warteschlange hinten an; eine Änderung an den Skillwerten eines zugesagten Spielers erhöht die `teilnehmerVersion` seiner künftigen Termine; und **das Sperren eines Profils nimmt dessen Zusagen für künftige Termine zurück** – die Teilnehmerliste wird dadurch kürzer, ohne dass jemand abgesagt hätte.\n\n### Versionierung\nJeder fachliche Endpunkt liegt unter `/api/{version}/<bereich>/<ressource>/<aktion>`. Die Version steht als Präfix an Segment-Index 1, die Aktion als eigenes Segment am Ende. Umgesetzt mit `ApiVersionConfigurer#usePathSegment` aus Spring Framework 7.\n\n- `/api/v1/...` und `/api/1/...` werden beide als Version 1 gelesen; nach außen wird durchgängig `v1` verwendet.\n- Eine unbekannte Version (`/api/v99/...`) liefert `400`.\n- Ein fehlendes Versionssegment liefert `404` – ohne das Segment passt der Pfad schlicht auf kein Mapping.\n\n### Authentifizierung\nOpakes Session-Cookie (`FUBO_SESSION`, `HttpOnly`, `Secure`, `SameSite=Lax`, kein Ablaufdatum). Das Frontend kann den Token weder lesen noch prüfen und muss das auch nicht: Die Validierung passiert ausschließlich serverseitig in der Filterchain. Alle Aufrufe erfolgen mit `credentials: 'include'`.\n\n**Die zentrale PIN besteht aus vier Ziffern.** Das Eingabefeld im Frontend darf darauf ausgelegt werden. `POST /auth/pin/pruefen` schreibt der Eingabe trotzdem **kein** Format vor – ein abweichender Bestandswert aus der Erstkonfiguration muss eingebbar bleiben, und eine Mindestlänge im Vertrag wäre eine Auskunft über das Format der echten PIN. Verbindlich ist das Format nur beim *Setzen* über `POST /admin/pin/aendern`.\n\nDer Login ist zweistufig und wird serverseitig erzwungen:\n1. `PIN_VERIFIED` – zentrale PIN geprüft, Identität noch offen.\n2. `PROFILE_AUTHENTICATED` – erst hier existiert eine Rolle. Es führen drei Wege dorthin: Namensauswahl (`USER`), Gast-Login (`GAST`) und Admin-Login mit Passwort (`ADMIN`).\n\n**Das Adminprofil ist ein technisches Konto.** Es steht nicht in der Namensliste, nimmt an keinem Termin teil und wird nie in ein Team eingeteilt; seine Skillwerte stehen auf 0. Der Admin meldet sich deshalb über `POST /api/v1/auth/admin/anmelden` mit seinem Passwort an – die Namensauswahl lehnt das Adminprofil auch dann ab, wenn seine Id bekannt ist.\n\nBei jedem Stufenwechsel und bei jeder Erneuerung wird der Token rotiert (Schutz vor Session Fixation). Die `session.id` bleibt dabei erhalten.\n\n### Sitzungsdauer (Zwei-Timer-Modell)\n`gueltigBis` ist ein gleitendes Leerlauf-Fenster (Vorgabe 15 Minuten) und wandert bei jedem Aufruf nach hinten. `absolutGueltigBis` ist eine harte Obergrenze (Vorgabe 1 Stunde) und wird nie verschoben – auch nicht durch `/auth/session/erneuern`.\n\nHintergrundaufrufe (etwa das Pollen des Belegtstatus) sollen das Leerlauf-Fenster **nicht** verlängern und senden dazu `X-FuBo-Kein-Refresh: true`. Ohne diesen Header würde „15 Minuten Inaktivität\" den offenen Browser-Tab messen statt den Nutzer.\n\n### CORS\nFrontend und API liegen auf Subdomains derselben registrierbaren Domain (`app.<domain>` / `api.<domain>`). Der Server führt eine Allowlist mit `allowCredentials=true`; erlaubte Anfrageheader sind `Content-Type` und `X-FuBo-Kein-Refresh`, freigegebener Antwortheader ist `Retry-After`.\n\n### Datenschutz\nSkillbewertungen verlassen den Server nie in Richtung USER oder GAST (Anforderung A12). Sie erscheinen **ausschliesslich in Antworten unterhalb von `/admin/`** – heute in `GET /admin/user/lesen` – und erreichen `USER` und `GAST` nie; die Teamgenerierung läuft vollständig serverseitig.\n\n**Die Bilanz aus S6 ist davon ausgenommen**, und das ist kein Widerspruch: Siege und Niederlagen sind Statistik und keine Bewertung. Sie stehen deshalb sowohl in `SpielerDetails` als auch in `GET /bilanz/lesen`, wo jeder Angemeldete **seine eigene** abruft. A16 bleibt unberührt – Ergebnisse wirken nicht auf Skillwerte zurück.\n\nBis S2b enthielt kein Antwortobjekt dieser Beschreibung Skillwerte. Seit S3 gilt die genauere Fassung oben: Der Prüfpunkt ist nicht mehr „kommen Skillwerte vor\", sondern „kommen sie ausserhalb von `/admin/` vor\".\n\n### Nicht enthalten\n`GET /actuator/health` bleibt bewusst unversioniert und ist kein Teil der fachlichen API. Der Endpunkt dient dem Container-Healthcheck und wird von nginx nach außen abgeschottet.",
     "contact": {
       "name": "FuBo-Server",
       "url": "https://github.com/DenKim94/FuBo-Server"
@@ -74,6 +74,10 @@
     {
       "name": "Hallenmodus",
       "description": "Den gebuchten Hallentermin beim Betreiber per E-Mail absagen (A23). **Genau ein Endpunkt** – eine Buchung anzulegen oder zu verwalten sieht A23 nicht vor, und es gibt genau eine Halle: `halleEmail` steht in der Konfiguration, nicht am Termin. **Gelesen wird der Zustand nicht hier**, sondern als Feld `halleAbgesagtAm` in `GET /termine/{terminId}/lesen` – dieselbe Überlegung wie bei Teameinteilung und Ergebnis."
+    },
+    {
+      "name": "Push",
+      "description": "Push-Benachrichtigungen (A25). **Drei Bedingungen gelten gleichzeitig**, auf drei Ebenen mit drei verschiedenen Entscheidern: die Anlage (`pushAktiv` in der Konfiguration, der Admin), die Person (`pushErwuenscht`, der Spieler selbst) und das Gerät (ein Abonnement im Browser). Fällt eine weg, kommt nichts an – **stillschweigend**, denn das ist der Normalzustand vieler Spieler und kein Fehler.\n\n**Eine Meldung „keine Benachrichtigungen“ ohne Angabe der Ebene schickt den Nutzer an die falsche Stelle.** Zwei Ebenen liefert `GET /push/status/lesen`, die dritte liest der Client lokal über `pushManager.getSubscription()`.\n\n**`GAST` bekommt an jedem dieser Pfade `403`** (A25d) – nicht `401` und keine leere Antwort. Die Push-Einstellungen gehören in der Gastansicht **ausgeblendet**, nicht deaktiviert angezeigt.\n\n**iOS:** Web Push gibt es erst ab 16.4 und **nur nach „Zum Home-Bildschirm“**. Auf dem iPhone ist die PWA-Installation die technische Voraussetzung; die Berechtigung ist aus einer Nutzergeste heraus zu erfragen."
     }
   ],
   "security": [
@@ -2578,6 +2582,284 @@
           }
         }
       }
+    },
+    "/api/v1/push/schluessel/lesen": {
+      "get": {
+        "tags": [
+          "Push"
+        ],
+        "operationId": "pushSchluesselLesen",
+        "summary": "Öffentlichen VAPID-Schlüssel lesen",
+        "description": "Liefert den öffentlichen VAPID-Schlüssel, mit dem der Client im Browser abonniert (A25b). Verlangt `USER` oder `ADMIN`; **`GAST` bekommt `403`** (A25d).\n\n**Nicht ins Frontend einbauen, sondern hier holen.** Ein Wechsel des Schlüsselpaares entwertet sämtliche bestehenden Abonnements – dass der Client den neuen sofort bekommt, ist die Bedingung dafür, dass die Spieler erneut zustimmen können.\n\n**`503` heisst „auf diesem Server nicht eingerichtet“.** Dann gibt es keine Push-Funktion, und es wird auch keine geben, ohne dass der Betreiber etwas tut: Der Bereich gehört ausgeblendet, ein erneuter Versuch bringt nichts.",
+        "responses": {
+          "200": {
+            "description": "Der öffentliche Schlüssel.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VapidSchluesselInfo"
+                },
+                "example": {
+                  "vapidPublicKey": "BP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A8"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
+          },
+          "503": {
+            "description": "`PUSH_NICHT_KONFIGURIERT` – auf diesem Server sind keine VAPID-Schlüssel hinterlegt.\n\n**Das heisst „gibt es hier nicht“, nicht „Fehler“.** Der Bereich wird ausgeblendet; **Wiederholen hilft nie**. Bewusst nicht `VERSAND_FEHLGESCHLAGEN` – jener Code bedeutet „ein nachgelagerter Dienst war nicht erreichbar, wiederhole den Aufruf“.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/push/abo/anlegen": {
+      "post": {
+        "tags": [
+          "Push"
+        ],
+        "operationId": "pushAboAnlegen",
+        "summary": "Abonnement dieses Geräts anlegen oder auffrischen",
+        "description": "Meldet das Abonnement der aufrufenden Browserinstallation an (A25c). Verlangt `USER` oder `ADMIN`; **`GAST` bekommt `403`** (A25d).\n\n**Bei jedem Anwendungsstart aufrufen, nicht nur beim ersten Zustimmen.** Der Aufruf ist über einen Hash der Endpoint-Adresse idempotent und **heilt genau den Fall, in dem der Server das Abonnement nach einem `410` des Push-Dienstes deaktiviert hat, der Browser es aber noch führt**. Ohne diesen Aufruf bekäme der Spieler nie wieder eine Nachricht – und niemand könnte sagen, warum, weil „keine Nachricht“ der Normalzustand vieler Spieler ist.\n\n**Der Unique-Constraint gilt global, nicht je Spieler:** Die Adresse identifiziert eine Browserinstallation, keine Person. Meldet sich auf einem geteilten Gerät ein anderer Spieler an, wechselt das Abonnement die Person.\n\n**Einen Anzeigenamen für das Gerät gibt es nicht** – der Server bildet ihn aus dem `User-Agent`. Ein Eingabefeld dafür wird es nicht geben.\n\n**Ohne eingerichtete VAPID-Schlüssel antwortet der Endpunkt trotzdem `200`**, anders als `/push/schluessel/lesen`: Das Abonnement bleibt gespeichert und nur wirkungslos, und der Betreiber, der die Schlüssel nachträgt, muss nicht jeden Spieler erneut bitten.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AboAnlegenRequest"
+              },
+              "example": {
+                "endpoint": "https://fcm.googleapis.com/fcm/send/dAbC123_xyz",
+                "p256dh": "BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4",
+                "auth": "BTBZMqHH6r4Tts7J_aSIgg"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Angelegt oder aufgefrischt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AboZustand"
+                },
+                "example": {
+                  "aboVorhanden": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/EingabeUngueltig"
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
+          }
+        }
+      }
+    },
+    "/api/v1/push/abo/entfernen": {
+      "post": {
+        "tags": [
+          "Push"
+        ],
+        "operationId": "pushAboEntfernen",
+        "summary": "Abonnement dieses Geräts widerrufen",
+        "description": "Widerruft das Abonnement der **aufrufenden** Browserinstallation (A25c). Verlangt `USER` oder `ADMIN`; **`GAST` bekommt `403`** (A25d).\n\n**Abschalten und Widerrufen sind zwei Handlungen, und die Oberfläche muss den Unterschied benennen.** Dieser Aufruf betrifft nur dieses Gerät; `/push/einstellung/aendern` gilt für alle Geräte des Spielers und löscht kein Abonnement – sonst verlangte das Wiedereinschalten einen neuen Browserdialog. Wer stattdessen die Berechtigung im Browser entzieht, braucht ebenfalls einen neuen Dialog.\n\n**Ein unbekanntes oder fremdes Abonnement ergibt ebenfalls `200`.** Löschen ist idempotent; ein `404` zwänge den Client zu einer Fallunterscheidung ohne Nutzen – und verriete, ob eine fremde Adresse existiert. Die Zeile eines anderen Spielers bleibt dabei stehen.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AboEntfernenRequest"
+              },
+              "example": {
+                "endpoint": "https://fcm.googleapis.com/fcm/send/dAbC123_xyz"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Für dieses Gerät besteht kein Abonnement mehr – auch dann, wenn keines bestand.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AboZustand"
+                },
+                "example": {
+                  "aboVorhanden": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/EingabeUngueltig"
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
+          }
+        }
+      }
+    },
+    "/api/v1/push/einstellung/aendern": {
+      "post": {
+        "tags": [
+          "Push"
+        ],
+        "operationId": "pushEinstellungAendern",
+        "summary": "Eigenen Personenschalter setzen",
+        "description": "Setzt `pushErwuenscht` für den Aufrufer (A25f). Verlangt `USER` oder `ADMIN`; **`GAST` bekommt `403`** (A25d).\n\n**Der Schalter wirkt auf beide Versandanlässe.** Wer abschaltet, erfährt auch eine Terminabsage erst beim Öffnen der Anwendung – **darauf ist beim Abschalten einmal hinzuweisen**; einen Schalter je Anlass gibt es bewusst nicht.\n\n**Er löscht keine Abonnements**, und es gibt keinen Admin-Endpunkt dafür: Die Spieler-Id kommt aus der Sitzung.\n\n**Folge, die man kennen muss:** Schaltet ein Spieler um, während der Admin sein Profil geöffnet hat, bekommt der Admin beim Speichern `409 DATEN_VERALTET`. Das ist gewolltes Verhalten – die Zeile *hat* sich geändert.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EinstellungAendernRequest"
+              },
+              "example": {
+                "pushErwuenscht": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Der gespeicherte Stand.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PushEinstellung"
+                },
+                "example": {
+                  "pushErwuenscht": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/EingabeUngueltig"
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
+          },
+          "404": {
+            "description": "`INHALT_NICHT_GEFUNDEN` – es gibt kein Profil mit dieser Id. Bei gültiger Sitzung nicht erreichbar: Das Entfernen eines Profils widerruft dessen Sitzungen.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/push/status/lesen": {
+      "get": {
+        "tags": [
+          "Push"
+        ],
+        "operationId": "pushStatusLesen",
+        "summary": "Die beiden serverseitigen Ebenen lesen",
+        "description": "Liefert `anlageAktiv` und `pushErwuenscht` getrennt (A25e, A25f). Verlangt `USER` oder `ADMIN`; **`GAST` bekommt `403`** (A25d).\n\n**Drei Bedingungen gelten gleichzeitig; zwei davon stehen hier, die dritte im Browser.** Kommt nichts an, obwohl alles grün aussieht, ist das der Ort, an dem sich die Ursache benennen lässt – eine Meldung ohne Angabe der Ebene schickt den Nutzer an die falsche Stelle.\n\n**Die Geräteebene liefert der Server nicht.** Ein `GET` könnte das aufrufende Gerät nicht identifizieren, ohne die Endpoint-Adresse in die URL zu schreiben; der Client liest sie lokal über `pushManager.getSubscription()` – dort ist sie ohnehin aktueller.\n\n**Der Aufruf ändert nichts** und eignet sich für die Einstellungsansicht.",
+        "responses": {
+          "200": {
+            "description": "Anlagen- und Personenebene.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PushStatus"
+                },
+                "example": {
+                  "anlageAktiv": true,
+                  "pushErwuenscht": true
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
+          },
+          "404": {
+            "description": "`INHALT_NICHT_GEFUNDEN` – es gibt kein Profil mit dieser Id. Bei gültiger Sitzung nicht erreichbar.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/push/test": {
+      "post": {
+        "tags": [
+          "Push"
+        ],
+        "operationId": "pushProbeversand",
+        "summary": "Probeversand an die eigenen Geräte",
+        "description": "Versendet eine Testbenachrichtigung an die **eigenen** aktiven Abonnements des Aufrufers. Verlangt die Rolle `ADMIN`.\n\n**Er prüft die drei Versandbedingungen nicht.** Der Admin ist Absender und Empfänger in einer Person und hat den Versand ausdrücklich angefordert; ihn zu zwingen, erst den Anlagenschalter einzuschalten, um zu prüfen, ob das Einschalten etwas bringt, drehte die Reihenfolge um.\n\n**Der Preis gehört auf den Bildschirm: Ein erfolgreicher Probeversand beweist nicht, dass Spieler etwas bekommen.** Er beweist, dass Schlüssel, Verschlüsselung und der Weg zum Push-Dienst tragen – und genau das kann sonst nichts prüfen, denn ein Fehler in der Verschlüsselung fällt nirgends auf: Der Push-Dienst antwortet auch darauf mit `201`, und beim Empfänger erscheint nur nichts. Die Oberfläche zeigt deshalb `anlageAktiv` aus `GET /push/status/lesen` daneben.\n\n**`empfaenger: 0` ist kein Fehler**, sondern „auf diesem Konto ist kein Gerät angemeldet“. Das Adminprofil darf abonnieren – es ist von der Empfängerauswahl der Erinnerung ausgenommen, nicht vom Abonnieren.\n\n**Der Aufruf hat keinen Körper.** Inhalt und Empfänger stehen fest.",
+        "responses": {
+          "200": {
+            "description": "Der Versand ist durch; die Zahlen sagen, wie weit er kam.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Probeversand"
+                },
+                "example": {
+                  "empfaenger": 2,
+                  "zugestellt": 2
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/SitzungUngueltig"
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
+          },
+          "503": {
+            "description": "`PUSH_NICHT_KONFIGURIERT` – auf diesem Server sind keine VAPID-Schlüssel hinterlegt.\n\n**Das heisst „gibt es hier nicht“, nicht „Fehler“.** Der Bereich wird ausgeblendet; **Wiederholen hilft nie**. Bewusst nicht `VERSAND_FEHLGESCHLAGEN` – jener Code bedeutet „ein nachgelagerter Dienst war nicht erreichbar, wiederhole den Aufruf“.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2756,7 +3038,8 @@
           "HALLE_FRIST_ABGELAUFEN",
           "HALLE_NICHT_KONFIGURIERT",
           "HALLE_BEREITS_ABGESAGT",
-          "HALLE_MODUS_INAKTIV"
+          "HALLE_MODUS_INAKTIV",
+          "PUSH_NICHT_KONFIGURIERT"
         ]
       },
       "Stage": {
@@ -4299,6 +4582,138 @@
           "niederlagen",
           "unentschieden"
         ]
+      },
+      "VapidSchluesselInfo": {
+        "type": "object",
+        "description": "Der öffentliche VAPID-Schlüssel dieses Servers.\n\n**Kein Geheimnis:** Der Client braucht ihn, um im Browser zu abonnieren (`pushManager.subscribe({ applicationServerKey })`), und er geht ohnehin in jede Push-Anfrage des Servers ein. Der private Schlüssel verlässt den Server nie.\n\n**Nicht ins Frontend einbauen.** Ein dort hinterlegter Schlüssel wäre ein zweiter Ort, an dem er steht – und ein Wechsel des Paares entwertet sämtliche bestehenden Abonnements. Dass der Client den neuen sofort bekommt, ist die Bedingung dafür, dass die Spieler erneut zustimmen können.",
+        "required": [
+          "vapidPublicKey"
+        ],
+        "properties": {
+          "vapidPublicKey": {
+            "type": "string",
+            "description": "Unkomprimierter P-256-Punkt als base64url ohne Polsterung, 87 Zeichen, beginnend mit `B`."
+          }
+        }
+      },
+      "AboAnlegenRequest": {
+        "type": "object",
+        "description": "Die drei Werte aus `PushSubscription` der Push-API des Browsers.\n\n**Eine Spieler-Id steht bewusst nicht darin** – sie kommt aus der Sitzung; sonst abonnierte jemand für einen anderen. **Einen Anzeigenamen für das Gerät gibt es nicht** und wird es nicht geben: Der Server bildet ihn aus dem `User-Agent`.",
+        "required": [
+          "endpoint",
+          "p256dh",
+          "auth"
+        ],
+        "properties": {
+          "endpoint": {
+            "type": "string",
+            "maxLength": 2048,
+            "description": "Adresse beim Push-Dienst des Herstellers. **Muss mit `https://` beginnen.** Unverändert übernehmen – nicht kleinschreiben, keinen Schrägstrich anhängen: Die Adresse ist ein opakes Kennzeichen, jede Bearbeitung macht daraus eine andere."
+          },
+          "p256dh": {
+            "type": "string",
+            "minLength": 80,
+            "maxLength": 120,
+            "description": "Öffentlicher Schlüssel der Browserinstallation als base64url (65 Byte ergeben 88 Zeichen). `+` und `/` sind unzulässig, eine Polsterung am Ende ist erlaubt."
+          },
+          "auth": {
+            "type": "string",
+            "minLength": 16,
+            "maxLength": 32,
+            "description": "Geheimnis des Abonnements als base64url (16 Byte ergeben 22 Zeichen)."
+          }
+        }
+      },
+      "AboEntfernenRequest": {
+        "type": "object",
+        "description": "Die Adresse des Abonnements, das widerrufen werden soll.\n\n**Der Server nimmt die Spieler-Id aus der Sitzung hinzu:** Eine fremde Adresse lässt die Zeile stehen und antwortet trotzdem `200`.",
+        "required": [
+          "endpoint"
+        ],
+        "properties": {
+          "endpoint": {
+            "type": "string",
+            "maxLength": 2048,
+            "description": "Adresse des Abonnements, wie der Browser sie liefert."
+          }
+        }
+      },
+      "AboZustand": {
+        "type": "object",
+        "description": "Der erreichte Zustand des **aufrufenden Geräts**, nicht der Ausgang des Vorgangs.\n\nNach dem Anlegen `true`, nach dem Entfernen `false` – **auch dann, wenn gar keine Zeile betroffen war.** Beide Aufrufe sind idempotent, und beide Male ist die Aussage dieselbe: So steht es jetzt.",
+        "required": [
+          "aboVorhanden"
+        ],
+        "properties": {
+          "aboVorhanden": {
+            "type": "boolean",
+            "description": "Ob für dieses Gerät jetzt ein aktives Abonnement besteht."
+          }
+        }
+      },
+      "EinstellungAendernRequest": {
+        "type": "object",
+        "description": "Der Personenschalter des Aufrufers (A25f).\n\n**Das Feld ist Pflicht**, kein stillschweigendes `false`: Ein Client, der es wegließe, schaltete Push bei jedem Speichern ab und bekäme `200`. Dieselbe Regel wie bei `hallenModusAktiv` und `pushAktiv` im Konfigurations-Voll-Update.\n\n**Eine Spieler-Id gibt es nicht** – der Schalter ist nicht überschreibbar, und es gibt bewusst keinen Admin-Endpunkt dafür.",
+        "required": [
+          "pushErwuenscht"
+        ],
+        "properties": {
+          "pushErwuenscht": {
+            "type": "boolean",
+            "description": "Ob dieser Spieler Benachrichtigungen empfangen will. Wirkt auf **beide** Anlässe."
+          }
+        }
+      },
+      "PushEinstellung": {
+        "type": "object",
+        "description": "Der **gespeicherte** Stand des Personenschalters – nicht der gesendete. Der Client zeigt damit, was der Server führt.",
+        "required": [
+          "pushErwuenscht"
+        ],
+        "properties": {
+          "pushErwuenscht": {
+            "type": "boolean",
+            "description": "Der jetzt gespeicherte Stand."
+          }
+        }
+      },
+      "PushStatus": {
+        "type": "object",
+        "description": "Die beiden **serverseitigen** Ebenen der drei Versandbedingungen, getrennt.\n\n**Getrennt zu sein ist der ganze Zweck:** „vom Admin abgeschaltet“ und „von dir abgeschaltet“ verlangen verschiedene Handlungen. **Die Geräteebene fehlt mit Absicht** – ein `GET` könnte das aufrufende Gerät nicht identifizieren, ohne die Endpoint-Adresse in die URL zu schreiben; der Client liest sie lokal über `pushManager.getSubscription()`.\n\n**Ob Push auf diesem Server überhaupt eingerichtet ist, steht hier nicht** – das beantwortet `GET /push/schluessel/lesen` mit `503`.",
+        "required": [
+          "anlageAktiv",
+          "pushErwuenscht"
+        ],
+        "properties": {
+          "anlageAktiv": {
+            "type": "boolean",
+            "description": "`pushAktiv` aus der Konfiguration: ob die Anlage überhaupt versendet. Der Admin entscheidet darüber (A25e)."
+          },
+          "pushErwuenscht": {
+            "type": "boolean",
+            "description": "Ob dieser Spieler empfangen will. Nur er selbst entscheidet darüber (A25f)."
+          }
+        }
+      },
+      "Probeversand": {
+        "type": "object",
+        "description": "Das Ergebnis des Probeversands an die **eigenen** Geräte des Admins.\n\n**Ein erfolgreicher Probeversand beweist nicht, dass Spieler etwas bekommen** – er prüft die drei Versandbedingungen nicht. Er beweist, dass VAPID-Schlüssel, Verschlüsselung und der Weg zum Push-Dienst tragen, und genau das kann sonst nichts prüfen. **Die Oberfläche zeigt `anlageAktiv` daneben.**",
+        "required": [
+          "empfaenger",
+          "zugestellt"
+        ],
+        "properties": {
+          "empfaenger": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Angesprochene Abonnements – **Geräte, nicht Personen**. `0` ist kein Fehler, sondern „auf diesem Konto ist kein Gerät angemeldet“."
+          },
+          "zugestellt": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Abonnements, deren Push-Dienst die Nachricht angenommen hat. **Auch das ist keine Zustellbestätigung** – Web Push kennt keine. Eine Abweichung ist kein Fehlerfall; der Grund je Abonnement steht im Serverprotokoll."
+          }
+        }
       }
     }
   }
