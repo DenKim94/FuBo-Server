@@ -1,11 +1,13 @@
 ## Systemprompt – Server-Agent (FuBo Backend)
 
 > Gilt für den Agenten, der **ausschliesslich `server/`** verantwortet. Maßgeblich für
-> Gesamtspezifikation und Datenmodell bleibt `/PRJ_FuBo/harness/AGENT.md`, für den Kontrakt
+> Gesamtspezifikation bleibt `/PRJ_FuBo/harness/AGENT.md` und für das Datenmodell
+> `/PRJ_FuBo/harness/DATENMODELL.md`, für den Kontrakt
 > `server/fubo-api.json`, für Stand und Fallstricke `CONTEXT_HANDOFF_SERVER.md`.
 >
 > **Am 05.09.2026 verdichtet, am 06.09.2026 um die Regeln aus S5, am 12.09.2026 um die
-> Regeln aus S6 und am 13.09.2026 um die Regeln aus S7 ergänzt.** Jede Regel steht hier mit dem *einen* Grund, der sie trägt – wer
+> Regeln aus S6 und am 13.09.2026 um die Regeln aus S7 ergänzt; am 14.09.2026 um den
+> serverseitigen Anteil von A25 erweitert (S8, noch nicht umgesetzt).** Jede Regel steht hier mit dem *einen* Grund, der sie trägt – wer
 > sie ändern will, muss den Grund entkräften, nicht die Zeile löschen. **Vorfälle, Daten und
 > ausführliche Herleitungen stehen nicht mehr hier**, sondern in `CONTEXT_HANDOFF_SERVER.md`
 > (6.2 Festlegungen, 6.3 Fallstricke), in `harness/tmp/S<n>_UMSETZUNG.md` und in
@@ -186,6 +188,35 @@ Ergänzungen des Entwicklers sind als *Ergänzung* gekennzeichnet.
     Installation den einen Text und eine frische den anderen, und es fiele niemandem auf.
   - **Fehlt der Ort, entfällt die Zeile ganz** – nicht „Ort: —" und nicht „Ort: unbekannt". Der
     Betreiber hat nur die eine Halle.
+
+**Benachrichtigungen**
+
+- **A25** PWA und Push-Benachrichtigungen (Ergänzung vom 13.09.2026). **A25(a) ist reine
+  Client-Sache** – Manifest, Service Worker, Vollbildmodus; der Server stellt dafür nichts bereit
+  und braucht keine Anpassung. Serverseitig bleiben A25(b) bis A25(f).
+  - **Zwei Versandanlässe, keine weiteren.** Erinnerung an eine offene Rückmeldung (Vorlauf aus
+    `configs.app_config.push_erinnerung_stunden`, Vorgabe 24, Auftragstakt fünf Minuten) und
+    Terminabsage durch den Admin. **Weitere Anlässe sind ausgeschlossen** (Teameinteilung liegt
+    vor, Mindestanzahl erreicht) – sie feuern mehrfach je Termin, und der Empfänger entzieht dann
+    die Berechtigung im Browser. Danach erreicht ihn auch die Absage nicht mehr.
+  - **Drei Bedingungen als `AND`**, auf drei Ebenen, mit drei verschiedenen Entscheidern: Anlage
+    (`app_config.push_aktiv`, Admin, A25e), Person (`spieler.push_erwuenscht`, der Spieler selbst,
+    A25f) und Gerät (mindestens eine Zeile in `profil.push_abo` mit `deaktiviert_am IS NULL`,
+    A25c). **Fällt eine weg, unterbleibt der Versand stillschweigend** – kein Fehlerfall, sondern
+    der Normalzustand vieler Spieler.
+  - **Der Personenschalter ist nicht überschreibbar.** Die Spieler-Id stammt aus der Sitzung, nie
+    aus dem Rumpf, und es gibt bewusst **keinen** Admin-Endpunkt dafür (A25f). Er wirkt auf
+    **beide** Anlässe; eine Aufteilung nach Anlass gibt es nicht.
+  - **Abschalten und Widerrufen sind zwei Handlungen.** Der Personenschalter löscht keine
+    Abonnements – sonst verlangte das Wiedereinschalten einen neuen Browserdialog; der Widerruf
+    (A25c) betrifft nur das aufrufende Gerät.
+  - **Gäste sind ausgeschlossen** (A25d). Eine Gastsitzung hat kein Profil in `profil.spieler`;
+    ein Abonnement überdauerte die Sitzung und liesse sich danach keiner Person mehr zuordnen.
+    **Folge für die Filterchain:** Ohne ausdrückliche Regel wären die Push-Pfade für `GAST`
+    **offen**, nicht gesperrt – siehe „Push-Versand".
+  - **Der Server nimmt keinen Versandauftrag entgegen.** Der Client legt sein eigenes Abonnement
+    an und widerruft es, mehr nicht. Es entsteht **kein neuer eingehender Endpunkt** für den
+    Versand und damit keine Änderung an Nginx oder am Cloudflared-Tunnel.
 
 ---
 
@@ -443,6 +474,238 @@ veränderlich, und „an wen ist die Absage damals gegangen" ist genau die Frage
 stellt; der Text bläht die Tabelle auf, ohne etwas zu belegen, was nicht auch die Konfiguration
 belegt. Zeichenzahl und ein Kennzeichen für die Ersatzvorlage genügen.
 
+### Push-Versand (A25, S8)
+
+**Der Versand ist Serversache und rein ausgehend.** Der Server spricht die Push-Dienste der
+Browserhersteller über ausgehendes HTTPS an (RFC 8030), verschlüsselt die Nutzlast nach RFC 8291
+(`aes128gcm`) und signiert nach RFC 8292 (VAPID, Kurve P-256). Ein Schlüsselpaar für alle
+Hersteller; eine Registrierung bei Google, Mozilla oder Apple entfällt.
+
+**Keine Fremdbibliothek, JDK-Bordmittel.** `Signature.getInstance("SHA256withECDSAinP1363Format")`
+für das VAPID-JWT – die DER-Form der Standardvariante ist hier der klassische Fehler –,
+`KeyAgreement` für ECDH, `javax.crypto.KDF` (seit JDK 25 final) für HKDF-SHA256, `Cipher` für
+AES-GCM, `java.net.http.HttpClient` für den Transport. **Bedingung: Die Verschlüsselung wird gegen
+die Testvektoren aus RFC 8291, Anhang A geprüft.** Ein Fehler dort fällt sonst nicht auf – der
+Push-Dienst nimmt die Nachricht an, und sie wird beim Empfänger lediglich stillschweigend nicht
+entschlüsselt.
+
+**Der Versand liegt hinter der Schnittstelle `PushVersender`**, produktiv und als Testdoppelung.
+Ohne sie sind Empfängerauswahl und Einmalversand nicht prüfbar, ohne einen fremden Dienst
+anzusprechen.
+
+**Kein HTTP-Aufruf innerhalb einer offenen Transaktion.** Empfänger in einer kurzen Transaktion
+lesen, danach versenden, danach die Ergebnisse je Abonnement in eigenen kurzen Transaktionen
+schreiben. Andernfalls hielte ein Lauf mit dreissig Empfängern eine Verbindung aus dem Pool über
+dreissig Netzaufrufe hinweg belegt.
+
+**Der Versand hängt am Commit, nicht am Dienstaufruf:**
+`@TransactionalEventListener(phase = AFTER_COMMIT)`. Bei einem Rollback ginge sonst eine Absage
+hinaus, die fachlich nie stattgefunden hat – und anders als eine Datenbankzeile lässt sich eine
+zugestellte Benachrichtigung nicht zurückrollen. **S8 führt damit das erste Ereignis des Projekts
+ein**; bis S7 gibt es weder `ApplicationEventPublisher` noch Listener.
+
+**Der Listener läuft synchron im Anfrage-Thread und innerhalb des Commits** – die HTTP-Antwort geht
+erst hinaus, wenn er fertig ist. Daraus folgen zwei Regeln, die zusammen gelten:
+
+1. **Gesendet wird nebenläufig unter einer Gesamtfrist** (`fubo.push.versand-frist-millis`), nicht
+   seriell und **nicht über `@Async`**. Seriell wären dreissig Empfänger im schlechtesten Fall
+   zweieinhalb Minuten Wartezeit; `@Async` kostete eine eigene Aktivierungsklasse, deren Vergessen
+   die Annotation **wirkungslos macht, ohne Fehlermeldung**, dazu verschwindende Ausnahmen und einen
+   Wettlauf in jedem Test. Offene Aufrufe werden nach der Frist **abgebrochen und als Fehlversuch
+   gebucht** – ein weiterlaufender Aufruf schriebe sein Ergebnis sonst in eine Transaktion, die es
+   nicht mehr gibt. **Dieselbe Versandmethode bedient beide Anlässe:** Der Standard-Scheduler hat
+   Poolgröße 1, ein serieller Versand blockierte also auch den A18-Auftrag.
+2. **Der Listener fängt jede Ausnahme selbst ab.** Eine Ausnahme aus einem `AFTER_COMMIT`-Callback
+   propagiert zum Aufrufer, obwohl der Commit längst durch ist: Der Admin bekäme einen `500` für
+   eine Absage, die gespeichert wurde, und drückte ein zweites Mal. **Ein fehlgeschlagener Push
+   darf die Antwort auf die Absage nicht verändern.**
+
+**Ausgelöst wird vom Statuswechsel, nicht vom Endpunkt.** A25b nennt `/admin/termin/absagen`,
+aber **drei** Pfade setzen einen Termin von `GEPLANT` auf `ABGESAGT`: `TerminService#absagen`,
+`TerminService#aendern` mit Zielstatus `ABGESAGT` (A19) und seit S7 `HallenService#absagen`, das
+einen geplanten Termin mit absagt. Hinge das Ereignis an einem Endpunkt, bliebe eine Absage über
+die beiden anderen Wege stumm – und es fiele niemandem auf, weil ausbleibende Nachrichten der
+Normalfall sind. Der dritte Pfad schreibt nativ und veröffentlicht das Ereignis ausdrücklich.
+**Der Statuswechsel ist zugleich die Einmal-Bedingung:** `ABGESAGT` ist nur aus `GEPLANT` heraus
+erreichbar und endgültig; eine zusätzliche Spalte braucht es nicht.
+
+**Einmalversand der Erinnerung über einen bedingten `UPDATE` vor dem Versand:**
+`UPDATE termin SET push_erinnerung_am = now() WHERE id = :id AND push_erinnerung_am IS NULL` –
+dasselbe Muster wie `halle_abgesagt_am` (A23). **Die Reihenfolge ist bewusst gewählt:** Ein
+Absturz mitten im Versand kostet einzelne Nachrichten; markierte man erst danach, bekämen nach
+einem Neustart **alle** Empfänger die Nachricht ein zweites Mal. `version` steigt mit – im selben
+Vorgang darf deshalb keine `Termin`-Entity geladen sein, dieselbe Regel wie bei der Hallenabsage
+und beim Rückmeldepfad.
+
+**Ein verschobener Termin setzt `push_erinnerung_am` zurück** (Entscheidung vom 14.09.2026) –
+unter derselben Bedingung wie `teams_fixiert`, also nur bei echter Änderung von Datum oder Uhrzeit,
+nicht bei einer Ortskorrektur. Sonst nennte die versandte Nachricht ein Datum, das nicht mehr gilt,
+und der Termin bekäme nie wieder eine Erinnerung. **Es ist kein dritter Anlass:** Empfänger bleiben
+ausschliesslich die, die noch nicht geantwortet haben.
+
+**Eine einzelne Nachricht wird nie wiederholt.** `fehlversuche` ist ein Gesundheitszähler des
+Abonnements, keine Warteschlange: Der Termin ist nach dem bedingten `UPDATE` markiert, der nächste
+Lauf überspringt ihn. Ein `5xx` des Push-Dienstes kostet diesem Empfänger diese Erinnerung – das
+ist der Preis des Doppelversandschutzes und bewusst so herum gewählt.
+
+| Antwort des Dienstes | Reaktion |
+|---|---|
+| `201`, `200` | `letzter_versand_am` setzen, `fehlversuche` auf `0` |
+| `404`, `410` | `deaktiviert_am = now()`, kein weiterer Versuch |
+| `429`, `5xx` | `fehlversuche + 1`; ab fünf Fehlversuchen deaktivieren |
+| `413` | Anwendungsfehler, kein Abonnementfehler – die Nutzlast bleibt unter 3 000 Byte (Grenze 4 096) |
+
+**Die Empfängerabfrage der Erinnerung filtert `rolle <> 'ADMIN'`** – wie jede Abfrage, die
+Mitspieler aufzählt. Das Adminprofil ist ein technisches Konto, trägt `push_erwuenscht = true` und
+hat nie eine Teilnahmezeile; ohne den Filter bekäme es zu **jedem** Termin die Aufforderung, eine
+Rückmeldung abzugeben, die ihm `409 PROFIL_GESCHUETZT` verweigert. **Abonnent bleibt es trotzdem** –
+`/admin/push/test` versendet an seine eigenen Geräte.
+
+**Die Fälligkeit wird in `fubo.zeitzone` gerechnet und als Parameter übergeben**, nie über
+`current_timestamp` in der Abfrage. `termin.datum` und `.uhrzeit` sind `DATE`/`TIME` ohne Zone; ein
+Container auf UTC verschöbe die Erinnerung um ein bis zwei Stunden. **Das Zeitfenster ist
+beidseitig begrenzt** (`beginn > jetzt` **und** `beginn <= jetzt + vorlauf`): Nach einem längeren
+Stillstand träfe eine einseitige Bedingung auch Termine, die bereits begonnen haben, und eine
+Erinnerung an ein laufendes Spiel ist schlechter als keine.
+
+**VAPID-Schlüssel sind Betriebsgeheimnisse** und stehen ausschliesslich in Umgebungsvariablen,
+**nie in `configs.app_config`** – die Konfigurationstabelle wird über einen Admin-Endpunkt gelesen
+und geschrieben. Gebunden wird unter `fubo.push.*` wie jeder externe Zugang (`MailConfig` ist das
+Vorbild), geprüft wird beim Start – **aber ohne Abbruch:** Fehlt einer der drei Werte, läuft die
+Anwendung mit einer Warnung weiter und behandelt Push als abgeschaltet; ein Startabbruch wäre
+unverhältnismässig, weil der Kernbetrieb ohne Push vollständig läuft. **Die Prüfung deckt den
+unaufgelösten Platzhalter mit ab** (`${`), nicht nur den leeren Wert – und `@NotBlank` am Record
+schiede doppelt aus: Es greift bei einem Platzhalter nicht und bräche genau den Start ab, der
+weiterlaufen soll.
+
+**Die Nutzlast wird serverseitig bestimmt und muss aus sich heraus anzeigbar sein.** Der Service
+Worker darf sie nicht über einen API-Aufruf ergänzen: Die Erinnerung geht rund 24 Stunden vor dem
+Termin hinaus, die Sitzung des Empfängers ist dann mit Sicherheit abgelaufen (gleitendes
+15-Minuten-Fenster, harte Obergrenze eine Stunde), und der Aufruf lieferte `401`. **Der Server
+liefert deshalb beides – einen fertigen Rückfalltext und die strukturierten Felder.** Grund ist
+`registerType: 'prompt'` im Client: Ein Nutzer kann das Update tagelang aufschieben, sein Service
+Worker kennt einen später eingeführten `typ` dann nicht; ohne Rückfalltext zeigte er nichts, und
+weil der Client beim Abonnieren `userVisibleOnly: true` zusagt, blendet der Browser dann von sich
+aus eine generische Meldung ein. Der Rückfalltext sichert eine eingegangene Zusage ab.
+
+**Die Formulierung steht im Code, nicht in `configs.app_config`** – anders als die Absagevorlage
+des Hallenmodus (A23). Der Unterschied ist der Adressat: Jene geht an einen Aussenstehenden in
+einer Sache, die der Admin verantwortet, der Wortlaut gehört ihm. Diese ist Oberflächentext für
+die eigenen Nutzer; in der Konfiguration stünde sie an einem zweiten Ort neben dem Rückfalltext im
+Code, und zwei Wahrheiten laufen auseinander. Zudem erschiene ein frei editierbarer Text im Namen
+der Anwendung auf fremden Sperrbildschirmen.
+
+**Inhaltsschranken wie an der API-Grenze:** keine Skillwerte, keine Zugangsdaten, **keine Namen
+Dritter**, unter 3 000 Byte. Die Nutzlast ist nach RFC 8291 Ende-zu-Ende verschlüsselt, läuft aber
+über fremde Server – es gilt dieselbe Sparsamkeit.
+
+**`geraet_bezeichnung` nimmt der Server nicht vom Client entgegen**, sondern kürzt sie aus dem
+`User-Agent`-Kopf. Ein frei wählbarer Anzeigename wäre eine vom Client bestimmte Zeichenkette, die
+in der Oberfläche eines anderen Nutzers landen kann – ohne Gewinn, da der Zweck allein das
+Wiedererkennen des eigenen Geräts ist.
+
+**Anlegen ist idempotent über `endpoint_hash`** (`INSERT … ON CONFLICT (endpoint_hash) DO UPDATE`)
+und **setzt dabei `deaktiviert_am` und `fehlversuche` zurück**. Das heilt genau den Fall, in dem
+der Server ein Abonnement nach einem `410` deaktiviert hat, der Browser es aber noch führt – der
+Client meldet es bei jedem Anwendungsstart erneut an. **Der Unique-Constraint gilt global, nicht je
+Spieler:** Die Adresse identifiziert eine Browserinstallation, keine Person; auf einem geteilten
+Gerät muss das Abonnement die Person wechseln, sonst empfängt der vorherige Spieler weiter.
+
+**Der Widerruf löscht nur das eigene Abonnement:** `DELETE … WHERE endpoint_hash = :hash AND
+spieler_id = :eigene`. Ohne die zweite Bedingung entfernte ein Aufrufer mit einer fremden
+Endpoint-Adresse das Abonnement eines anderen – der Endpunkt liegt ausserhalb von `/admin/` und
+steht jedem Angemeldeten offen. **Ein unbekanntes Abonnement ist `200`**, Löschen ist idempotent;
+ein `404` zwänge den Client zu einer Fallunterscheidung ohne Nutzen.
+
+**Die Geräteebene fragt der Client nicht beim Server ab**, sondern liest sie lokal über
+`pushManager.getSubscription()`. Ein `GET` könnte das aufrufende Gerät gar nicht identifizieren,
+ohne die Endpoint-Adresse in die URL zu schreiben. `GET /push/status/lesen` liefert deshalb nur die
+beiden **serverseitigen** Ebenen getrennt (`anlageAktiv`, `pushErwuenscht`) – damit die Oberfläche
+sagen kann, *warum* nichts ankommt; „vom Admin abgeschaltet" und „von dir abgeschaltet" verlangen
+verschiedene Handlungen.
+
+**Die Filterchain braucht einen ausdrücklichen Eintrag für `/api/*/push/**`** mit
+`hasAnyRole("USER", "ADMIN")`. **Ohne ihn wären die Pfade für `GAST` offen, nicht gesperrt** – die
+letzte Regel lautet `anyRequest().hasAnyRole("USER", "ADMIN", "GAST")`, und A25d verlangt `403`.
+Das ist die **Umkehrung** des sonst üblichen Fehlerbilds: Ein vergessener Eintrag fällt hier nicht
+als `403` für Berechtigte auf, sondern als stiller Zugang für Gäste. Die Pfade stehen deshalb
+namentlich in `SecurityConfigTests`. `/api/*/admin/push/**` deckt die bestehende Adminregel bereits
+ab.
+
+**Der Aufräumlauf für abgelaufene Sitzungen entfernt zusätzlich Abonnements** mit `deaktiviert_am`
+älter als 30 Tage. **Der Aufruf geht über einen Dienst, nie über das fremde Repository** –
+dieselbe Regel wie beim Zugriff des Ergebnisdienstes auf die Bilanz. Ein Widerruf durch den Nutzer
+löscht dagegen sofort.
+
+**Der Erinnerungsauftrag ist über eine Konfigurationseigenschaft abschaltbar**, damit er in
+Integrationstests nicht nebenher läuft. `@EnableScheduling` steht bereits in `SchedulingConfig`;
+eine zweite Aktivierungsklasse gibt es nicht.
+
+**Genau eine Serverinstanz.** Der bedingte `UPDATE` auf `push_erinnerung_am` schützt gegen
+Doppelversand; eine zweite Instanz erzeugte vor allem Leerlauf. Sobald skaliert wird, ist eine
+Laufsperre (etwa ShedLock) zu ergänzen.
+
+**Audit:** `PUSH_ERINNERUNG_VERSANDT` und `PUSH_ABSAGE_VERSANDT` werden **je Lauf** protokolliert,
+mit der Empfängerzahl in `details` – nicht je Empfänger. **Der Personenschalter wird nicht
+protokolliert**: Er ist eine Nutzereinstellung, und sein Stand steht in `spieler.push_erwuenscht`.
+**An- und Abmeldung eines Abonnements werden nicht protokolliert** (Entscheidung vom
+14.09.2026, `AGENT.md` am selben Tag nachgezogen). Es ist eine Nutzerhandlung, ihr Zustand steht
+mit `erstellt_am` und `deaktiviert_am` vollständig in `profil.push_abo`, und die Endpoint-Adresse
+ist personenbezogen – ein zweiter Beleg verdoppelte sie in eine Tabelle, die nach 30 Tagen gelöscht
+wird und den Zustand damit nicht einmal überlebt. Dieselbe Regel wie bei den Rückmeldungen aus S4.
+**`AuditAktion` wächst damit von 27 auf 29 Werte, nicht auf 31.**
+
+### Push-Endpunkte und DTOs (A25, S8)
+
+Alle verlangen `stage = PROFILE_AUTHENTICATED`; die Rolle `GAST` erhält `403` (A25d). **Die Pfade
+sind nach dem Commit in `fubo-api.json` abzubilden**, das bei Abweichungen massgeblich bleibt.
+
+| Methode | Pfad | Rolle | Rumpf hinein | Rumpf hinaus |
+|---|---|---|---|---|
+| GET | `/api/v1/push/schluessel/lesen` | USER, ADMIN | – | `{ vapidPublicKey: string }` |
+| POST | `/api/v1/push/abo/anlegen` | USER, ADMIN | `{ endpoint, p256dh, auth }` | `{ aboVorhanden: true }` |
+| POST | `/api/v1/push/abo/entfernen` | USER, ADMIN | `{ endpoint }` | `{ aboVorhanden: false }` |
+| POST | `/api/v1/push/einstellung/aendern` | USER, ADMIN | `{ pushErwuenscht: boolean }` | `{ pushErwuenscht: boolean }` |
+| GET | `/api/v1/push/status/lesen` | USER, ADMIN | – | `{ anlageAktiv: boolean, pushErwuenscht: boolean }` |
+| POST | `/api/v1/admin/push/test` | ADMIN | – | `{ empfaenger: int, zugestellt: int }` |
+
+**Der Probeversand prüft die drei Versandbedingungen nicht** (Entscheidung vom 14.09.2026). Er
+geht an die **eigenen** aktiven Abonnements des Aufrufers und setzt nur eingerichtete
+VAPID-Schlüssel voraus (`503`); `empfaenger: 0` ist kein Fehler. Der Admin ist hier Absender und
+Empfänger in einer Person und hat den Versand ausdrücklich angefordert. **Der Preis gehört in die
+Endpunktbeschreibung:** Ein erfolgreicher Probeversand beweist nicht, dass Spieler etwas bekommen.
+
+**Bean Validation am Eingangs-DTO**, mit `400` und Feldangabe über die bestehende zentrale
+Fehlerbehandlung:
+
+| Feld | Regel | Begründung |
+|---|---|---|
+| `endpoint` | `@NotBlank`, `@Size(max = 2048)`, muss mit `https://` beginnen | verhindert, dass eine beliebige Adresse als Ziel hinterlegt wird |
+| `p256dh` | `@NotBlank`, base64url, Länge 80 bis 120 | 65 Byte Schlüssel ergeben 88 Zeichen |
+| `auth` | `@NotBlank`, base64url, Länge 16 bis 32 | 16 Byte Geheimnis ergeben 22 Zeichen |
+| `pushErwuenscht` | **`Boolean` mit `@NotNull`**, nie `boolean` | ein primitiver Wahrheitswert wäre bei fehlendem Feld stillschweigend `false` – dieselbe Regel wie bei `hallenModusAktiv` |
+
+**Fehlerverhalten:**
+
+| Lage | Antwort |
+|---|---|
+| Sitzung fehlt oder abgelaufen | `401` (wie überall, Filterchain) |
+| Sitzung in `PIN_VERIFIED` oder Rolle `GAST` | `403` (A25d) |
+| Rumpf verletzt die Validierung | `400 EINGABE_UNGUELTIG` mit Feldangabe |
+| `/push/abo/entfernen` für ein unbekanntes Abonnement | `200` – Löschen ist idempotent |
+| VAPID nicht konfiguriert (`/push/schluessel/lesen`, `/admin/push/test`) | `503` – die Funktion ist nicht eingerichtet, nicht der Aufruf falsch |
+
+**Ein einziger neuer Fehlercode.** `VERSAND_FEHLGESCHLAGEN` wird **nicht** wiederverwendet: Der
+Code bedeutet „ein nachgelagerter Dienst war nicht erreichbar, wiederhole den Aufruf" – hier ist
+nichts fehlgeschlagen, es ist nichts eingerichtet, und Wiederholen hilft nie. Alles Übrige kommt
+mit den bestehenden Codes aus.
+
+**Die Nutzlast ist kein DTO.** `PushNutzlast` liegt in `domain/push`, nicht in `dto/push`: `dto`
+beschreibt die Ein- und Ausgabe **an der API-Grenze**, und diese Nachricht verlässt den Server auf
+dem anderen Weg – als verschlüsselter Rumpf an einen fremden Push-Dienst. Sie trägt `typ`
+(`ERINNERUNG`, `TERMIN_ABGESAGT`), einen immer gefüllten `titel` und `text` als Rückfall, die
+Termin-Id, Datum, Uhrzeit, den optionalen `ort` (A18) und die Ziel-`url`.
+
 ### Audit-Log
 
 1. **Ausbreitung immer `REQUIRED`, nie `REQUIRES_NEW`** – ein Eintrag belegt eine *vollzogene*
@@ -579,6 +842,16 @@ BCrypt-Hash in einer Migration wäre ein Geheimnis in der unveränderlichen Git-
   Authentifizierungsfehler danach niemanden zur `.env` führt. Ein Skript liest nur die Schlüssel,
   die es braucht, ohne Interpretation; Docker Compose bekommt `--env-file .env`. **Preis:** Ein
   gelesener Wert ist reiner Text – eine führende Tilde muss das Skript selbst auflösen.
+- **Die drei VAPID-Variablen** stehen in der `.env` und werden nicht eingecheckt:
+  `FUBO_VAPID_PUBLIC_KEY`, `FUBO_VAPID_PRIVATE_KEY` (beide base64url) und `FUBO_VAPID_SUBJECT`
+  (`mailto:`- oder `https:`-Adresse des Betreibers, von Apple zwingend verlangt). **Ein
+  Schlüsselwechsel entwertet sämtliche bestehenden Abonnements** – sie sind an den öffentlichen
+  Schlüssel gebunden, und jeder Spieler müsste erneut zustimmen. Das Paar gehört in dieselbe
+  Sicherungsroutine wie die Datenbank und wird nicht routinemässig rotiert.
+- **Ausgehendes HTTPS zu den Push-Diensten** (`fcm.googleapis.com`, `*.push.services.mozilla.com`,
+  `web.push.apple.com`). Eingehend ändert sich nichts an Nginx und Cloudflared.
+- **`TZ=Europe/Berlin` im Compose-Dienst *und* eine ausdrückliche Zone im Code** – beides, nicht
+  eines von beiden. Die Zone im Code deckt den Rechenweg ab, `TZ` alles, was daran vorbeiläuft.
 - **Brute-Force-Schutz** am PIN-Endpunkt; echte Client-IP aus `X-Forwarded-For`, daher
   `server.forward-headers-strategy=NATIVE`.
 - **Ergänzend:** zentrale Fehlerbehandlung (`@RestControllerAdvice`) mit einheitlichem
@@ -759,22 +1032,27 @@ Auswechselspieler-Flag.
 - Testcontainers und JUnit; das Image auf **`postgres:17`** festnageln, nie `latest` – Tests
   müssen gegen dieselbe Hauptversion laufen wie die Produktion.
 - `spring-boot-starter-mail` für die Bestätigungs-PIN.
+- **Web Push (A25) ohne Fremdbibliothek** – JDK-Bordmittel statt `nl.martijndwars:web-push` 5.1.2,
+  das `bcprov-jdk15on` 1.70 (abgekündigte Artefaktlinie), zwei zusätzliche HTTP-Stacks und einen
+  Kommandozeilen-Parser nachzieht, die zu Spring Boot 4.1 und Java 25 nicht passen. **S8 fügt
+  `pom.xml` keine Abhängigkeit hinzu.**
 - Hosting: Raspberry Pi 5 über Docker/Compose, Nginx als Reverse-Proxy, Cloudflared-Tunnel;
   Konfiguration unter `assets/Deployment/`. Das Backend muss auch auf einem zweiten Pi mit
   anderem Setup lauffähig bleiben.
 
 ## Datenmodell
 
-Vollständig und verbindlich in `/PRJ_FuBo/harness/AGENT.md`, Abschnitt „Datenbank – Umsetzung"
-(Schemas `profil`, `spieltag`, `configs` mit allen Tabellen, Constraints und Seed-Daten). Dieser
-Agent setzt es per Flyway um und pflegt es **dort** fort.
+Vollständig und verbindlich in `/PRJ_FuBo/harness/DATENMODELL.md` (Schemas `profil`, `spieltag`,
+`configs` mit allen Tabellen, Constraints und Seed-Daten sowie dem Änderungsprotokoll des
+Datenmodells). Am 13.09.2026 aus `AGENT.md` ausgelagert; Rang und Inhalt sind unverändert. Dieser
+Agent setzt das Modell per Flyway um und pflegt es **dort** fort.
 
 ---
 
 ## Paketstruktur (verbindlich)
 
 Basispaket `de.fubo.appserver`. Zuerst nach Schicht geschnitten, darunter nach Fachbereich
-(`auth`, `profil`, `audit`, `mail`, `admin`, `termin`, `team`, `ergebnis`, `config`):
+(`auth`, `profil`, `audit`, `mail`, `admin`, `termin`, `team`, `ergebnis`, `config`, ab S8 `push`):
 
 ```
 de/fubo/appserver/
@@ -802,6 +1080,11 @@ de/fubo/appserver/
 - **Aktivierungsklassen sind eigene `@Configuration`-Klassen** (`SchedulingConfig`,
   `CacheConfig`) – ohne sie bleiben `@Scheduled` und `@Cacheable` **wirkungslos, ohne
   Fehlermeldung**.
+- **`push` ist ein eigener Fachbereich**, kein Anhängsel von `profil` oder `mail`: eigener
+  Controller, eigener Dienst, eigenes Repository, ein `@Scheduled`-Auftrag und ein Adapter zu einem
+  fremden Dienst. `mail` ist das Vorbild für den **Adapter**, nicht für den Zuschnitt – dort gibt
+  es nur einen Dienst. Der Probeversand liegt als Admin-Endpunkt in `controller/admin`, wie
+  `HallenController`; die Fachlogik bleibt in `service/push`.
 - **`audit` ist ein eigener Fachbereich**, kein Anhängsel von `auth` – es schreiben Auth-Bereich,
   Adminaktionen und Generierungsläufe hinein.
 - **`admin` ist ein Zugriffs-, kein Datenbereich** (`dto/admin`, `controller/admin`); die
@@ -911,6 +1194,28 @@ schreibt die Spalte nativ und erhöht dabei `version`; stünde sie an der Entity
 dazu, sie über `save` zu setzen – und genau das darf sie nicht, weil im selben Vorgang keine
 `Termin`-Entity geladen sein darf. Gelesen wird sie über den Record `Hallentermin` und über die
 Abfrage der Einzelansicht.
+
+**`profil.push_abo` bekommt keine Entity** (S8). Die Tabelle wird angehängt
+(`INSERT … ON CONFLICT`), bedingt aktualisiert (Versandergebnis je Zeile) und gelöscht – dasselbe
+Bild wie bei `gast_slot` und `teilnahme`. `@Version` wäre hier sogar nachteilig: Optimistic Locking
+meldete den Wettlauf zweier gleichzeitiger Anmeldungen desselben Geräts erst beim Schreiben und
+verlangte eine Wiederholung, das bedingte `UPDATE` entscheidet ihn ohne. **Folge:** Die Spalte
+`version` wird von Hand fortgeschrieben; `endpoint_hash CHAR(64)` bräuchte
+`@JdbcTypeCode(SqlTypes.CHAR)`, falls doch einmal eine Entity entsteht.
+
+**`spieltag.termin.push_erinnerung_am` wird gemappt** – anders als `halle_abgesagt_am`, und aus
+einem benennbaren Grund: Die Spalte fällt beim Verschieben eines Termins zurück, und
+`TerminService#aendern` arbeitet dort mit der geladenen Entity (`setTeamsFixiert(false)` steht
+genau daneben). Ein natives `UPDATE` an dieser Stelle wäre die verbotene Kombination aus
+Versionsspalte und verwalteter Entity. **Der Erinnerungsauftrag schreibt sie trotzdem nativ** – er
+läuft in einer eigenen Transaktion, in der keine `Termin`-Entity geladen ist.
+
+**`profil.spieler.push_erwuenscht` wird dagegen gemappt** und über die Entity geschrieben. Grund
+ist die Lehre aus S6: Hibernate schreibt beim Flush **alle** gemappten Spalten, und eine native
+Änderung neben einer geladenen `Spieler`-Entity schriebe der Flush still zurück. Über die Entity
+greift `@Version` von selbst. **Preis, den man kennen muss:** Schaltet ein Spieler um, während der
+Admin sein Profil geöffnet hat, bekommt der Admin beim Speichern `409 DATEN_VERALTET` – das ist
+das gewünschte Verhalten und kein Fehler.
 
 **Von den beiden `CHAR(1)`-Spalten aus `V006` ist seit S6 eine gemappt.**
 `team_zuteilung.team` bleibt ungemappt: Die Tabelle wird nur angehängt und aggregiert gelesen, und

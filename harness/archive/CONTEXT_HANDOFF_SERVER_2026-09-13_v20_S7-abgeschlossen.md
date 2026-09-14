@@ -15,13 +15,13 @@
 > - **Herleitung und Schritt für Schritt** → `harness/tmp/S<n>_UMSETZUNG.md`, für den
 >   Algorithmusteil von S5 zusätzlich `harness/tmp/S5_ALGORITHMUS.md`
 > - **Historie** → Git und `harness/archive/`; die Vorfassung ist
->   `CONTEXT_HANDOFF_SERVER_2026-09-13_v20_S7-abgeschlossen.md`, die letzte Langfassung mit allen
+>   `CONTEXT_HANDOFF_SERVER_2026-09-12_v19_S6-abgeschlossen.md`, die letzte Langfassung mit allen
 >   Herleitungen `CONTEXT_HANDOFF_SERVER_2026-08-31_v14_S4-abgeschlossen.md`
 >
 > Was hier steht, steht **nur** hier. Wird eine Festlegung zur Architekturregel, wandert sie
 > nach `AGENT_SERVER.md` und **verschwindet hier** – sonst laufen beide auseinander.
 
-## Stand: 14.09.2026
+## Stand: 13.09.2026
 
 **S0 bis S7 sind abgeschlossen und verifiziert**, einschliesslich des Nachtrags „Hauptschalter".
 `./mvnw clean verify` lief am 13.09.2026 zweimal grün: **431 Fälle in 31 Klassen** (S7) und nach
@@ -30,88 +30,7 @@ Beide Male traf die vorab gezählte Zahl exakt. Der Vertrag steht bei **38 Endpu
 Datenmodell bei **18 Tabellen** (`V001`–`V013`): `V012` war die erste Migration seit S3, `V013`
 die zweite. **Alles ist auf `dev` committet** (sieben Commits, 13.09.2026); nicht gepusht.
 
-**Als Nächstes: die fünf Handprüflisten** in einem Zug, danach S8 (A25, Push).
-
-### Neu am 14.09.2026 – A25 ist S8, Härtung und Deployment werden S9
-
-**Am Code hat sich nichts geändert.** Diese Fassung nimmt die Anforderung **A25** (PWA und
-Push-Benachrichtigungen, ergänzt am 13.09.2026) in den Server-Track auf und zieht die
-Umnummerierung nach, die `CONTEXT_HANDOFF.md` bereits festhält:
-
-| Paket | vorher | jetzt |
-|---|---|---|
-| **S8** | Härtung und Deployment | **A25 serverseitig** – `V014`, sechs Endpunkte, Erinnerungsauftrag, Absage-Ereignis, Versandadapter |
-| **S9** | – | **Härtung und Deployment** (Docker, Nginx, Cloudflared, API-Doku) |
-
-**Warum A25 ein eigenes Paket ist:** Es bringt eine Migration, sechs Endpunkte, einen
-`@Scheduled`-Auftrag und einen Adapter zu einem fremden Dienst mit. In ein Härtungspaket
-geschoben, verwässerte es beide. Und die Härtung gehört ans Ende – sie soll den Stand absichern,
-der tatsächlich ausgeliefert wird, und der enthält Push samt VAPID-Variablen, ausgehendem HTTPS
-und der Zeitzone des Containers.
-
-**Dokumente:** `harness/tmp/S8_DEPLOYMENT.md` heisst seit dem 14.09.2026
-`harness/tmp/S9_DEPLOYMENT.md` (Inhalt unverändert, Selbstbezüge nachgezogen); neu ist
-`harness/tmp/S8_PUSH_UMSETZUNG.md`. `AGENT_SERVER.md` ist um den Anforderungspunkt A25, die beiden
-Abschnitte „Push-Versand (A25, S8)" und „Push-Endpunkte und DTOs (A25, S8)" sowie um Techstack-,
-Paket-, JPA- und Betriebsregeln erweitert.
-
-**Vier Punkte, die beim Ableiten der Serveranforderungen aufgefallen sind.** Alle vier sind
-Abweichungen von dem, was beim ersten Lesen von `AGENT.md` naheliegt, und alle vier scheitern
-**still** – deshalb stehen sie hier und nicht erst in der Anleitung.
-
-1. **Ein fehlender Eintrag in der Filterchain sperrt hier nicht, er öffnet.** `AGENT.md` schreibt,
-   die neuen Pfade seien einzutragen, „ohne Eintrag antworten sie mit `403`, auch für berechtigte
-   Nutzer". Für `/api/v1/push/**` trifft das **nicht** zu: Die letzte Regel lautet
-   `anyRequest().hasAnyRole("USER", "ADMIN", "GAST")`, ein neuer Pfad fällt darunter und wäre
-   **für Gäste offen** – genau das, was A25d verbietet. Der Eintrag mit
-   `hasAnyRole("USER", "ADMIN")` ist zwingend, und die Pfade gehören namentlich in
-   `SecurityConfigTests`.
-2. **Die Terminabsage hat drei Auslöser, nicht einen.** `AGENT.md` nennt
-   `POST /api/v1/admin/termin/absagen`. Seit S4 setzt auch `/admin/termin/aendern` den Status auf
-   `ABGESAGT` (A19), und seit S7 sagt `/admin/halle/absagen` einen geplanten Termin mit ab. Hängt
-   das Ereignis am Endpunkt statt am Statuswechsel, bleiben zwei der drei Wege stumm – und es
-   fällt niemandem auf, weil eine ausbleibende Benachrichtigung der Normalfall ist.
-3. **Eine einzelne Nachricht wird nie wiederholt.** Der bedingte `UPDATE` auf
-   `push_erinnerung_am` läuft **vor** dem Versand, der nächste Lauf überspringt den Termin.
-   `fehlversuche` ist ein Gesundheitszähler des Abonnements über mehrere Anlässe hinweg, keine
-   Warteschlange. `AGENT.md` trug dazu die Zeile „`429`, `5xx` → Wiederholung im nächsten Lauf"
-   und ist am 14.09.2026 berichtigt; dabei kam `401`/`403` als eigene Zeile dazu – **ein `401`
-   sagt etwas über unseren Schlüssel, nicht über das Abonnement, und darf es nicht deaktivieren.**
-4. **Das Adminprofil muss aus der Empfängerabfrage der Erinnerung heraus.** Es trägt
-   `push_erwuenscht = true` (Vorgabe der Migration), hat nie eine Teilnahmezeile und erfüllt damit
-   die Bedingung „hat noch nicht geantwortet" für **jeden** Termin – während ihm die Rückmeldung
-   selbst mit `409 PROFIL_GESCHUETZT` verweigert wird. Es ist der bestehende Filter
-   `rolle <> 'ADMIN'`, an genau einer Stelle mehr. Als **Abonnent** bleibt es zulässig:
-   `/admin/push/test` versendet an seine eigenen Geräte.
-
-**Die fünf Weggabelungen aus `S8_PUSH_UMSETZUNG.md`, 0.5 sind am 14.09.2026 entschieden** –
-durchgängig entlang der Empfehlung:
-
-| # | Weggabelung | Entschieden |
-|---|---|---|
-| A | Audit für An- und Abmeldung eines Abonnements | **nein** – der Zustand steht in `push_abo`, die Endpoint-Adresse ist personenbezogen, und „Adminaktionen ja, Nutzerhandlungen nein" gilt weiter. `AuditAktion` wächst von 27 auf **29** Werte |
-| B | `push_erinnerung_am` beim Verschieben zurücksetzen | **ja**, bei echter Zeitänderung – dieselbe Bedingung wie `teams_fixiert`. **Folge: Die Spalte wird an der `Termin`-Entity gemappt**, anders als `halle_abgesagt_am` |
-| C | Versand nach dem Commit | **synchron, aber parallel** mit Gesamtfrist (10 s), kein `@Async`. Der Listener fängt jede Ausnahme selbst ab; offene Aufrufe werden abgebrochen und als Fehlversuch gebucht |
-| D | Probeversand prüft die Schalter | **nein** – nur VAPID und ein eigenes Abonnement. Die Oberfläche zeigt `anlageAktiv` daneben |
-| E | Vorgabewert von `push_aktiv` | **`true`**, also A25(e) folgend |
-
-**Die Vorgabedokumente sind am 14.09.2026 nachgezogen**, in derselben Sitzung wie die
-Entscheidungen:
-
-- **`DATENMODELL.md`** – Änderungsprotokoll 20, Kurzbegründung und Spaltentabelle führen
-  `push_aktiv` jetzt mit Vorgabe `true`; die Begründung nennt ausdrücklich, warum die Analogie zum
-  Hallenmodus nicht trägt.
-- **`AGENT.md`** – A25(e) verweist auf den Vorgabewert der Migration, Migrationsschritt 4 steht auf
-  `DEFAULT true`, `PUSH_ABO_ANGELEGT`/`PUSH_ABO_ENTFERNT` sind als benannter Entfall dokumentiert,
-  das Rücksetzen von `push_erinnerung_am` beim Verschieben ist ergänzt, Anlass 2 nennt alle drei
-  Auslöserpfade, die Antworttabelle ist um `401`/`403` erweitert und um die falsche
-  Wiederholungszusage bereinigt, die Aussage zur Filterchain ist berichtigt, und der synchrone,
-  nebenläufige Versand samt Ausnahmebehandlung steht als Architekturregel.
-- **`AGENT_SERVER.md`** – dieselben Regeln in verbindlicher Form, dazu das Mapping von
-  `termin.push_erinnerung_am` an der Entity (Folge aus Entscheidung B) und der Probeversand ohne
-  Prüfung der Schalter (Entscheidung D).
-
-**`PRJ_FuBo/harness/` ist unversioniert** – diese beiden Korrekturen haben kein Remote-Backup.
+**Als Nächstes: die fünf Handprüflisten** in einem Zug, danach S8.
 
 ### Was S7 gebracht hat
 
@@ -217,9 +136,8 @@ Vollständige Liste in `CONTEXT_HANDOFF.md`, Abschnitt 3. Serverseitig besonders
 **Maßgeblich ist `server/fubo-api.json`** – OpenAPI 3.1 in JSON auf der Repo-Wurzel und damit
 mitversioniert. **Bei Abweichungen gilt die Datei, nicht dieses Dokument.**
 
-**Umfang: 38 Endpunkte** (Tabelle in 6.1). Aufgenommen wird nur, was umgesetzt ist. **S8
-bringt sechs weitere** (fünf unter `/push/`, einer unter `/admin/push/`), **S9 keine** – es
-ist Härtung und Deployment. Kernpunkte: REST/JSON, getrennte Origins mit CORS-Allowlist
+**Umfang: 38 Endpunkte** (Tabelle in 6.1). Aufgenommen wird nur, was umgesetzt ist; S8
+bringt keine weiteren – es ist Härtung und Deployment. Kernpunkte: REST/JSON, getrennte Origins mit CORS-Allowlist
 (`allowCredentials`), HttpOnly-Session-Cookie, `401`/`403`-Semantik, DTOs ohne Skillwerte für
 USER und GAST, Belegtstatus zum Pollen, einheitliches Fehler-JSON nach RFC 9457.
 
@@ -332,24 +250,6 @@ eine Stelle, an der eine naheliegende Annahme falsch ist. Wann sie dazukam, steh
 | `deutlich` im `Ergebnis` | beschreibt die **Höhe, nicht den Ausgang** – ohne jeden Einfluss auf die Bilanz. Bei `sieger: "U"` unzulässig (`400`, Schlüssel `deutlichNurBeiSieg` im Block `felder`); der Haken gehört dort ausgeblendet |
 | `auswechselModus` ändern | ändert die **Einteilung** nicht, wohl aber den angezeigten Auswechselspieler bereits gespeicherter Läufe (A20b) |
 
-**Push-Benachrichtigungen (S8, noch nicht umgesetzt)**
-
-Die Zeilen stehen hier, damit der Client-Track die Einstellungsansicht planen kann; **verbindlich
-werden sie erst mit dem Commit in `fubo-api.json`.**
-
-| Punkt | Bedeutung für den Client |
-|---|---|
-| **Zwei Schalter, nicht einer** | Der Personenschalter (`/push/einstellung/aendern`) gilt für **alle** Geräte des Spielers, der Widerruf (`/push/abo/entfernen`) nur für das aufrufende. Die Oberfläche bietet beide an und benennt den Unterschied – sonst entzieht der Nutzer die Browserberechtigung, und das Wiedereinschalten verlangt einen neuen Dialog |
-| `GET /push/status/lesen` | liefert **nur die beiden serverseitigen Ebenen** (`anlageAktiv`, `pushErwuenscht`). Die Geräteebene liest der Client lokal über `pushManager.getSubscription()` – ein `GET` könnte das aufrufende Gerät nicht identifizieren, ohne die Endpoint-Adresse in die URL zu schreiben |
-| `POST /push/abo/anlegen` | **bei jedem Anwendungsstart erneut aufrufen.** Der Aufruf ist über `endpoint_hash` idempotent und heilt genau den Fall, in dem der Server das Abonnement nach einem `410` deaktiviert hat, der Browser es aber noch führt |
-| Kein Anzeigename fürs Gerät | `geraet_bezeichnung` bestimmt der Server aus dem `User-Agent`. Ein Eingabefeld dafür gibt es nicht und wird es nicht geben |
-| `GAST` bekommt `403` | nicht `401` und keine leere Antwort (A25d). Die Push-Einstellungen gehören in der Gastansicht **ausgeblendet**, nicht deaktiviert angezeigt |
-| `503` an `/push/schluessel/lesen` | heisst „auf diesem Server nicht eingerichtet", nicht „Fehler". Der Bereich wird ausgeblendet; Wiederholen hilft nie |
-| Nichts kommt an, obwohl alles grün aussieht | **Drei Bedingungen gelten gleichzeitig.** Zwei stehen in `/push/status/lesen`, die dritte im Browser. Eine Meldung „keine Benachrichtigungen" ohne Angabe der Ebene schickt den Nutzer an die falsche Stelle |
-| Abschalten wirkt auf **beide** Anlässe | Wer abschaltet, erfährt auch eine Terminabsage erst beim Öffnen der Anwendung. Darauf ist beim Abschalten **einmal** hinzuweisen; einen Schalter je Anlass gibt es bewusst nicht |
-| iOS | Web Push erst ab 16.4 und **nur nach „Zum Home-Bildschirm"**. Auf dem iPhone ist A25(a) die technische Voraussetzung für A25(b); die Berechtigung ist aus einer Nutzergeste heraus zu erfragen |
-| Zwei neue Pflichtfelder in der Konfiguration | `pushAktiv` und `pushErinnerungStunden` werden das **dreizehnte und vierzehnte** Pflichtfeld im Voll-Update von `/admin/config/aendern` – die **fünfte und sechste brechende Änderung** für das Adminformular |
-
 ### 4.2 Offene Übergabe: das Admin-Anmeldeformular
 
 Es braucht ein zweites Eingabefeld. Drei Punkte gehören dabei ins Frontend:
@@ -381,8 +281,7 @@ Schätzung noch nicht gab.
 | S5 | Teamgenerator: `EXHAUSTIV` + `HEURISTIK`, Zielfunktion inkl. Torwart-Gewicht, Kontingent/Seed/Snapshot, Auswechselspieler; **dazu A24 (manueller Lauf des Admins)** | **verifiziert (12.09.2026)** – Bestätigungslauf grün; Handprüfliste 13.1 offen. Schrittsumme **24,0 h** (20,5 + 3,5 für A24) | 18 |
 | S6 | **Ergebnis und Bilanz** (umbenannt am 12.09.2026; „Ergebnis & Audit API" versprach einen Leseendpunkt fürs Protokoll, den keine Anforderung verlangt): „erster Eintrag gilt", Admin-Korrektur, Bilanz-Zähler, eigene Bilanz | **verifiziert (12.09.2026, 411 Tests in 30 Klassen)**; Handprüfliste 8.1 offen. Schrittsumme **13,0 h** (11,0 geplant plus 2,0 für die Entscheidungen vom 12.09.) | 8 |
 | S7 | **Hallenmodus**: E-Mail-Absage an den Hallenbetreiber, Vorlauffrist aus der Konfiguration (A23); dazu `V012` – die erste Migration seit S3 | **verifiziert (13.09.2026)** – 431/31 für S7, 434/31 nach dem Nachtrag „Hauptschalter" (`V013`). Handprüfliste 8.1 offen. Schrittsumme **12,0 h** gegen 6,0 top-down (8,5 geplant, plus 1,5 für die Entscheidungen vom 13.09. und 2,0 für den Hauptschalter) | 6 |
-| S8 | **A25 serverseitig (Push)**: `V014`, sechs Endpunkte, Erinnerungsauftrag, Absage-Ereignis, Versandadapter ohne Fremdbibliothek – Anleitung: `harness/tmp/S8_PUSH_UMSETZUNG.md` | offen | 22,5 (Schrittsumme) |
-| S9 | Härtung, Deployment (Docker/nginx/Cloudflared), API-Doku – Entwurf: `harness/tmp/S9_DEPLOYMENT.md` (bis 14.09.2026 `S8_DEPLOYMENT.md`) | offen | 14 |
+| S8 | Härtung, Deployment (Docker/nginx/Cloudflared), API-Doku – Entwurf: `harness/tmp/S8_DEPLOYMENT.md` | offen | 14 |
 
 Anleitungen: `harness/tmp/S<n>_UMSETZUNG.md`. **Ausnahme S5:** Der Algorithmusteil (Zielfunktion,
 `EXHAUSTIV`, `HEURISTIK` – Abschnitte 3 bis 5, 6,0 h) steht seit dem 05.09.2026 in
@@ -443,14 +342,14 @@ server/                        Repo-Wurzel (remote: FuBo-Server, oeffentlich)
   vollständig zusammenläuft – **ein fünftes Feld wäre ein Anlass, über einen eigenen Endpunkt
   nachzudenken, nicht über ein weiteres.**
 
-**Datenmodell: 18 Tabellen, `V001`–`V013`.** S2b, S3, **S5 und S6** kamen ohne Migration aus. Die
+**Datenmodell: 18 Tabellen, `V001`–`V011`.** S2b, S3, **S5 und S6** kamen ohne Migration aus. Die
 drei letzten Migrationen ergänzen nur Spalten (alle 30.08.2026): `V009` `auswechsel_modus` (A20b),
 `V010` den Vorgabetext für `halle_absage_vorlage` (A23), `V011` die drei Bilanz-Zähler in
 `profil.spieler` (A21). **Die Migrationsfreiheit von S5 und S6 hängt an Voraussetzungen**, die in
 `S5_UMSETZUNG.md` 0.4/0.6 und `S6_UMSETZUNG.md` 0.2/1.3 stehen – fällt eine davon, fällt die
 Aussage.
 
-**Die 38 Endpunkte, nach Bereichen.** Zweck, Körper und Antworten stehen in `fubo-api.json` –
+**Die 37 Endpunkte, nach Bereichen.** Zweck, Körper und Antworten stehen in `fubo-api.json` –
 hier nur die Landkarte, damit eine Änderung nicht an zwei Stellen gepflegt werden muss:
 
 | Bereich | Pfade unter `/api/v1` | Anzahl |
@@ -464,7 +363,6 @@ hier nur die Landkarte, damit eine Änderung nicht an zwei Stellen gepflegt werd
 | Terminverwaltung (S4) | `admin/termin/{anlegen,aendern,absagen,entfernen}`, `admin/serie/anlegen`, `admin/teilnahme/gast-stufe` | 6 |
 | Teamgenerierung (S5) | `teams/generieren`, `admin/teams/generieren` (A24) | 2 |
 | Ergebnis und Bilanz (S6) | `ergebnis/erfassen`, `admin/ergebnis/korrigieren`, `bilanz/lesen` | 3 |
-| Hallenmodus (S7) | `admin/halle/absagen` | 1 |
 
 **Der Ort eines Endpunkts ist die Autorisierungsentscheidung.** Alles unter `/api/*/admin/**`
 verlangt `ROLE_ADMIN`; die Reset-Endpunkte und die drei Login-Wege sind ausschliesslich in
@@ -814,25 +712,17 @@ Drei Punkte zur Gastverwaltung stehen in keiner Anleitung, die Bruno-Requests un
    bei 38 Endpunkten, und **`TERMIN_NICHT_ABGESAGT` gibt es nicht**, obwohl die Anleitung ihn
    vorsah. Weiter gilt der Hinweis auf die vier `nullable`-Korrekturen: Wer vor dem 12.09.2026
    generiert hat, generiert neu.
-5. **S8 danach: A25 serverseitig** (Push, Schrittsumme 22,5 h). Anleitung in
-   `harness/tmp/S8_PUSH_UMSETZUNG.md`. Vier Dinge vor der ersten Zeile Code: die **zwei
-   Weggabelungen aus 0.5** entscheiden, die **Testvektoren aus RFC 8291, Anhang A** bereitlegen
-   (ohne sie ist die Verschlüsselung nicht prüfbar – der Push-Dienst nimmt auch eine falsch
-   verschlüsselte Nachricht an), die **drei VAPID-Variablen erzeugen und in die `.env` legen**,
-   und den Filterchain-Eintrag für `/api/*/push/**` nicht vergessen – **ohne ihn sind die Pfade
-   für Gäste offen, nicht gesperrt.**
-6. **S9 zuletzt** (Härtung und Deployment, 14 h): Entwurf in `harness/tmp/S9_DEPLOYMENT.md`. Vier
-   Punkte aus S5 bis S8 gehören dort hinein: die **Messung von `MAX_EXHAUSTIV` auf der
-   Zielhardware**, die Frage, ob 30 Tage Audit-Aufbewahrung für den Speicher des Pi reichen,
+5. **S8 danach** (Härtung und Deployment, 14 h): Entwurf in `harness/tmp/S8_DEPLOYMENT.md`. Drei
+   Punkte aus S5 bis S7 gehören dort hinein: die **Messung von `MAX_EXHAUSTIV` auf der
+   Zielhardware**, die Frage, ob 30 Tage Audit-Aufbewahrung für den Speicher des Pi reichen, und
    **ein Satz zum Absender in der Betriebsdokumentation** – mit S7 erscheint `SMTP_ABSENDER` zum
-   ersten Mal ausserhalb des Projekts, nämlich beim Hallenbetreiber – und aus S8 die **Sicherung
-   des VAPID-Schlüsselpaars**: Geht es verloren, muss jeder Spieler erneut zustimmen.
+   ersten Mal ausserhalb des Projekts, nämlich beim Hallenbetreiber.
 
 **Offene Punkte, die keine Aufgabe für heute sind:**
 
 - **`MAX_EXHAUSTIV = 24` ist gesetzt, nicht gemessen.** `C(24,12) ≈ 2,7 Mio.` ist auf einem
   Entwicklungsrechner tragbar; ob auch auf dem Raspberry Pi 5, zeigt erst eine Messung auf der
-  Zielhardware – sie gehört zu S9. **Mit A24 ist die Grenze zugleich der einzige Schutz vor
+  Zielhardware – sie gehört zu S8. **Mit A24 ist die Grenze zugleich der einzige Schutz vor
   Dauerläufen**, weil der manuelle Lauf kein Kontingent kostet.
 - **Alte Generierungsläufe werden nie aufgeräumt.** Belanglos, solange Termine bestehen;
   `ON DELETE CASCADE` nimmt sie mit dem Termin.
@@ -856,10 +746,8 @@ Drei Punkte zur Gastverwaltung stehen in keiner Anleitung, die Bruno-Requests un
   wäre gegenüber `api.<domain>` cross-site, mit `SameSite=None; Secure`, zwingendem CSRF-Schutz und
   einem Cookie, das Safari und der Chrome-Inkognito-Modus blockieren. Ebenfalls offen:
   Pages-Preview-Deployments, in denen der Login bauartbedingt nicht funktioniert.
-- **Deployment (S9):** Entwurf mit Dockerfile, Compose-Ergänzung, nginx-Block, Backup und Rollout
-  liegt in `harness/tmp/S9_DEPLOYMENT.md` (bis zum 14.09.2026 `S8_DEPLOYMENT.md`). **Mit S8 kommen
-  drei VAPID-Variablen, ausgehendes HTTPS zu den Push-Diensten und `TZ=Europe/Berlin` im
-  Compose-Dienst hinzu** – der Entwurf kennt sie noch nicht.
+- **Deployment (S8):** Entwurf mit Dockerfile, Compose-Ergänzung, nginx-Block, Backup und Rollout
+  liegt in `harness/tmp/S8_DEPLOYMENT.md`.
 
 **Profildaten** (Vorgehen steht): Reale Daten liegen ausserhalb des Server-Repositories – derzeit
 in `PRJ_FuBo/db_prod_data/`. Pfad in `FUBO_LOCAL_SEED`, Einspielen über `scripts/seed-lokal.sh`.
