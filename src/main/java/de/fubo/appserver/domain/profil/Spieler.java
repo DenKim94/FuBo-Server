@@ -94,6 +94,41 @@ public class Spieler {
     @Column(name = "anz_unentschieden", nullable = false)
     private int anzUnentschieden;
 
+    // ------------------------------------------------------ Benachrichtigungen (A25f)
+
+    /**
+     * Personenschalter fuer Push-Benachrichtigungen ({@code V014}, A25f); Vorgabe {@code true}.
+     *
+     * <p>Er ist die <b>mittlere</b> von drei Bedingungen, die zusammen gelten muessen: Anlage
+     * ({@code configs.app_config.push_aktiv}, der Admin entscheidet), Person (dieses Feld, der
+     * Spieler selbst) und Geraet (mindestens ein aktives Abonnement in {@code profil.push_abo}).
+     * Faellt eine weg, unterbleibt der Versand stillschweigend - das ist kein Fehlerfall,
+     * sondern der Normalzustand vieler Spieler.
+     *
+     * <p><b>Warum die Spalte gemappt wird und nicht nativ geschrieben:</b> Das ist die Lehre aus
+     * S6. Hibernate schreibt beim Flush <b>alle</b> gemappten Spalten. Wuerde der Schalter per
+     * SQL gesetzt, waehrend irgendwo eine {@code Spieler}-Entity geladen ist, schriebe deren
+     * Flush den alten Wert still zurueck - dasselbe Bild wie bei den Bilanzzaehlern, nur ohne
+     * den Testfall, der es damals aufgedeckt hat. Ueber die Entity greift {@link #version} von
+     * selbst.
+     *
+     * <p><b>Preis, den man kennen muss:</b> Schaltet ein Spieler um, waehrend der Admin sein
+     * Profil geoeffnet hat, bekommt der Admin beim Speichern {@code 409 DATEN_VERALTET}. Das ist
+     * das gewuenschte Verhalten und kein Fehler.
+     *
+     * <p><b>Primitiver {@code boolean} und kein {@code Boolean}:</b> Die Spalte ist
+     * {@code NOT NULL}, ein dritter Zustand existiert nicht - dieselbe Ueberlegung wie bei
+     * {@code AppConfig#hallenModusAktiv}. Beim Optimistic Locking ist es umgekehrt: Dort erkennt
+     * Hibernate am {@code null} der Wrapper-Version den ungespeicherten Zustand.
+     *
+     * <p><b>Das Adminprofil traegt den Wert ebenfalls</b> - es darf abonnieren, damit
+     * {@code /admin/push/test} an seine eigenen Geraete versenden kann. Aus der
+     * Empfaengerabfrage der Terminerinnerung faellt es trotzdem heraus, aber ueber
+     * {@code rolle <> 'ADMIN'} und nicht ueber diesen Schalter.
+     */
+    @Column(name = "push_erwuenscht", nullable = false)
+    private boolean pushErwuenscht;
+
     @Column(name = "erstellt_am", nullable = false)
     private OffsetDateTime erstelltAm;
 
@@ -155,6 +190,14 @@ public class Spieler {
 
     public void setAnzUnentschieden(int anzUnentschieden) {
         this.anzUnentschieden = anzUnentschieden;
+    }
+
+    public boolean isPushErwuenscht() {
+        return pushErwuenscht;
+    }
+
+    public void setPushErwuenscht(boolean pushErwuenscht) {
+        this.pushErwuenscht = pushErwuenscht;
     }
 
     public OffsetDateTime getErstelltAm() {

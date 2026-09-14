@@ -12,6 +12,7 @@ import jakarta.persistence.Version;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.OffsetDateTime;
 
 /**
  * Ein einzelner Spieltermin ({@code spieltag.termin} aus {@code V005}, A18).
@@ -95,6 +96,35 @@ public class Termin {
     @Column(name = "teams_fixiert", nullable = false)
     private boolean teamsFixiert;
 
+    /**
+     * Zeitpunkt, zu dem die Erinnerung an offene Rueckmeldungen fuer diesen Termin versandt
+     * wurde ({@code V014}, A25); {@code null} heisst "noch nicht erinnert".
+     *
+     * <p><b>Sie sichert den Einmalversand.</b> Der Erinnerungsauftrag markiert den Termin ueber
+     * einen bedingten {@code UPDATE ... WHERE push_erinnerung_am IS NULL} <b>vor</b> dem
+     * Versand; eine betroffene Zeile heisst "wir sind die Ersten". Die Reihenfolge ist bewusst
+     * gewaehlt: Ein Absturz mitten im Versand kostet einzelne Nachrichten - markierte man erst
+     * danach, bekaemen nach einem Neustart <b>alle</b> Empfaenger die Nachricht ein zweites Mal.
+     * Dasselbe Muster wie bei {@code halle_abgesagt_am} aus {@code V012}.
+     *
+     * <p><b>Warum diese Spalte gemappt ist und {@code halle_abgesagt_am} nicht</b> - der
+     * Unterschied hat genau einen Grund: Sie faellt beim Verschieben eines Termins zurueck
+     * (Entscheidung vom 14.09.2026), unter derselben Bedingung wie {@link #teamsFixiert}, also
+     * nur bei echter Aenderung von Datum oder Uhrzeit. Und {@code TerminService#aendern}
+     * arbeitet dort mit der <b>geladenen</b> Entity; ein natives {@code UPDATE} daneben waere
+     * die verbotene Kombination aus Versionsspalte und verwalteter Entity.
+     *
+     * <p><b>Der Erinnerungsauftrag schreibt sie trotzdem nativ</b> - er laeuft in einer eigenen
+     * Transaktion, in der keine {@code Termin}-Entity geladen ist. Das ist kein Widerspruch,
+     * sondern dieselbe Regel von der anderen Seite.
+     *
+     * <p><b>{@code OffsetDateTime} und nicht {@code LocalDateTime}:</b> Die Spalte ist
+     * {@code TIMESTAMPTZ} und traegt ihre Zeitzone selbst - anders als {@link #datum} und
+     * {@link #uhrzeit}. {@code LocalDateTime} verloere sie.
+     */
+    @Column(name = "push_erinnerung_am")
+    private OffsetDateTime pushErinnerungAm;
+
     /** Optimistic Locking (A5); als Wrapper-Typ, damit der ungespeicherte Zustand erkennbar bleibt. */
     @Version
     @Column(name = "version", nullable = false)
@@ -139,6 +169,12 @@ public class Termin {
     public boolean isTeamsFixiert() { return teamsFixiert; }
 
     public void setTeamsFixiert(boolean teamsFixiert) { this.teamsFixiert = teamsFixiert; }
+
+    public OffsetDateTime getPushErinnerungAm() { return pushErinnerungAm; }
+
+    public void setPushErinnerungAm(OffsetDateTime pushErinnerungAm) {
+        this.pushErinnerungAm = pushErinnerungAm;
+    }
 
     public Long getVersion() { return version; }
 }

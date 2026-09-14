@@ -76,6 +76,14 @@ class ConfigServiceTests {
                 .as("V013 legt den Hallenmodus abgeschaltet an - die sichere Richtung")
                 .isFalse();
 
+        // Push (A25) - push_aktiv steht bewusst auf true, anders als der Hallenmodus:
+        // Eine Push-Nachricht erreicht nur, wer im Browserdialog zugestimmt hat, und der
+        // Schalter kann fuer sich genommen nichts ausloesen.
+        assertThat(cfg.isPushAktiv())
+                .as("V014 legt den Push-Versand eingeschaltet an (A25e)")
+                .isTrue();
+        assertThat(cfg.getPushErinnerungStunden()).isEqualTo((short) 24);
+
         // Aenderungsverfolgung
         assertThat(cfg.getGeaendertVon()).isNull();
         assertThat(cfg.getGeaendertAm()).isNotNull();
@@ -176,7 +184,9 @@ class ConfigServiceTests {
                 bestand.getHalleEmail(),
                 bestand.getHalleAbsageVorlage(),
                 bestand.getHalleVorlaufStunden(),
-                bestand.isHallenModusAktiv());
+                bestand.isHallenModusAktiv(),
+                bestand.isPushAktiv(),
+                bestand.getPushErinnerungStunden());
     }
 
     /** Profil-Id des Admins - Fremdschluessel des Audit-Eintrags. */

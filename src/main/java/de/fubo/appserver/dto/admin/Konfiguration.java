@@ -10,8 +10,8 @@ import java.time.OffsetDateTime;
 /**
  * Antwortobjekt von {@code GET /api/v1/admin/config/lesen} (S3, Abschnitt 5).
  *
- * <h2>Zwoelf aenderbare Felder, drei Zusatzangaben</h2>
- * Die zwoelf aenderbaren Komponenten stehen in derselben Reihenfolge und unter denselben Namen wie in
+ * <h2>Vierzehn aenderbare Felder, drei Zusatzangaben</h2>
+ * Die vierzehn aenderbaren Komponenten stehen in derselben Reihenfolge und unter denselben Namen wie in
  * {@link KonfigurationAendernRequest}: Der Client laedt diese Antwort, aendert einzelne Werte im
  * Formular und schickt das veraenderte Ganze zurueck. Waeren die Namen verschieden, muesste er
  * eine Umbenennungstabelle pflegen.
@@ -56,6 +56,12 @@ import java.time.OffsetDateTime;
  * @param halleVorlaufStunden    Vorlauf, bis zu dem eine Absage zulaessig ist (A23)
  * @param hallenModusAktiv       Hauptschalter des Hallenmodus (A23); steht er aus, lehnt
  *                               {@code /admin/halle/absagen} jede Absage ab
+ * @param pushAktiv              Hauptschalter des Push-Versands (A25e); Anlagenebene der drei
+ *                               Versandbedingungen. Vorgabe {@code true} - anders als beim
+ *                               Hallenmodus, weil eine Push-Nachricht nur erreicht, wer im
+ *                               Browserdialog zugestimmt hat
+ * @param pushErinnerungStunden  Vorlauf der Erinnerung an offene Rueckmeldungen in Stunden
+ *                               (A25); gilt anwendungsweit, nicht je Termin
  * @param geaendertAm            Zeitpunkt des letzten Speichervorgangs
  * @param version                Stand des Datensatzes; Eingabewert von {@code aendern}
  */
@@ -72,6 +78,8 @@ public record Konfiguration(short minTeilnehmer,
                             String halleAbsageVorlageEffektiv,
                             short halleVorlaufStunden,
                             boolean hallenModusAktiv,
+                            boolean pushAktiv,
+                            short pushErinnerungStunden,
                             OffsetDateTime geaendertAm,
                             Long version) {
 
@@ -85,7 +93,7 @@ public record Konfiguration(short minTeilnehmer,
      *
      * <p><b>Ein Zwischentyp waere hier Ballast.</b> Bei den Profilen steht zwischen Abfrage und
      * DTO ein Wertobjekt, weil die Abfrage mehr liefert, als nach aussen darf. Die Konfiguration
-     * hat nichts Geheimes: Von fuenfzehn Spalten bleiben nur {@code id} und {@code geaendertVon}
+     * hat nichts Geheimes: Von achtzehn Spalten bleiben nur {@code id} und {@code geaendertVon}
      * draussen, und beide sind inhaltsleer statt vertraulich.
      *
      * <p><b>Die Ersatzvorlage wird hier eingesetzt und nicht im Dienst</b>: Die Entscheidung,
@@ -108,6 +116,8 @@ public record Konfiguration(short minTeilnehmer,
                 Absagevorlage.wirksam(konfiguration.getHalleAbsageVorlage()),
                 konfiguration.getHalleVorlaufStunden(),
                 konfiguration.isHallenModusAktiv(),
+                konfiguration.isPushAktiv(),
+                konfiguration.getPushErinnerungStunden(),
                 konfiguration.getGeaendertAm(),
                 konfiguration.getVersion());
     }

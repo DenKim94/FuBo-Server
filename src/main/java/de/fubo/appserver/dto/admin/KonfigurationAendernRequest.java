@@ -13,7 +13,7 @@ import jakarta.validation.constraints.Size;
  * (A10, A11, A14, A15, A17, A23; S3 Abschnitt 5).
  *
  * <h2>Voll-Update, nicht feldweise</h2>
- * Der Koerper enthaelt <b>alle elf</b> aenderbaren Felder; der Client laedt vorher
+ * Der Koerper enthaelt <b>alle vierzehn</b> aenderbaren Felder; der Client laedt vorher
  * {@code /admin/config/lesen} und schickt das veraenderte Ganze zurueck. Weglassen ist keine
  * Angabe - anders als bei {@link SpielerBearbeitenRequest}, wo genau das der Vertrag ist.
  *
@@ -56,17 +56,24 @@ import jakarta.validation.constraints.Size;
  *       waere ein Leerlauf-Fenster von rund 20 Tagen eine gueltige Eingabe, und ein
  *       verrutschtes Komma im Formular haette dieselbe Wirkung wie ein abgeschaltetes
  *       Sitzungsende.</li>
+ *   <li><b>{@code pushErinnerungStunden} hoechstens 168</b> (eine Woche, S8).
+ *       {@code ck_app_config_push_vorlauf} verlangt nur {@code > 0}; ohne Obergrenze waere ein
+ *       Vorlauf von rund 90 Jahren gueltig, und die Erinnerung traefe auf einen Schlag jeden
+ *       kuenftigen Termin.</li>
  * </ul>
  * Eine feldeuebergreifende Regel - {@code maxTeilnehmer >= minTeilnehmer} - kann Bean Validation
  * nicht; sie liegt im Dienst.
  *
- * <h2>Warum {@code hallenModusAktiv} ein {@code Boolean} mit {@code @NotNull} ist</h2>
+ * <h2>Warum {@code hallenModusAktiv} und {@code pushAktiv} {@code Boolean} mit
+ * {@code @NotNull} sind</h2>
  * Die uebrigen Zahlenfelder sind primitiv und werden ueber {@code @Min} abgesichert - eine
  * fehlende Zahl kommt dort als {@code 0} an und faellt durch die Untergrenze. <b>Bei einem
  * Wahrheitswert gibt es diese Untergrenze nicht:</b> Ein primitiver {@code boolean} waere bei
- * einem fehlenden Feld stillschweigend {@code false}, und ein Client, der das zwoelfte Feld
- * nicht kennt, schaltete den Hallenmodus bei jedem Speichern ab, ohne dass es jemandem
- * auffiele. Der Wrapper-Typ macht das Weglassen zu einem {@code 400} mit Feldangabe.
+ * einem fehlenden Feld stillschweigend {@code false}, und ein Client, der das zwoelfte oder
+ * dreizehnte Feld nicht kennt, schaltete den Hallenmodus beziehungsweise den Push-Versand bei
+ * jedem Speichern ab, ohne dass es jemandem auffiele. Der Wrapper-Typ macht das Weglassen zu
+ * einem {@code 400} mit Feldangabe. <b>Die Regel gilt fuer jedes Voll-Update</b>, nicht nur
+ * fuer diese beiden Felder.
  *
  * @param version                Stand, auf dem die Aenderung aufsetzt
  * @param minTeilnehmer          Mindestteilnehmerzahl (A10)
@@ -82,6 +89,10 @@ import jakarta.validation.constraints.Size;
  * @param halleVorlaufStunden    Vorlauf, bis zu dem eine Absage zulaessig ist (A23)
  * @param hallenModusAktiv       Hauptschalter des Hallenmodus (A23, {@code V013}); steht er
  *                               aus, lehnt {@code /admin/halle/absagen} jede Absage ab
+ * @param pushAktiv              Hauptschalter des Push-Versands (A25e, {@code V014});
+ *                               Anlagenebene der drei Versandbedingungen
+ * @param pushErinnerungStunden  Vorlauf der Erinnerung an offene Rueckmeldungen in Stunden
+ *                               (A25, {@code V014}); 1 bis 168, Vorgabe 24
  */
 public record KonfigurationAendernRequest(
 
@@ -125,7 +136,14 @@ public record KonfigurationAendernRequest(
         short halleVorlaufStunden,
 
         @NotNull(message = "Die Angabe, ob der Hallenmodus aktiv ist, fehlt.")
-        Boolean hallenModusAktiv) {
+        Boolean hallenModusAktiv,
+
+        @NotNull(message = "Die Angabe, ob Push-Benachrichtigungen versandt werden, fehlt.")
+        Boolean pushAktiv,
+
+        @Min(value = 1, message = "Der Vorlauf der Erinnerung muss mindestens 1 Stunde betragen.")
+        @Max(value = 168, message = "Der Vorlauf der Erinnerung darf höchstens 168 Stunden (eine Woche) betragen.")
+        short pushErinnerungStunden) {
 
     /**
      * Die Hallenadresse ohne Randleerzeichen; {@code null}, wenn nichts uebrig bleibt.

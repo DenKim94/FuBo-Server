@@ -58,7 +58,7 @@ class KonfigurationControllerTests {
     private static final String COOKIE = "FUBO_SESSION";
 
     /**
-     * Die zwoelf aenderbaren Felder in der Reihenfolge des Vertrags.
+     * Die vierzehn aenderbaren Felder in der Reihenfolge des Vertrags.
      *
      * <p><b>{@code halleAbsageVorlageEffektiv} steht bewusst nicht hier</b> - es ist nur lesbar.
      * Der Helfer {@code aktuellerKoerper()} baut den Anfragekoerper aus genau dieser Liste;
@@ -67,7 +67,8 @@ class KonfigurationControllerTests {
     private static final List<String> AENDERBAR = List.of(
             "minTeilnehmer", "maxTeilnehmer", "anzGuests", "algorithmType", "auswechselModus",
             "anzTeamGenerator", "sessionLeerlaufMinuten", "sessionMaximalStunden", "halleEmail",
-            "halleAbsageVorlage", "halleVorlaufStunden", "hallenModusAktiv");
+            "halleAbsageVorlage", "halleVorlaufStunden", "hallenModusAktiv", "pushAktiv",
+            "pushErinnerungStunden");
 
     @Autowired
     private WebApplicationContext kontext;
@@ -120,6 +121,11 @@ class KonfigurationControllerTests {
         assertThat(konfiguration.get("hallenModusAktiv"))
                 .as("V013 legt den Hallenmodus abgeschaltet an")
                 .isEqualTo(false);
+        assertThat(konfiguration.get("pushAktiv"))
+                .as("V014 legt den Push-Versand eingeschaltet an (A25e) - anders als den "
+                        + "Hallenmodus, weil eine Push-Nachricht nur erreicht, wer zugestimmt hat")
+                .isEqualTo(true);
+        assertThat(zahl(konfiguration, "pushErinnerungStunden")).isEqualTo(24);
 
         assertThat(konfiguration.get("geaendertAm")).isNotNull();
         assertThat(konfiguration.get("version")).isNotNull();
@@ -139,9 +145,9 @@ class KonfigurationControllerTests {
 
     // --------------------------------------------------------------------- Aendern
 
-    /** Ein Voll-Update schreibt alle zwoelf Felder in die Datenbank. */
+    /** Ein Voll-Update schreibt alle vierzehn Felder in die Datenbank. */
     @Test
-    void aendernSchreibtAlleZwoelfFelder() throws Exception {
+    void aendernSchreibtAlleVierzehnFelder() throws Exception {
         Map<String, Object> koerper = aktuellerKoerper();
         koerper.put("minTeilnehmer", 8);
         koerper.put("maxTeilnehmer", 20);
@@ -155,6 +161,8 @@ class KonfigurationControllerTests {
         koerper.put("halleAbsageVorlage", "Der Termin faellt leider aus.");
         koerper.put("halleVorlaufStunden", 24);
         koerper.put("hallenModusAktiv", true);
+        koerper.put("pushAktiv", false);
+        koerper.put("pushErinnerungStunden", 12);
 
         aendern(koerper).andExpect(status().isNoContent());
 
@@ -171,6 +179,8 @@ class KonfigurationControllerTests {
         assertThat(zeile.get("halle_absage_vorlage")).isEqualTo("Der Termin faellt leider aus.");
         assertThat(spalte(zeile, "halle_vorlauf_stunden")).isEqualTo(24);
         assertThat(zeile.get("hallen_modus_aktiv")).isEqualTo(true);
+        assertThat(zeile.get("push_aktiv")).isEqualTo(false);
+        assertThat(spalte(zeile, "push_erinnerung_stunden")).isEqualTo(12);
     }
 
     /**

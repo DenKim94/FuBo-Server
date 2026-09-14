@@ -20,12 +20,12 @@ import java.util.Objects;
 
 /**
  * Liest und aendert die einzeilige Admin-Konfiguration aus {@code configs.app_config}
- * (A10, A11, A14, A15, A17, A23).
+ * (A10, A11, A14, A15, A17, A23, A25).
  *
  * <h2>Warum die Aenderung das DTO entgegennimmt und keine Einzelwerte</h2>
  * Sonst ist es in diesem Projekt umgekehrt: {@code SpielerVerwaltungService#bearbeiten} bekommt
- * seine Werte einzeln, damit der Dienst den Vertrag nicht kennen muss. Hier waeren das zwoelf
- * Argumente, davon sieben vom Typ {@code short} - eine Liste, in der zwei vertauschte Werte
+ * seine Werte einzeln, damit der Dienst den Vertrag nicht kennen muss. Hier waeren das vierzehn
+ * Argumente, davon acht vom Typ {@code short} - eine Liste, in der zwei vertauschte Werte
  * fehlerfrei kompilieren und stillschweigend das Falsche schreiben. Genau diese Verwechslung ist
  * der Grund, aus dem es {@code ConfigServiceTests} ueberhaupt gibt (JPA-Mapping-Regel 2). Ein
  * Record mit benannten Komponenten schliesst sie aus; das ist den Import des DTOs wert.
@@ -125,8 +125,12 @@ public class ConfigService {
      *       <td><b>sofort</b> - {@code HallenService} liest den Wert bei jedem Absageversuch
      *           neu. Steht er aus, antwortet der Endpunkt {@code 409 HALLE_MODUS_INAKTIV},
      *           bevor er ueberhaupt einen Termin sucht</td></tr>
+     *   <tr><td>{@code pushAktiv}</td>
+     *       <td><b>sofort</b> - jeder Versandanlass liest den Wert neu. Steht er aus,
+     *           unterbleibt der Versand stillschweigend; das ist kein Fehlerfall, sondern
+     *           die Anlagenebene der drei Bedingungen aus A25</td></tr>
      *   <tr><td>uebrige Felder</td>
-     *       <td>betrifft S4 bis S7; sie wirken beim naechsten Aufruf des jeweiligen
+     *       <td>betrifft S4 bis S8; sie wirken beim naechsten Aufruf des jeweiligen
      *           Endpunkts</td></tr>
      * </table>
      * Die zweite Zeile ist die ueberraschende: Wer die harte Obergrenze von einer Stunde auf acht
@@ -137,7 +141,8 @@ public class ConfigService {
      * diesem Grund <b>nicht</b> dort steht: Ein Admin soll die Nachvollziehbarkeit seiner eigenen
      * Aenderungen nicht per Formular verkuerzen koennen.
      *
-     * @param anfrage        alle zwoelf aenderbaren Felder samt der Version, auf der sie aufsetzen
+     * @param anfrage        alle vierzehn aenderbaren Felder samt der Version, auf der sie
+     *                       aufsetzen
      * @param adminSpielerId Profil-Id des handelnden Admins, fuer das Protokoll
      * @param clientIp       Adresse des Aufrufers, fuer das Protokoll
      * @throws FachlicherFehler {@code 400 EINGABE_UNGUELTIG}, wenn die Maximalzahl unter der
@@ -180,6 +185,8 @@ public class ConfigService {
         bestand.setHalleAbsageVorlage(anfrage.halleAbsageVorlageBereinigt());
         bestand.setHalleVorlaufStunden(anfrage.halleVorlaufStunden());
         bestand.setHallenModusAktiv(anfrage.hallenModusAktiv());
+        bestand.setPushAktiv(anfrage.pushAktiv());
+        bestand.setPushErinnerungStunden(anfrage.pushErinnerungStunden());
         bestand.setGeaendertVon(ADMIN_KONTO_ID);
         bestand.setGeaendertAm(OffsetDateTime.now());
 
@@ -228,7 +235,8 @@ public class ConfigService {
      * Stellt fest, welche Felder sich wirklich aendern - fuer das Audit-Log.
      *
      * <p><b>Hier lohnt sich der Vorher-Wert</b>, anders als bei den Skillwerten in
-     * {@code SpielerVerwaltungService}: Es sind hoechstens elf Werte, sie gelten anwendungsweit,
+     * {@code SpielerVerwaltungService}: Es sind hoechstens vierzehn Werte, sie gelten
+     * anwendungsweit,
      * und die Betriebsfrage "seit wann steht das Leerlauf-Fenster auf 60 Minuten" ist ohne den
      * alten Wert nicht zu beantworten.
      *
@@ -258,6 +266,9 @@ public class ConfigService {
                 bestand.getHalleVorlaufStunden(), anfrage.halleVorlaufStunden());
         vergleiche(felder, "hallenModusAktiv",
                 bestand.isHallenModusAktiv(), anfrage.hallenModusAktiv());
+        vergleiche(felder, "pushAktiv", bestand.isPushAktiv(), anfrage.pushAktiv());
+        vergleiche(felder, "pushErinnerungStunden",
+                bestand.getPushErinnerungStunden(), anfrage.pushErinnerungStunden());
 
         if (!Objects.equals(bestand.getHalleAbsageVorlage(), anfrage.halleAbsageVorlageBereinigt())) {
             felder.put("halleAbsageVorlage", "geaendert");

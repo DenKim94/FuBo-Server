@@ -15,15 +15,18 @@ import java.time.OffsetDateTime;
  * (Singleton, per CHECK-Constraint {@code ck_app_config_singleton} erzwungen,
  * Seed in {@code V007}).
  *
- * <p>Vollstaendiges Abbild von {@code configs.app_config} aus {@code V004} und {@code V009}.
+ * <p>Vollstaendiges Abbild von {@code configs.app_config} aus {@code V004}, {@code V009},
+ * {@code V010}, {@code V013} und {@code V014}.
  * Gelesen wird in S2 nur das Zwei-Timer-Modell; die uebrigen Felder werden ab S3 (Admin-CRUD),
- * S4 (Teilnehmerzahlen), S5 (Teamgenerator samt {@code auswechselModus}) und S7 (Hallenmodus)
+ * S4 (Teilnehmerzahlen), S5 (Teamgenerator samt {@code auswechselModus}), S7 (Hallenmodus)
+ * und S8 (Push)
  * verwendet.
  *
  * <p>Die Wertebereiche sind in der Datenbank per CHECK-Constraint abgesichert
  * ({@code ck_app_config_teilnehmer}, {@code ck_app_config_guests},
  * {@code ck_app_config_algo}, {@code ck_app_config_auswechsel}, {@code ck_app_config_generator},
- * {@code ck_app_config_session}, {@code ck_app_config_vorlauf}). Auf zusaetzliche
+ * {@code ck_app_config_session}, {@code ck_app_config_vorlauf},
+ * {@code ck_app_config_push_vorlauf}). Auf zusaetzliche
  * Bean-Validation-Annotationen an der Entity wird bewusst verzichtet - die Regel stuende
  * dann an zwei Orten und koennte auseinanderlaufen. Die Eingabepruefung gehoert an die
  * API-Grenze, also an das DTO des Admin-Endpunkts (S3).
@@ -126,6 +129,43 @@ public class AppConfig {
      */
     @Column(name = "hallen_modus_aktiv", nullable = false)
     private boolean hallenModusAktiv;
+
+    // ---------------------------------------------------------------- Push (A25)
+
+    /**
+     * Hauptschalter des Push-Versands ({@code V014}, A25e); Vorgabe {@code true}.
+     *
+     * <p><b>Der Vorgabewert ist der umgekehrte wie bei {@link #hallenModusAktiv}, und das ist
+     * kein Versehen.</b> Der Unterschied ist der Empfaenger: Die Hallenabsage geht an einen
+     * Aussenstehenden, der nie zugestimmt hat - dort ist "aus, bis jemand es einschaltet" die
+     * sichere Richtung. Eine Push-Nachricht erreicht ausschliesslich, wer im Browserdialog
+     * zugestimmt hat, und {@code true} kann fuer sich genommen nichts ausloesen: ohne
+     * Abonnement und ohne eingerichtete VAPID-Schluessel geht nichts hinaus. A25(e) verlangt
+     * die Voreinstellung "eingeschaltet" ausdruecklich.
+     *
+     * <p>Er ist die <b>Anlagenebene</b> von drei Bedingungen, die zusammen gelten: Anlage
+     * (dieses Feld, der Admin), Person ({@code profil.spieler.push_erwuenscht}, der Spieler)
+     * und Geraet (mindestens ein aktives Abonnement). Faellt eine weg, unterbleibt der Versand
+     * stillschweigend.
+     *
+     * <p><b>Die VAPID-Schluessel stehen bewusst nicht in dieser Tabelle</b>, sondern in
+     * Umgebungsvariablen: Die Konfigurationszeile wird ueber einen Admin-Endpunkt gelesen und
+     * geschrieben, ein privates Geheimnis haette darin nichts zu suchen.
+     */
+    @Column(name = "push_aktiv", nullable = false)
+    private boolean pushAktiv;
+
+    /**
+     * Vorlauf in Stunden, mit dem an eine offene Rueckmeldung erinnert wird (A25); Vorgabe 24.
+     *
+     * <p>Der Wert gilt <b>anwendungsweit</b> und nicht je Termin - ein Feld am Termin waere ein
+     * weiteres Pflichtfeld im Terminformular. Die Obergrenze von 168 Stunden steht am DTO,
+     * nicht als CHECK: {@code ck_app_config_push_vorlauf} verlangt nur {@code > 0}, und eine
+     * verletzte Bedingung braechte einen {@code 500} mit einem Constraint-Namen im Log statt
+     * einer Meldung.
+     */
+    @Column(name = "push_erinnerung_stunden", nullable = false)
+    private short pushErinnerungStunden;
 
     // ---------------------------------------------------------------- Aenderungsverfolgung
 
@@ -257,6 +297,22 @@ public class AppConfig {
 
     public void setHallenModusAktiv(boolean hallenModusAktiv) {
         this.hallenModusAktiv = hallenModusAktiv;
+    }
+
+    public boolean isPushAktiv() {
+        return pushAktiv;
+    }
+
+    public void setPushAktiv(boolean pushAktiv) {
+        this.pushAktiv = pushAktiv;
+    }
+
+    public short getPushErinnerungStunden() {
+        return pushErinnerungStunden;
+    }
+
+    public void setPushErinnerungStunden(short pushErinnerungStunden) {
+        this.pushErinnerungStunden = pushErinnerungStunden;
     }
 
     public Short getGeaendertVon() {
