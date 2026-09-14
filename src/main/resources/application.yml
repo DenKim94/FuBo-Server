@@ -120,6 +120,36 @@ fubo:
     # kuerzer: Der fachliche Beleg steht im Protokoll, hier bleiben nur technische
     # Vorgangsdaten - und angefordert_von_ip ist personenbezogen.
     aufbewahrung-tage: 30
+  push:
+    # Web Push (A25, S8). Der Server spricht die Push-Dienste der Browserhersteller ueber
+    # ausgehendes HTTPS an; es entsteht kein neuer eingehender Endpunkt.
+    #
+    # ANDERS ALS BEI fubo.mail bricht der Start OHNE diese Werte NICHT ab: PushConfig
+    # protokolliert eine Warnung und behandelt Push als abgeschaltet. Der Kernbetrieb laeuft
+    # ohne Push vollstaendig, ein Startabbruch waere unverhaeltnismaessig. Sichtbar wird der
+    # Zustand an /api/v1/push/schluessel/lesen, das dann mit 503 antwortet.
+    #
+    # Der Doppelpunkt am Ende der Platzhalter setzt einen leeren Vorgabewert. Ohne ihn
+    # reichte Spring Boots Binder die Zeichenkette "${FUBO_VAPID_PUBLIC_KEY}" WOERTLICH
+    # durch - PushConfig prueft deshalb zusaetzlich auf unaufgeloeste Platzhalter.
+    #
+    # Das Schluesselpaar ist das einzige Geheimnis des Projekts, dessen Verlust die NUTZER
+    # trifft: Abonnements haengen am oeffentlichen Schluessel, nach einem Wechsel muss jeder
+    # Spieler im Browser erneut zustimmen.
+    vapid-public-key: ${FUBO_VAPID_PUBLIC_KEY:}
+    vapid-private-key: ${FUBO_VAPID_PRIVATE_KEY:}
+    # Kontaktadresse des Betreibers als URI nach RFC 8292, ueblich mit mailto:-Praefix. Kein
+    # Geheimnis, aber auch keine Formalie: Apple lehnt ein JWT ohne brauchbaren sub-Anspruch
+    # mit BadJwtToken ab, und der Fehler faellt NUR auf einem iPhone auf.
+    vapid-subject: ${FUBO_VAPID_SUBJECT:}
+    # Laeuft der @Scheduled-Auftrag fuer die Terminerinnerung? Im Test auf false, siehe
+    # src/test/resources/application.yml.
+    erinnerung-aktiv: true
+    # Gesamtfrist eines Versandlaufs in Millisekunden. Gesendet wird nebenlaeufig, die
+    # Wartezeit ist also das Maximum der Einzelaufrufe und nicht ihre Summe. Der Listener der
+    # Terminabsage laeuft synchron im Anfrage-Thread des Admins - ohne diese Frist waeren
+    # dreissig Empfaenger im schlechtesten Fall zweieinhalb Minuten Ladekreis.
+    versand-frist-millis: 10000
   cors:
     # Kein Default. Fehlt die Variable, bricht der Start ab.
     allowed-origins: ${FUBO_CORS_ALLOWED_ORIGINS}

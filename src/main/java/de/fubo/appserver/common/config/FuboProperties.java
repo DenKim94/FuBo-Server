@@ -18,7 +18,8 @@ public record FuboProperties(@NotNull Session session,
                              @DefaultValue @NotNull BruteForce bruteForce,
                              @DefaultValue @NotNull Audit audit,
                              @NotNull Mail mail,
-                             @DefaultValue @NotNull Reset reset) {
+                             @DefaultValue @NotNull Reset reset,
+                             @DefaultValue @NotNull Push push) {
 
     /** Attribute des Session-Cookies. */
     public record Session(@NotBlank String cookieName,
@@ -143,4 +144,60 @@ public record FuboProperties(@NotNull Session session,
                         @DefaultValue("5") @Min(1) @Max(5) int maxVersuche,
                         @DefaultValue("3") @Min(1) int maxAnforderungenProStunde,
                         @DefaultValue("30") @Min(1) int aufbewahrungTage) {}
+
+    /**
+     * Web Push (A25, S8): VAPID-Zugang und zwei Stellschrauben des Versands.
+     *
+     * <h2>Warum hier kein {@code @NotBlank} steht - die begruendete Abweichung von
+     * {@link Mail}</h2>
+     * Beim SMTP-Zugang bricht der Start ab, wenn ein Wert fehlt: Eine Anwendung, die
+     * Nachrichten ins Leere schickt, faellt sonst erst beim Passwort-Reset auf - also genau
+     * dann, wenn niemand mehr einen Ausweg hat. <b>Bei Push ist der Handel umgekehrt:</b> Der
+     * Kernbetrieb laeuft ohne Push vollstaendig, ein Startabbruch waere unverhaeltnismaessig.
+     * Fehlt ein Wert, laeuft die Anwendung mit einer Warnung weiter und behandelt Push als
+     * abgeschaltet ({@code PushConfig}).
+     *
+     * <p><b>{@code @NotBlank} schiede hier doppelt aus:</b> Es braeche genau den Start ab, der
+     * weiterlaufen soll - und es griffe bei einem unaufgeloesten Platzhalter ohnehin nicht,
+     * denn <code>"${FUBO_VAPID_PUBLIC_KEY}"</code> ist nicht leer. Die Pruefung auf einen
+     * unaufgeloesten Platzhalter gehoert deshalb in {@code PushConfig} und nicht an dieses Feld.
+     *
+     * <p><b>Die Schluessel stehen ausschliesslich in Umgebungsvariablen</b>, nie in
+     * {@code configs.app_config}: Die Konfigurationstabelle wird ueber einen Admin-Endpunkt
+     * gelesen und geschrieben. Ein Wechsel des Paares entwertet saemtliche bestehenden
+     * Abonnements - sie sind an den oeffentlichen Schluessel gebunden, und jeder Spieler
+     * muesste erneut zustimmen.
+     *
+     * @param vapidPublicKey     oeffentlicher P-256-Schluessel als base64url ohne Polsterung
+     *                           (87 Zeichen, unkomprimierter Punkt), aus
+     *                           {@code FUBO_VAPID_PUBLIC_KEY}. Er geht an den Client und in
+     *                           den {@code Authorization}-Kopf jeder Push-Anfrage
+     * @param vapidPrivateKey    privater Skalar als base64url ohne Polsterung (43 Zeichen),
+     *                           aus {@code FUBO_VAPID_PRIVATE_KEY}. <b>Geheimnis</b> - er
+     *                           erscheint in keiner Antwort und in keiner Logzeile
+     * @param vapidSubject       Kontaktadresse des Betreibers als URI nach RFC 8292, aus
+     *                           {@code FUBO_VAPID_SUBJECT}. Das Praefix {@code mailto:} ist
+     *                           Pflicht: RFC 8292 erklaert den {@code sub}-Anspruch zwar fuer
+     *                           optional, Apple lehnt ein JWT ohne oder mit unsauber
+     *                           formatiertem {@code sub} aber mit {@code BadJwtToken} ab - und
+     *                           <b>der Fehler faellt nur auf einem iPhone auf</b>, Google und
+     *                           Mozilla nehmen die Nachricht auch ohne an
+     * @param erinnerungAktiv    ob der {@code @Scheduled}-Auftrag fuer die Terminerinnerung
+     *                           laeuft. In {@code src/test/resources/application.yml} auf
+     *                           {@code false}: Alles, was den Kontextstart ueberlebt, ueberlebt
+     *                           auch die Test-Transaktion - ein nebenher laufender Auftrag
+     *                           versendete Erinnerungen mitten in fremde Faelle hinein
+     * @param versandFristMillis Gesamtfrist eines Versandlaufs. Gesendet wird nebenlaeufig; die
+     *                           Wartezeit ist damit das Maximum der Einzelaufrufe und nicht
+     *                           ihre Summe. <b>Sie ist kein Feinschliff:</b> Der Listener der
+     *                           Terminabsage laeuft synchron im Anfrage-Thread des Admins, und
+     *                           ohne Frist waeren dreissig Empfaenger im schlechtesten Fall
+     *                           zweieinhalb Minuten Ladekreis. Offene Aufrufe werden danach
+     *                           abgebrochen und als Fehlversuch gebucht
+     */
+    public record Push(@DefaultValue("") String vapidPublicKey,
+                       @DefaultValue("") String vapidPrivateKey,
+                       @DefaultValue("") String vapidSubject,
+                       @DefaultValue("true") boolean erinnerungAktiv,
+                       @DefaultValue("10000") @Min(1) int versandFristMillis) {}
 }

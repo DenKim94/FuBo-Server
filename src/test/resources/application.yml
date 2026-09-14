@@ -64,6 +64,22 @@ fubo:
     # der Pruefdaten direkt, statt die Frist zu verkuerzen - das haelt ihn unabhaengig vom
     # konfigurierten Wert.
     aufbewahrung-tage: 30
+  push:
+    # Feste Testwerte statt ${FUBO_VAPID_...}: Der Testlauf darf nicht davon abhaengen, ob
+    # lokal eine .env existiert - sonst ist er auf dem Entwicklungsrechner gruen und in einer
+    # CI-Umgebung rot. Leere Werte heissen "nicht eingerichtet"; PushConfig protokolliert das
+    # einmal und liefert ein VapidSchluessel-Objekt mit eingerichtet = false. Genau dieser
+    # Zustand wird gebraucht, um den 503-Fall zu pruefen.
+    vapid-public-key: ""
+    vapid-private-key: ""
+    vapid-subject: ""
+    # AUS, und das ist keine Bequemlichkeit: Alles, was den Kontextstart ueberlebt, ueberlebt
+    # auch die Test-Transaktion. Ein nebenher laufender Erinnerungsauftrag markierte Termine
+    # fremder Testfaelle als erinnert - und der Fall "der zweite Lauf versendet nichts"
+    # prueft dann das Gegenteil dessen, was er soll. Die Testfaelle rufen die Methode selbst
+    # auf.
+    erinnerung-aktiv: false
+    versand-frist-millis: 10000
   cors:
     allowed-origins: http://localhost:5173
 

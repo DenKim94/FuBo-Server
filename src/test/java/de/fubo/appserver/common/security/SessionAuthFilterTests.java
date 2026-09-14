@@ -51,7 +51,10 @@ class SessionAuthFilterTests {
             // S2b aber Pflichtbestandteile von FuboProperties.
             new FuboProperties.Mail("smtp.example.invalid", 587, "test", "test",
                     "FuBo-Test <noreply@example.invalid>", 5000),
-            new FuboProperties.Reset(15, 5, 3, 30));
+            new FuboProperties.Reset(15, 5, 3, 30),
+            // S8: Push. Fuer den Filter ohne Bedeutung, seit S8 aber
+            // Pflichtbestandteil von FuboProperties.
+            new FuboProperties.Push("", "", "", false, 10000));
 
     /** Der SecurityContext haengt am Thread und wuerde sonst in den naechsten Test lecken. */
     @AfterEach
