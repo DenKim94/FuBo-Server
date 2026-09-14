@@ -30,7 +30,66 @@ Beide Male traf die vorab gezählte Zahl exakt. Der Vertrag steht bei **38 Endpu
 Datenmodell bei **18 Tabellen** (`V001`–`V013`): `V012` war die erste Migration seit S3, `V013`
 die zweite. **Alles ist auf `dev` committet** (sieben Commits, 13.09.2026); nicht gepusht.
 
-**Als Nächstes: die fünf Handprüflisten** in einem Zug, danach S8 (A25, Push).
+**S8 läuft: die Pakete 1 bis 4 sind gebaut, der Testlauf steht aus** (14.09.2026). Damit steht
+`V014`, das Datenmodell bei **19 Tabellen**, und die Konfiguration bei **vierzehn Pflichtfeldern**.
+Der Vertrag bleibt bei **38 Endpunkten** – die sechs Push-Pfade kommen erst, wenn sie umgesetzt
+sind. **Noch nicht committet.**
+
+**Als Nächstes: `./mvnw clean verify`.** Erwartet werden unverändert **434 Fälle in 31 Klassen** –
+die Pakete 1 bis 4 bringen keine neue `@Test`-Methode mit, sondern nur Zusicherungen innerhalb
+bestehender Fälle. **Weicht die Zahl ab, ist etwas anderes passiert als geplant.** Danach die fünf
+Handprüflisten in einem Zug und die Pakete 5 bis 13.
+
+**Zwei Dinge vor dem Lauf:** Docker muss laufen (`docker info`), und es ist `./mvnw clean verify`,
+nicht nur `verify` – beide `application.yml` haben einen neuen Block bekommen, und
+`target/classes` vergisst nichts.
+
+### Was die Pakete 1 bis 4 von S8 gebracht haben (14.09.2026)
+
+Abschnitte 1 bis 4 der Anleitung: Bestandsaufnahme samt Schlüsselpaar, `V014`, der
+Entity- und Konfigurationsanschluss und die VAPID-Bindung. **Krypto, Adapter, Endpunkte, die
+beiden Anlässe und die Tests stehen aus** (Abschnitte 5 bis 13).
+
+| Gegenstand | Stand |
+|---|---|
+| `V014__push.sql` | `profil.push_abo` samt partiellem Index, `spieler.push_erwuenscht`, `termin.push_erinnerung_am`, `app_config.push_aktiv`/`push_erinnerung_stunden` |
+| Konfiguration | zwei Pflichtfelder in `Konfiguration`, `KonfigurationAendernRequest`, `ConfigService` und im Audit-Detail |
+| Entities | `spieler.push_erwuenscht` und `termin.push_erinnerung_am` gemappt, `push_abo` bewusst ohne Entity |
+| `FuboProperties.Push` | fünf Werte unter `fubo.push`, ohne `@NotBlank` |
+| `PushConfig` + `VapidSchluessel` | Startprüfung ohne Abbruch, Schlüssel einmal dekodiert, Kennzeichen `eingerichtet` |
+| Vertrag | die beiden Konfigurationsfelder; **keine** Push-Endpunkte |
+| `.env` | lokales Schlüsselpaar erzeugt und eingetragen; `.env.example` nennt die drei Namen |
+
+**Drei Punkte, die beim Weiterbauen zählen:**
+
+1. **Der Filterchain-Eintrag fehlt noch** – er gehört zu Paket 7 und ist **kein Versäumnis, sondern
+   eine Reihenfolge**: Es gibt noch keinen Push-Pfad, den er schützen müsste. Wer die Endpunkte
+   baut, baut ihn zuerst; ohne ihn sind sie für Gäste **offen**, nicht gesperrt.
+2. **`push_erinnerung_am` ist gemappt, fällt beim Verschieben aber noch nicht zurück.** Das eine
+   folgt aus Weggabelung B, das andere gehört zu Paket 8 (`TerminService#aendern`, eine Zeile neben
+   `setTeamsFixiert(false)`, unter derselben Bedingung). **Bis dahin ist die Spalte gemappt und
+   unbenutzt** – gewollt, damit kein späteres natives `UPDATE` neben einer geladenen Entity landet.
+3. **`fubo.push.erinnerung-aktiv` steht im Test auf `false`.** Ohne das liefe der Auftrag ab Paket 8
+   quer durch fremde Testfälle: Alles, was den Kontextstart überlebt, überlebt auch die
+   Test-Transaktion. Die Testfälle rufen die Methode selbst auf.
+
+**Die Fallzahl bleibt bei 434 in 31 Klassen.** Neue Felder kamen als Zusicherungen in bestehende
+Fälle (`ConfigServiceTests#seedDefaultsWerdenVollstaendigGelesen`, in
+`KonfigurationControllerTests` der Lesefall und der Voll-Update-Fall, der dabei von
+`aendernSchreibtAlleZwoelfFelder` in `…AlleVierzehnFelder` umbenannt wurde). **Der Pflichtfeld-Fall
+„400 ohne `pushAktiv`" fehlt noch** – er gehört zu Paket 12 und ist die einzige Lücke, die die
+Zahl später um mindestens einen Fall erhöht.
+
+**Zwei Zahlen in den Dokumenten waren schon vorher veraltet und sind mitkorrigiert:** Die
+Konfigurations-DTOs sprachen noch von *elf* änderbaren Feldern (seit dem Hauptschalter waren es
+zwölf), und `Konfiguration#von` nannte *fünfzehn* Spalten (es waren sechzehn). Jetzt: vierzehn
+Felder, achtzehn Spalten.
+
+**Offen und benannt:** `V014` folgt der Gepflogenheit der elf bestehenden Migrationen und lässt den
+Primärschlüssel **unbenannt** (`id BIGSERIAL PRIMARY KEY`), obwohl `AGENT_SERVER.md` unter den
+Flyway-Konventionen `pk_` aufführt. Kein `CONSTRAINT pk_` steht in `V001` bis `V013`; ein einzelnes
+in `V014` wäre der Ausreisser. **Wer das anders will, ändert die Regel und nicht eine Migration** –
+angewandte Migrationen sind unveränderlich.
 
 ### Neu am 14.09.2026 – A25 ist S8, Härtung und Deployment werden S9
 
@@ -381,7 +440,7 @@ Schätzung noch nicht gab.
 | S5 | Teamgenerator: `EXHAUSTIV` + `HEURISTIK`, Zielfunktion inkl. Torwart-Gewicht, Kontingent/Seed/Snapshot, Auswechselspieler; **dazu A24 (manueller Lauf des Admins)** | **verifiziert (12.09.2026)** – Bestätigungslauf grün; Handprüfliste 13.1 offen. Schrittsumme **24,0 h** (20,5 + 3,5 für A24) | 18 |
 | S6 | **Ergebnis und Bilanz** (umbenannt am 12.09.2026; „Ergebnis & Audit API" versprach einen Leseendpunkt fürs Protokoll, den keine Anforderung verlangt): „erster Eintrag gilt", Admin-Korrektur, Bilanz-Zähler, eigene Bilanz | **verifiziert (12.09.2026, 411 Tests in 30 Klassen)**; Handprüfliste 8.1 offen. Schrittsumme **13,0 h** (11,0 geplant plus 2,0 für die Entscheidungen vom 12.09.) | 8 |
 | S7 | **Hallenmodus**: E-Mail-Absage an den Hallenbetreiber, Vorlauffrist aus der Konfiguration (A23); dazu `V012` – die erste Migration seit S3 | **verifiziert (13.09.2026)** – 431/31 für S7, 434/31 nach dem Nachtrag „Hauptschalter" (`V013`). Handprüfliste 8.1 offen. Schrittsumme **12,0 h** gegen 6,0 top-down (8,5 geplant, plus 1,5 für die Entscheidungen vom 13.09. und 2,0 für den Hauptschalter) | 6 |
-| S8 | **A25 serverseitig (Push)**: `V014`, sechs Endpunkte, Erinnerungsauftrag, Absage-Ereignis, Versandadapter ohne Fremdbibliothek – Anleitung: `harness/tmp/S8_PUSH_UMSETZUNG.md` | offen | 22,5 (Schrittsumme) |
+| S8 | **A25 serverseitig (Push)**: `V014`, sechs Endpunkte, Erinnerungsauftrag, Absage-Ereignis, Versandadapter ohne Fremdbibliothek – Anleitung: `harness/tmp/S8_PUSH_UMSETZUNG.md` | **Pakete 1–4 gebaut** (14.09.2026), Testlauf steht aus; 5–13 offen | 22,5 (Schrittsumme) |
 | S9 | Härtung, Deployment (Docker/nginx/Cloudflared), API-Doku – Entwurf: `harness/tmp/S9_DEPLOYMENT.md` (bis 14.09.2026 `S8_DEPLOYMENT.md`) | offen | 14 |
 
 Anleitungen: `harness/tmp/S<n>_UMSETZUNG.md`. **Ausnahme S5:** Der Algorithmusteil (Zielfunktion,
@@ -443,7 +502,9 @@ server/                        Repo-Wurzel (remote: FuBo-Server, oeffentlich)
   vollständig zusammenläuft – **ein fünftes Feld wäre ein Anlass, über einen eigenen Endpunkt
   nachzudenken, nicht über ein weiteres.**
 
-**Datenmodell: 18 Tabellen, `V001`–`V013`.** S2b, S3, **S5 und S6** kamen ohne Migration aus. Die
+**Datenmodell: 19 Tabellen, `V001`–`V014`.** `V014` ist die erste seit S3, die eine *Tabelle* anlegt (`profil.push_abo`) und nicht nur Spalten ergänzt.
+
+**Bis S7 waren es 18 Tabellen, `V001`–`V013`.** S2b, S3, **S5 und S6** kamen ohne Migration aus. Die
 drei letzten Migrationen ergänzen nur Spalten (alle 30.08.2026): `V009` `auswechsel_modus` (A20b),
 `V010` den Vorgabetext für `halle_absage_vorlage` (A23), `V011` die drei Bilanz-Zähler in
 `profil.spieler` (A21). **Die Migrationsfreiheit von S5 und S6 hängt an Voraussetzungen**, die in

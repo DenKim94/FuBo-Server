@@ -578,6 +578,19 @@ unaufgelösten Platzhalter mit ab** (`${`), nicht nur den leeren Wert – und `@
 schiede doppelt aus: Es greift bei einem Platzhalter nicht und bräche genau den Start ab, der
 weiterlaufen soll.
 
+**Die Startprüfung rechnet nach, ob die beiden Schlüssel zueinander gehören** – mit einer Signatur
+über Zufallsbytes, die anschliessend gegen den öffentlichen Schlüssel geprüft wird (ergänzt am
+14.09.2026 bei der Umsetzung). **Eine Längenprüfung genügt hier nicht:** Der private Skalar steht
+in der DER-Struktur am *Anfang*; die letzten 32 Byte sind die Y-Koordinate des öffentlichen
+Punktes. Ein mit `tail -c 32` statt `tail -c +8 | head -c 32` ausgelesener Wert ist **genauso
+lang, sieht genauso aus und ist öffentlich bekannt** – im Betrieb zeigte er sich erst als `401`
+des Push-Dienstes, Wochen später und ohne Hinweis auf die Ursache. Die Probe kostet einen
+Signaturvorgang beim Start und deckt zugleich ab, dass
+`Signature.getInstance("SHA256withECDSAinP1363Format")` auf dieser Laufzeitumgebung vorhanden ist.
+**Der Verfahrensname steht deshalb genau einmal** (`PushConfig.SIGNATURVERFAHREN`) und wird vom
+JWT-Erzeuger von dort geholt; ein zweiter Namensstring liefe auseinander, und das Auseinanderlaufen
+zeigte sich wieder nur am `401` eines fremden Dienstes.
+
 **Die Nutzlast wird serverseitig bestimmt und muss aus sich heraus anzeigbar sein.** Der Service
 Worker darf sie nicht über einen API-Aufruf ergänzen: Die Erinnerung geht rund 24 Stunden vor dem
 Termin hinaus, die Sitzung des Empfängers ist dann mit Sicherheit abgelaufen (gleitendes
@@ -1161,8 +1174,17 @@ bei unbekannter Zone ab. **Noch offen:** Die Zeitzone der Datenbanksitzung ist n
   Migration.
 - **Eine Migration, ein Thema** – Struktur und Referenzdaten getrennt, damit sich Schema und Seed
   unabhängig nachvollziehen lassen.
-- Objektnamen in `snake_case`, Constraints explizit benennen (`pk_`, `fk_`, `uq_`, `ck_`, `ix_`) –
-  automatisch vergebene Namen erschweren spätere `ALTER`-Migrationen und Fehlermeldungen.
+- Objektnamen in `snake_case`, Constraints explizit benennen (`fk_`, `uq_`, `ck_`, `ix_`) –
+  automatisch vergebene Namen erschweren spätere `ALTER`-Migrationen und Fehlermeldungen. Bei den
+  Unique-Constraints ist der Name tragend, nicht bloss Kosmetik: `ON CONFLICT ON CONSTRAINT
+  uq_termin_zeit` spricht ihn wörtlich an.
+  - **Primärschlüssel stehen inline** (`id BIGSERIAL PRIMARY KEY`), ohne `pk_`-Namen – Entscheidung
+    des Haupt-Entwicklers vom 14.09.2026. **Hier stand bis dahin `pk_` in der Liste, und keine
+    einzige Migration hielt sich daran.** Der Name wird nirgends gebraucht: Kein Primärschlüssel
+    wird in einer Abfrage angesprochen, keiner wird je entfernt, und eine Kollision kann es bei
+    `BIGSERIAL` nicht geben. Angeglichen wurde deshalb die Regel und nicht der Bestand –
+    angewandte Migrationen sind unveränderlich, und eine einzelne benannte Ausnahme in `V014`
+    wäre der Ausreisser gewesen. Herleitung in `AGENT.md`, Abschnitt Datenmodell.
 - Kein `ddl-auto` ausser `validate` – das Schema entsteht ausschliesslich aus Flyway.
 - Jede Migration muss auf leerer Datenbank **und** in der bestehenden Reihenfolge durchlaufen;
   abgesichert durch einen Testcontainers-Integrationstest.
