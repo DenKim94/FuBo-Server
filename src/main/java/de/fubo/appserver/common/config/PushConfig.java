@@ -1,28 +1,23 @@
 package de.fubo.appserver.common.config;
 
+import de.fubo.appserver.utils.P256;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-import java.math.BigInteger;
-import java.security.AlgorithmParameters;
+import java.net.http.HttpClient;
 import java.security.GeneralSecurityException;
-import java.security.KeyFactory;
 import java.security.SecureRandom;
 import java.security.Signature;
 import java.security.interfaces.ECPrivateKey;
 import java.security.interfaces.ECPublicKey;
-import java.security.spec.ECGenParameterSpec;
-import java.security.spec.ECParameterSpec;
-import java.security.spec.ECPoint;
-import java.security.spec.ECPrivateKeySpec;
-import java.security.spec.ECPublicKeySpec;
-import java.util.Arrays;
+import java.time.Duration;
 import java.util.Base64;
 
 /**
- * Bereitet das VAPID-Schluesselpaar beim Start auf (A25b, S8).
+ * Bereitet das VAPID-Schluesselpaar beim Start auf und stellt den HTTP-Zugang zu den
+ * Push-Diensten bereit (A25b, S8).
  *
  * <h2>Vorbild {@link MailConfig}, mit einer begruendeten Abweichung</h2>
  * Das Muster ist dasselbe: Ein externer Zugang wird unter {@code fubo.*} gebunden, die Bean
@@ -43,7 +38,10 @@ import java.util.Base64;
  *       <b>Merkregel: Ein {@code $}-Zeichen mit geschweifter Klammer in einer Meldung bedeutet
  *       immer fehlende Aufloesung, nie einen falschen Wert.</b></li>
  *   <li><b>Form und Laenge.</b> Der oeffentliche Schluessel ist ein unkomprimierter P-256-Punkt:
- *       65 Byte, beginnend mit {@code 0x04}. Der private ist der Skalar: genau 32 Byte.</li>
+ *       65 Byte, beginnend mit {@code 0x04}. Der private ist der Skalar: genau 32 Byte.
+ *       <b>Die Pruefung steht hier und nicht nur in {@link P256}</b>, obwohl der Helfer
+ *       dieselbe Form verlangt - dort wirft sie eine Ausnahme, hier soll sie eine Meldung
+ *       ergeben, die die Umgebungsvariable und die erwartete Zeichenzahl nennt.</li>
  *   <li><b>Ob die beiden zueinander gehoeren</b> - die wichtigste der drei, siehe unten.</li>
  * </ol>
  *
@@ -57,7 +55,7 @@ import java.util.Base64;
  *
  * <p>Eine Signatur, die mit dem privaten Schluessel entsteht und mit dem oeffentlichen geprueft
  * wird, beantwortet die Frage abschliessend. <b>Sie prueft nebenbei noch etwas Zweites:</b> Der
- * Algorithmusname {@code SHA256withECDSAinP1363Format} ist derselbe, den das VAPID-JWT
+ * Algorithmusname {@link #SIGNATURVERFAHREN} ist derselbe, den das VAPID-JWT
  * braucht - die Standardvariante {@code SHA256withECDSA} lieferte die DER-Form, die von den
  * Push-Diensten mit {@code 401} abgelehnt wird. Ist der Name auf dieser Laufzeitumgebung nicht
  * verfuegbar, faellt das hier auf und nicht beim ersten Versand.
@@ -69,9 +67,6 @@ public class PushConfig {
 
     /** Kennzeichen eines Platzhalters, den Spring nicht aufloesen konnte. */
     private static final String UNAUFGELOESTER_PLATZHALTER = "${";
-
-    /** Benannte Kurve des Web-Push-Verfahrens (RFC 8291, RFC 8292): P-256. */
-    private static final String KURVE = "secp256r1";
 
     /**
      * Signaturverfahren des VAPID-JWT (RFC 8292, {@code alg = ES256}).
@@ -87,14 +82,15 @@ public class PushConfig {
      */
     public static final String SIGNATURVERFAHREN = "SHA256withECDSAinP1363Format";
 
-    /** Laenge des unkomprimierten Punktes: ein Kennbyte und zwei Koordinaten zu 32 Byte. */
-    private static final int LAENGE_PUNKT = 65;
-
-    /** Laenge des privaten Skalars auf P-256. */
-    private static final int LAENGE_SKALAR = 32;
-
-    /** Kennbyte eines unkomprimierten Punktes nach SEC 1. */
-    private static final byte PUNKT_UNKOMPRIMIERT = 0x04;
+    /**
+     * Zeitgrenze fuer den Verbindungsaufbau zu einem Push-Dienst.
+     *
+     * <p>Sie ist <b>nicht</b> die Frist des Versandlaufs - die steht in
+     * {@code fubo.push.versand-frist-millis} und gilt fuer alle Empfaenger zusammen. Diese
+     * hier begrenzt den einzelnen Verbindungsaufbau und liegt darunter, damit ein nicht
+     * erreichbarer Dienst nicht die ganze Gesamtfrist verbraucht.
+     */
+    private static final Duration VERBINDUNGSFRIST = Duration.ofSeconds(5);
 
     /**
      * Liest die drei Werte, dekodiert das Paar und prueft es gegen sich selbst.
@@ -133,31 +129,31 @@ public class PushConfig {
         }
 
         try {
-            ECParameterSpec kurve = kurvenParameter();
-
             byte[] punkt = dekodiere(konfiguration.vapidPublicKey());
-            if (punkt.length != LAENGE_PUNKT || punkt[0] != PUNKT_UNKOMPRIMIERT) {
+            if (punkt.length != P256.LAENGE_PUNKT || punkt[0] != P256.PUNKT_UNKOMPRIMIERT) {
                 LOG.warn("fubo.push.vapid-public-key hat nicht die erwartete Form: {} Byte statt "
                                 + "{}, erstes Byte 0x{}. Erwartet wird der unkomprimierte P-256-Punkt "
                                 + "(87 Zeichen base64url, beginnend mit 'B'). Push bleibt "
                                 + "abgeschaltet.",
-                        punkt.length, LAENGE_PUNKT, String.format("%02x", punkt.length == 0 ? 0 : punkt[0] & 0xff));
+                        punkt.length, P256.LAENGE_PUNKT,
+                        String.format("%02x", punkt.length == 0 ? 0 : punkt[0] & 0xff));
                 return VapidSchluessel.nichtEingerichtet();
             }
 
             byte[] skalar = dekodiere(konfiguration.vapidPrivateKey());
-            if (skalar.length != LAENGE_SKALAR) {
+            if (skalar.length != P256.LAENGE_SKALAR) {
                 LOG.warn("fubo.push.vapid-private-key hat {} Byte statt {}. Erwartet wird der "
                                 + "private Skalar (43 Zeichen base64url). Push bleibt abgeschaltet.",
-                        skalar.length, LAENGE_SKALAR);
+                        skalar.length, P256.LAENGE_SKALAR);
                 return VapidSchluessel.nichtEingerichtet();
             }
 
-            KeyFactory fabrik = KeyFactory.getInstance("EC");
-            ECPublicKey oeffentlich = (ECPublicKey) fabrik.generatePublic(new ECPublicKeySpec(
-                    new ECPoint(koordinate(punkt, 1), koordinate(punkt, 1 + LAENGE_SKALAR)), kurve));
-            ECPrivateKey privat = (ECPrivateKey) fabrik.generatePrivate(
-                    new ECPrivateKeySpec(new BigInteger(1, skalar), kurve));
+            // Der Aufbau der Schluesselobjekte und die Kurvendefinition liegen in P256 - sie
+            // werden ausserdem fuer den p256dh eines Abonnements und fuer das ephemere Paar
+            // je Nachricht gebraucht. Dreimal derselbe Handgriff waere dreimal dieselbe
+            // Gelegenheit, das Format falsch zu lesen.
+            ECPublicKey oeffentlich = P256.oeffentlich(punkt);
+            ECPrivateKey privat = P256.privat(skalar);
 
             if (!passenZueinander(oeffentlich, privat)) {
                 LOG.warn("Das VAPID-Schluesselpaar passt nicht zusammen: Eine mit "
@@ -187,6 +183,36 @@ public class PushConfig {
     }
 
     /**
+     * Der HTTP-Zugang zu den Push-Diensten der Browserhersteller (RFC 8030).
+     *
+     * <p><b>Eine Bean fuer die Anwendung, nicht eine je Nachricht.</b> Ein {@link HttpClient}
+     * haelt einen Verbindungspool und einen Thread fuer die Antworten; je Nachricht einen zu
+     * bauen hiesse, bei dreissig Empfaengern dreissig davon zu bauen - und keiner von ihnen
+     * wird geschlossen, solange seine Antwort aussteht.
+     *
+     * <p><b>Rein ausgehend.</b> Angesprochen werden {@code fcm.googleapis.com},
+     * {@code *.push.services.mozilla.com} und {@code web.push.apple.com}; es entsteht kein
+     * neuer eingehender Endpunkt, und an Nginx oder am Tunnel aendert sich nichts.
+     *
+     * <p>Die Bean entsteht auch dann, wenn Push nicht eingerichtet ist. Sie kostet nichts,
+     * solange niemand sie benutzt, und eine bedingte Bean braechte einen zweiten Ort, an dem
+     * "eingerichtet" entschieden wird.
+     *
+     * @return der wiederverwendete Client
+     */
+    @Bean
+    HttpClient pushHttpClient() {
+        return HttpClient.newBuilder()
+                .connectTimeout(VERBINDUNGSFRIST)
+                // Kein Folgen von Weiterleitungen: Ein POST auf eine 3xx-Antwort wuerde vom
+                // HttpClient als GET wiederholt, und die verschluesselte Nutzlast ginge dabei
+                // verloren. Die Push-Dienste leiten nicht um; taeten sie es, ist ein
+                // Fehlversuch die richtige Antwort und keine stille Halbierung der Anfrage.
+                .followRedirects(HttpClient.Redirect.NEVER)
+                .build();
+    }
+
+    /**
      * Meldet einen fehlenden oder unaufgeloesten Wert und gibt zurueck, ob er fehlt.
      *
      * @param wert       gebundener Konfigurationswert
@@ -210,23 +236,6 @@ public class PushConfig {
         return false;
     }
 
-    /**
-     * Die Parameter der Kurve P-256.
-     *
-     * <p>Sie kommen aus der Laufzeitumgebung und stehen nicht als Zahlen im Code: Eine
-     * abgeschriebene Kurvendefinition waere eine zweite Wahrheit, die niemand nachrechnet.
-     */
-    private static ECParameterSpec kurvenParameter() throws GeneralSecurityException {
-        AlgorithmParameters parameter = AlgorithmParameters.getInstance("EC");
-        parameter.init(new ECGenParameterSpec(KURVE));
-        return parameter.getParameterSpec(ECParameterSpec.class);
-    }
-
-    /** Liest eine 32-Byte-Koordinate ab der angegebenen Stelle, vorzeichenlos. */
-    private static BigInteger koordinate(byte[] punkt, int ab) {
-        return new BigInteger(1, Arrays.copyOfRange(punkt, ab, ab + LAENGE_SKALAR));
-    }
-
     /** base64url ohne Polsterung, wie RFC 8291 und RFC 8292 es durchgaengig verwenden. */
     private static byte[] dekodiere(String wert) {
         return Base64.getUrlDecoder().decode(wert.trim());
@@ -242,7 +251,7 @@ public class PushConfig {
      */
     private static boolean passenZueinander(ECPublicKey oeffentlich, ECPrivateKey privat)
             throws GeneralSecurityException {
-        byte[] probe = new byte[32];
+        byte[] probe = new byte[P256.LAENGE_SKALAR];
         new SecureRandom().nextBytes(probe);
 
         Signature signierer = Signature.getInstance(SIGNATURVERFAHREN);
