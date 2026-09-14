@@ -122,7 +122,7 @@ public class MailConfig {
      * <h2>Zwei Stufen, und warum die erste noetig ist</h2>
      * Ein Wert, der <b>mit einem Anfuehrungszeichen beginnt und endet</b>, ist genau der
      * Fall oben und wird eigens benannt - die Meldung soll die Ursache nennen, nicht nur das
-     * Symptom. Wichtig ist die Bedingung <i>beides</i>: {@code "Kim, Denis" <a@b.de>} ist
+     * Symptom. Wichtig ist die Bedingung <i>beides</i>: {@code "Nachname, Vorname" <a@b.de>} ist
      * eine voellig gueltige Form (ein Anzeigename mit Komma <b>muss</b> in Anfuehrungszeichen
      * stehen) und beginnt ebenfalls mit einem - sie endet aber mit {@code >} und geht
      * deshalb hier durch.
