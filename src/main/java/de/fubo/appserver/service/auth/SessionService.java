@@ -11,6 +11,7 @@ import de.fubo.appserver.repository.auth.GastSlotRepository;
 import de.fubo.appserver.repository.auth.SessionRepository;
 import de.fubo.appserver.repository.profil.SpielerRepository;
 import de.fubo.appserver.service.config.ConfigService;
+import de.fubo.appserver.service.push.PushService;
 import de.fubo.appserver.utils.TokenGenerator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,15 +42,18 @@ public class SessionService {
     private final GastSlotRepository gastSlotRepository;
     private final SpielerRepository spielerRepository;
     private final ConfigService configService;
+    private final PushService pushService;
 
     public SessionService(SessionRepository sessionRepository,
                           GastSlotRepository gastSlotRepository,
                           SpielerRepository spielerRepository,
-                          ConfigService configService) {
+                          ConfigService configService,
+                          PushService pushService) {
         this.sessionRepository = sessionRepository;
         this.gastSlotRepository = gastSlotRepository;
         this.spielerRepository = spielerRepository;
         this.configService = configService;
+        this.pushService = pushService;
     }
 
     /**
@@ -272,6 +276,22 @@ public class SessionService {
      * liefen ueber die Zeit voll. Technisch: {@code fk_gast_slot_session} hat kein
      * {@code ON DELETE}; ein {@code DELETE} auf einer noch referenzierten Sitzung scheitert
      * mit einer Fremdschluesselverletzung und braeche den gesamten Aufraeumlauf ab.
+     *
+     * <p><b>Seit S8 raeumt derselbe Lauf die erloschenen Push-Abonnements mit auf</b> (A25c,
+     * {@code V014}). Ein zweiter naechtlicher Takt fuer dieselbe Art Arbeit waere ein zweiter
+     * Ort, an dem jemand ihn verstellt - dieselbe Ueberlegung wie beim A18-Auftrag, der
+     * Fixierung und Abschluss in einer Methode erledigt.
+     *
+     * <p><b>Der Aufruf geht ueber {@code PushService} und nie ueber dessen Repository</b> -
+     * dieselbe Regel, die S6 fuer den Zugriff des Ergebnisdienstes auf die Bilanz aufgestellt
+     * hat: Ein Vorgang, der einen fremden Fachbereich beruehrt, ruft dessen <i>Dienst</i>.
+     * Sonst muesste diese Klasse wissen, welche Frist gilt und dass sie nur fuer erloschene
+     * Abonnements gilt und nicht fuer aktive.
+     *
+     * <p><b>Die Reihenfolge ist hier gleichgueltig.</b> {@code profil.push_abo} haengt am
+     * Spielerprofil und nicht an der Sitzung; anders als bei den Gastplaetzen gibt es keinen
+     * Fremdschluessel, der die eine Anweisung vor der anderen verlangte. Sie steht am Ende,
+     * weil die Sitzungsaufraeumung die aeltere und wichtigere Aufgabe dieses Laufs ist.
      */
     @Scheduled(cron = "0 30 3 * * *")
     @Transactional
@@ -284,5 +304,7 @@ public class SessionService {
         int anzahl = sessionRepository.loescheAelterAls(
                 OffsetDateTime.now().minusDays(AUFBEWAHRUNG_TAGE));
         LOG.info("Abgelaufene Sitzungen entfernt: {}", anzahl);
+
+        pushService.erloscheneEntfernen();
     }
 }

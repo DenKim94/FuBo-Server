@@ -9,6 +9,7 @@ import de.fubo.appserver.repository.auth.SessionRepository;
 import de.fubo.appserver.repository.profil.SpielerRepository;
 import de.fubo.appserver.service.auth.SessionService;
 import de.fubo.appserver.service.config.ConfigService;
+import de.fubo.appserver.service.push.PushService;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -285,6 +286,15 @@ class SessionAuthFilterTests {
      * Minimaler Ersatz fuer den {@link SessionService}. Die Konstruktorparameter bleiben leer,
      * weil ausschliesslich die ueberschriebenen Methoden aufgerufen werden.
      *
+     * <p><b>Jede neue Abhaengigkeit des {@code SessionService} bricht diese Klasse</b> - genau
+     * wie eine Aenderung an {@code FuboProperties} drei Testklassen bricht, die den Record von
+     * Hand bauen. Das ist der Preis dafuer, hier ohne Spring-Kontext und ohne Mockito
+     * auszukommen, und er wird bewusst gezahlt: Diese Klasse ist zusammen mit
+     * {@code SessionCookieFactoryTests} und {@code BruteForceServiceTests} die Gegenprobe, ob
+     * ein roter Lauf am Anwendungscode oder am Kontextstart liegt. Seit S8 kommt der
+     * {@code PushService} dazu (der Aufraeumlauf entfernt erloschene Abonnements mit);
+     * {@code grep -rn "new SessionService(\|extends SessionService" src} findet die Stellen.
+     *
      * <p>Der Ersatz merkt sich zusaetzlich, <b>welcher</b> der beiden Pruefpfade benutzt
      * wurde. Genau das ist der Unterschied, den der Filter anhand des Headers
      * {@code X-FuBo-Kein-Refresh} macht - und von aussen ist er sonst nicht sichtbar, weil
@@ -299,7 +309,7 @@ class SessionAuthFilterTests {
 
         SessionServiceErsatz(Optional<AktiveSitzung> ergebnis) {
             super((SessionRepository) null, (GastSlotRepository) null,
-                    (SpielerRepository) null, (ConfigService) null);
+                    (SpielerRepository) null, (ConfigService) null, (PushService) null);
             this.ergebnis = ergebnis;
         }
 
