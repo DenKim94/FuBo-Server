@@ -212,6 +212,46 @@ class KonfigurationControllerTests {
     }
 
     /**
+     * <b>Die beiden Push-Felder sind ebenfalls Pflicht</b> (A25e) - fehlt eines, antwortet der
+     * Endpunkt mit {@code 400} und schreibt nichts.
+     *
+     * <p>Zwei verschiedene Riegel, und das ist der Grund fuer einen gemeinsamen Fall:
+     * {@code pushAktiv} ist ein {@code Boolean} mit {@code @NotNull} - waere es ein primitiver
+     * Wahrheitswert, laese Jackson das fehlende Feld stillschweigend als {@code false}, und ein
+     * Client, der es nicht kennt, schaltete bei jedem Speichern den Versand ab.
+     * {@code pushErinnerungStunden} ist dagegen ein primitiver {@code short}; dort faengt das
+     * {@code @Min(1)} den Fall ab, weil das fehlende Feld als {@code 0} ankommt. <b>Fuer einen
+     * Wahrheitswert gibt es keine solche Untergrenze</b> - deshalb der Unterschied im Typ.
+     *
+     * <p>Der Vorgabewert {@code push_aktiv = true} wird vorher ausdruecklich gesetzt: Bliebe er
+     * dem Seed-Stand ueberlassen und wechselte der einmal, pruefte die Gegenprobe "es wurde
+     * nichts geschrieben" gegen einen Wert, den sie nicht kennt.
+     */
+    @Test
+    void aendernOhneDiePushFelderLiefert400() throws Exception {
+        jdbc.update("""
+                UPDATE configs.app_config
+                   SET push_aktiv = true, push_erinnerung_stunden = CAST(24 AS smallint),
+                       version = version + 1
+                 WHERE id = 1
+                """);
+
+        Map<String, Object> ohneSchalter = aktuellerKoerper();
+        ohneSchalter.remove("pushAktiv");
+        aendern(ohneSchalter).andExpect(status().isBadRequest());
+
+        Map<String, Object> ohneVorlauf = aktuellerKoerper();
+        ohneVorlauf.remove("pushErinnerungStunden");
+        aendern(ohneVorlauf).andExpect(status().isBadRequest());
+
+        Map<String, Object> zeile = konfigurationsZeile();
+        assertThat(zeile.get("push_aktiv"))
+                .as("die abgelehnten Aufrufe haben nichts geschrieben")
+                .isEqualTo(true);
+        assertThat(spalte(zeile, "push_erinnerung_stunden")).isEqualTo(24);
+    }
+
+    /**
      * Die Maximalzahl darf nicht unter der Mindestzahl liegen, und die Meldung nennt beide Zahlen.
      *
      * <p>Die Datenbank hat dazu {@code ck_app_config_teilnehmer} - der braechte aber einen

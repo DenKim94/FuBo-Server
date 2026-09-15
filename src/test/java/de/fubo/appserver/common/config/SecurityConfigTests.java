@@ -383,6 +383,10 @@ class SecurityConfigTests {
         mockMvc.perform(post("/api/v1/admin/halle/absagen")
                         .contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isUnauthorized());
+
+        // S8, A25: der Probeversand. Derselbe Grund wie oben - der Pfad ist neu.
+        mockMvc.perform(post("/api/v1/admin/push/test"))
+                .andExpect(status().isUnauthorized());
     }
 
     /**
@@ -463,6 +467,13 @@ class SecurityConfigTests {
                         .contentType(MediaType.APPLICATION_JSON).content("{}")
                         .cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))
                 .andExpect(status().isForbidden());
+
+        // S8, A25: Der Probeversand liegt unter /admin/ und ist damit Adminsache. Im
+        // Controller steht dazu KEINE zusaetzliche Pruefung - der Ort des Endpunkts ist die
+        // Berechtigungsentscheidung. Genau deshalb steht sein Pfad hier namentlich.
+        mockMvc.perform(post("/api/v1/admin/push/test")
+                        .cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -530,6 +541,22 @@ class SecurityConfigTests {
         mockMvc.perform(get("/api/v1/bilanz/lesen")
                         .cookie(new Cookie(COOKIE, gastSitzung())))
                 .andExpect(status().isOk());
+
+        // S8, A25d: /api/*/push/** ist die EINZIGE Ausnahme dieses Buendels - ein Gast bekommt
+        // dort 403, ein Spieler kommt durch. Deshalb steht hier nur die Spielerhaelfte; die
+        // Gasthaelfte prueft PushControllerTests an allen fuenf Pfaden.
+        //
+        // Das Muster braucht eine EIGENE Regel, und hier kehrt sich das uebliche Fehlerbild
+        // um: Die Kette endet auf anyRequest().hasAnyRole("USER", "ADMIN", "GAST"). Ohne die
+        // Zeile waeren die Push-Pfade fuer Gaeste OFFEN - der Fehler laege nicht im Code,
+        // sondern in seinem Fehlen, und keine Platzhalterpruefung faende ihn.
+        mockMvc.perform(get("/api/v1/push/status/lesen")
+                        .cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/push/status/lesen")
+                        .cookie(new Cookie(COOKIE, gastSitzung())))
+                .andExpect(status().isForbidden());
     }
 
     // ------------------------------------------------------------- Konfiguration der Kette
