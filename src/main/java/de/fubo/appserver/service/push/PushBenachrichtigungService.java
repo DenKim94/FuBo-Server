@@ -107,6 +107,9 @@ public class PushBenachrichtigungService {
      * Ob der Erinnerungsauftrag ueberhaupt etwas tut
      * ({@code fubo.push.erinnerung-aktiv}).
      *
+     * <p>Geprueft wird er in {@link #erinnerungsAuftrag}, nicht in
+     * {@link #erinnerungVersenden} - so kommt der Testfall an ihm vorbei, der Takt nicht.
+     *
      * <p><b>Als Feld und nicht als {@code @ConditionalOnProperty}:</b> Die Annotation wirkt auf
      * {@code @Bean}-Methoden und Klassen, <b>nicht</b> auf eine {@code @Scheduled}-Methode - sie
      * stuende dort wirkungslos und ohne Fehlermeldung, derselbe stille Ausfall wie ein
@@ -179,13 +182,39 @@ public class PushBenachrichtigungService {
      * als erinnert - und der Fall "der zweite Lauf versendet nichts" pruefte dann das
      * Gegenteil dessen, was er soll.
      *
-     * <p><b>Die Pruefung steht als erste im Rumpf</b> und nicht als Annotation an der Methode;
-     * Begruendung am Feld {@link #erinnerungAktiv}. Die Testfaelle rufen diese Methode selbst
-     * auf und sehen das echte Verhalten - abgeschaltet ist nur der <i>Takt</i>.
+     * <p><b>Die Pruefung steht im Rumpf und nicht als Annotation an der Methode</b>;
+     * Begruendung am Feld {@link #erinnerungAktiv}. Sie steht in {@link #erinnerungsAuftrag}
+     * und nicht hier, damit die Testfaelle diese Methode aufrufen und das echte Verhalten
+     * sehen - abgeschaltet ist nur der <i>Takt</i>.
      */
     @Scheduled(cron = "0 */5 * * * *")
+    public void erinnerungsAuftrag() {
+        if (!erinnerungAktiv) {
+            return;
+        }
+        erinnerungVersenden();
+    }
+
+    /**
+     * Die Arbeit des Auftrags, ohne den Schalter.
+     *
+     * <h2>Warum sie vom Takt getrennt ist</h2>
+     * <b>Damit der Testfall sie aufrufen kann.</b> Stuende die Pruefung auf
+     * {@link #erinnerungAktiv} hier, kaeme kein Test an ihr vorbei - im Testprofil steht der
+     * Schalter auf {@code false}, und zwar aus gutem Grund: Alles, was den Kontextstart
+     * ueberlebt, ueberlebt auch die Test-Transaktion, und ein nebenher laufender Auftrag
+     * markierte Termine fremder Testfaelle als erinnert.
+     *
+     * <p><b>Ihn fuer den Test einzuschalten waere die schlechtere Antwort:</b> Der Takt liefe
+     * dann mit, und ob er waehrend eines Laufs feuert, haengt daran, ob der Testlauf gerade
+     * eine Fuenfminutengrenze kreuzt. Das ist genau die Art Fehlschlag, die einmal in zehn
+     * Laeufen auftritt und niemandem zuzuordnen ist.
+     *
+     * <p>So gibt es stattdessen zwei Methoden mit je einer Aufgabe: {@link #erinnerungsAuftrag}
+     * entscheidet, <i>ob</i> gelaufen wird, diese hier, <i>was</i> geschieht.
+     */
     public void erinnerungVersenden() {
-        if (!erinnerungAktiv || !vapidSchluessel.eingerichtet()) {
+        if (!vapidSchluessel.eingerichtet()) {
             return;
         }
 
