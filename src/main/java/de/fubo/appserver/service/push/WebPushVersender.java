@@ -1,7 +1,5 @@
 package de.fubo.appserver.service.push;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import de.fubo.appserver.common.config.FuboProperties;
 import de.fubo.appserver.domain.push.PushAbo;
 import de.fubo.appserver.domain.push.PushAntwort;
@@ -9,6 +7,7 @@ import de.fubo.appserver.domain.push.PushNutzlast;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.ObjectMapper;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -105,7 +104,7 @@ public class WebPushVersender implements PushVersender {
      *
      * <p><b>Die Groessenpruefung steht hier und nicht erst in der Verschluesselung</b>, obwohl
      * sie dort ein zweites Mal vorkommt: Hier entsteht daraus eine benennbare Antwort
-     * ({@code NUTZLAST_ZU_GROSS}), die das Abonnement unangetastet laesst - dort ein Abbruch.
+     * ({@code ANWENDUNGSFEHLER}), die das Abonnement unangetastet laesst - dort ein Abbruch.
      * Ein {@code 413} des Dienstes waere dasselbe Ergebnis, nur eine Netzrunde spaeter und mit
      * einer fremden Grenze.
      */
@@ -114,11 +113,20 @@ public class WebPushVersender implements PushVersender {
         byte[] klartext;
         try {
             klartext = serialisierer.writeValueAsBytes(nutzlast);
-        } catch (JsonProcessingException e) {
-            // Ein Anwendungsfehler, kein Abonnementfehler: Er traefe jeden Empfaenger gleich.
+        } catch (RuntimeException e) {
+            // RuntimeException und kein Jackson-Typ, und das ist kein Ungefaehr: In Jackson 3
+            // - Spring Boot 4 bringt es mit, Wurzelpaket tools.jackson - sind die
+            // Serialisierungsfehler UNGEPRUEFT. Es gibt hier also keine gepruefte Ausnahme,
+            // die sich benennen liesse, und der Uebersetzer verlangt auch keine; das
+            // TeamGenerierungRepository ruft writeValueAsString deshalb ganz ohne try auf.
+            //
+            // Gefangen wird trotzdem, und breit: Ein Fehler beim Aufbereiten der Nachricht ist
+            // unserer, nicht der des Abonnements - er traefe jeden Empfaenger gleich. Ohne
+            // dieses catch riss er den ganzen Lauf mit, in dem noch neunundzwanzig andere
+            // warten.
             LOG.error("Push-Nutzlast liess sich nicht serialisieren (Termin {}).",
                     nutzlast.terminId(), e);
-            return CompletableFuture.completedFuture(PushAntwort.nutzlastZuGross());
+            return CompletableFuture.completedFuture(PushAntwort.anwendungsfehler());
         }
 
         if (klartext.length > Nutzlastverschluesselung.MAX_KLARTEXT_BYTES) {
@@ -126,7 +134,7 @@ public class WebPushVersender implements PushVersender {
                             + "(Termin {}); es wird nichts versendet.",
                     klartext.length, Nutzlastverschluesselung.MAX_KLARTEXT_BYTES,
                     nutzlast.terminId());
-            return CompletableFuture.completedFuture(PushAntwort.nutzlastZuGross());
+            return CompletableFuture.completedFuture(PushAntwort.anwendungsfehler());
         }
 
         HttpRequest anfrage;
@@ -192,7 +200,7 @@ public class WebPushVersender implements PushVersender {
                             + "sub-Anspruch oder eine Signatur in DER-Form. Das Abonnement {} "
                             + "bleibt unangetastet.",
                     antwort.statusCode(), gekuerzt(antwort.body()), abo.id());
-            case NUTZLAST_ZU_GROSS -> LOG.error(
+            case ANWENDUNGSFEHLER -> LOG.error(
                     "Der Push-Dienst hat die Nutzlast als zu gross abgelehnt ({}): {}. Das ist "
                             + "ein Anwendungsfehler; Abonnement {} bleibt unangetastet.",
                     antwort.statusCode(), gekuerzt(antwort.body()), abo.id());

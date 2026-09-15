@@ -52,16 +52,22 @@ public enum PushErgebnis {
     FEHLVERSUCH,
 
     /**
-     * Die Nutzlast war zu gross ({@code 413}) - <b>ein Anwendungsfehler, kein
-     * Abonnementfehler.</b>
+     * <b>Ein Fehler auf unserer Seite, keiner des Abonnements.</b>
+     *
+     * <p>Zwei Ursachen fuehren hierher: eine Nutzlast ueber der Grenze - vom Adapter selbst
+     * erkannt oder als {@code 413} des Dienstes - und eine Nutzlast, die sich nicht
+     * serialisieren liess.
+     *
+     * <p><b>Der Wert heisst deshalb nicht {@code NUTZLAST_ZU_GROSS}</b>, obwohl das die
+     * haeufigere der beiden Ursachen waere: Ein Name, der nur den einen Fall nennt, waere beim
+     * anderen eine falsche Auskunft im Protokoll - und die Reaktion ist bei beiden dieselbe.
      *
      * <p>Die Zeile bleibt unangetastet, auch der Zaehler: Dasselbe wuerde jedem anderen
      * Empfaenger widerfahren, und fuenf solche Nachrichten deaktivierten sonst ein
-     * einwandfreies Abonnement. Der Fall soll im Anwendungsprotokoll auffallen; die Grenze
-     * von 3 000 Byte liegt weit unter den zugelassenen 4 096 und wird vor dem Versand
-     * geprueft.
+     * einwandfreies Abonnement. Der Fall soll im Anwendungsprotokoll auffallen; die Grenze von
+     * 3 000 Byte liegt weit unter den zugelassenen 4 096 und wird vor dem Versand geprueft.
      */
-    NUTZLAST_ZU_GROSS,
+    ANWENDUNGSFEHLER,
 
     /**
      * Der Dienst hat unsere Berechtigung abgelehnt ({@code 401}, {@code 403}) - <b>nicht

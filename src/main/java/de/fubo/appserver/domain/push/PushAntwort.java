@@ -26,7 +26,7 @@ public record PushAntwort(int status, PushErgebnis ergebnis) {
      *   <tr><th>Antwort</th><th>Reaktion</th></tr>
      *   <tr><td>{@code 200}, {@code 201}</td><td>{@link PushErgebnis#ZUGESTELLT}</td></tr>
      *   <tr><td>{@code 404}, {@code 410}</td><td>{@link PushErgebnis#ERLOSCHEN}</td></tr>
-     *   <tr><td>{@code 413}</td><td>{@link PushErgebnis#NUTZLAST_ZU_GROSS}</td></tr>
+     *   <tr><td>{@code 413}</td><td>{@link PushErgebnis#ANWENDUNGSFEHLER}</td></tr>
      *   <tr><td>{@code 401}, {@code 403}</td><td>{@link PushErgebnis#SCHLUESSEL_ABGELEHNT}</td></tr>
      *   <tr><td>alles Uebrige</td><td>{@link PushErgebnis#FEHLVERSUCH}</td></tr>
      * </table>
@@ -48,7 +48,7 @@ public record PushAntwort(int status, PushErgebnis ergebnis) {
         PushErgebnis ergebnis = switch (status) {
             case 200, 201 -> PushErgebnis.ZUGESTELLT;
             case 404, 410 -> PushErgebnis.ERLOSCHEN;
-            case 413 -> PushErgebnis.NUTZLAST_ZU_GROSS;
+            case 413 -> PushErgebnis.ANWENDUNGSFEHLER;
             case 401, 403 -> PushErgebnis.SCHLUESSEL_ABGELEHNT;
             default -> PushErgebnis.FEHLVERSUCH;
         };
@@ -72,14 +72,15 @@ public record PushAntwort(int status, PushErgebnis ergebnis) {
     }
 
     /**
-     * Die Nutzlast ueberschreitet die Grenze und wurde <b>nicht</b> versendet.
+     * Die Nachricht wurde <b>nicht</b> versendet, weil sie sich nicht aufbereiten liess - zu
+     * gross oder nicht serialisierbar.
      *
      * <p>Derselbe Zustand wie ein {@code 413} des Dienstes, nur eine Stufe frueher erkannt -
      * und deshalb dieselbe Reaktion: Das Abonnement bleibt unangetastet.
      *
      * @return Anwendungsfehler ohne Statuscode
      */
-    public static PushAntwort nutzlastZuGross() {
-        return new PushAntwort(OHNE_ANTWORT, PushErgebnis.NUTZLAST_ZU_GROSS);
+    public static PushAntwort anwendungsfehler() {
+        return new PushAntwort(OHNE_ANTWORT, PushErgebnis.ANWENDUNGSFEHLER);
     }
 }

@@ -219,7 +219,7 @@ public class PushVersandService {
             case ERLOSCHEN -> pushAboRepository.deaktivieren(abo.id(), jetzt);
             case FEHLVERSUCH ->
                     pushAboRepository.fehlerVermerken(abo.id(), MAX_FEHLVERSUCHE, jetzt);
-            case NUTZLAST_ZU_GROSS, SCHLUESSEL_ABGELEHNT -> {
+            case ANWENDUNGSFEHLER, SCHLUESSEL_ABGELEHNT -> {
                 // Beides sind Fehler auf unserer Seite, keine des Abonnements: Die Zeile
                 // bleibt unangetastet, auch der Zaehler. Fuenf zu grosse Nachrichten
                 // deaktivierten sonst ein einwandfreies Abonnement, und ein

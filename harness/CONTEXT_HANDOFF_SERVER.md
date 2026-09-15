@@ -37,11 +37,15 @@ sind seither in sechs thematischen Commits auf `dev`. Damit stehen `V014`, das D
 **19 Tabellen**, die Konfiguration bei **vierzehn Pflichtfeldern**, der Vertrag bei
 **44 Endpunkten**, `Fehlercode` bei **34** und `AuditAktion` bei **29** Werten. Nicht gepusht.
 
-**Für 5 bis 11 ist kein Übersetzungslauf gelaufen.** Diese Abschnitte sind gebaut und
-committet, aber weder kompiliert noch getestet – die Verifikation läuft ausschliesslich lokal.
-**Das ist die eine Abweichung von „nicht committen, solange ein Testlauf aussteht", und sie ist
-mit einem Befehl zurückzunehmen:** `git reset --soft 7ef12ad` holt alles ab dem Kryptopaket
-zurück in den Arbeitsbaum und lässt die verifizierten Pakete 1 bis 4 stehen.
+**Die Abschnitte 5 bis 11 liegen im Index, nicht in einem Commit** (Stand 15.09.2026). `HEAD`
+steht auf den verifizierten Paketen 1 bis 4; die übrigen Abschnitte waren zwischenzeitlich in
+sieben thematischen Commits abgelegt und sind am 15.09.2026 mit `git reset --soft` in den Index
+zurückgeholt worden – **die Regel „nicht committen, solange ein Testlauf aussteht" gilt
+unverändert.** Die sieben Commit-Nachrichten sind über das Reflog bei `3e5d0f7` weiter
+erreichbar, falls der Schnitt nach dem grünen Lauf wieder gebraucht wird.
+
+**Der erste Übersetzungslauf hat einen Fehler gefunden, und zwar den einzigen bisher:** Jackson.
+Siehe 6.3, „Spring Boot 4 bringt Jackson 3".
 
 **Als Nächstes: `./mvnw clean verify`.** Das ist der erste Lauf, der die Abschnitte 5 bis 11
 überhaupt übersetzt. **Erwartet werden weiterhin 434 Fälle in 31 Klassen** – die Abschnitte 5
@@ -708,6 +712,23 @@ Jeder Punkt hat schon mindestens einmal Zeit gekostet.
   `SMTP_ABSENDER`. Regel in `AGENT_SERVER.md`.
 - **`target/classes` vergisst nichts.** Nach dem Umbenennen oder Löschen einer Ressource und
   nach jeder Änderung an `application.yml`: `./mvnw clean`.
+- **Spring Boot 4 bringt Jackson 3, und das Wurzelpaket heisst `tools.jackson`** – nicht
+  `com.fasterxml.jackson`. Betroffen sind `tools.jackson.databind.ObjectMapper` und
+  `tools.jackson.core.type.TypeReference`; **nur die Annotationen** (`com.fasterxml.jackson.annotation`)
+  sind geblieben. Ein Import aus der Jackson-2-Welt scheitert mit „Package
+  `com.fasterxml.jackson.core` ist nicht vorhanden" – **und das ist der laute Teil.**
+  - **Der stille Teil: Jackson 3 wirft ungeprüft.** `JsonProcessingException` gibt es nicht
+    mehr, die Wurzel ist `tools.jackson.core.JacksonException` und erbt von
+    `RuntimeException`. Ein `try`/`catch` um `writeValueAsString` ist deshalb **nicht mehr
+    erzwungen** – `TeamGenerierungRepository` ruft es ganz ohne auf. Wer einen Fehler dort
+    abfangen *will*, muss es also von sich aus tun und daran denken, dass der Übersetzer nicht
+    mehr erinnert.
+  - **Kostete am 15.09.2026 einen Übersetzungslauf** in `WebPushVersender` – die einzige Stelle
+    in S8, die JSON schreibt. Vier Stellen im Bestand machten es längst richtig
+    (`AuthorizationExceptionHandler`, `SpielerRepositoryImpl`, `AufstellungRepository`,
+    `TeamGenerierungRepository`); **ein Blick auf eine davon hätte gereicht.**
+  - **Merkregel für jedes neue Fremdpaket:** Erst nachsehen, ob der Bestand es schon benutzt,
+    und wenn ja, wie. `grep -rn "<paket>" src/main` ist billiger als ein Übersetzungslauf.
 
 **Flyway und JPA**
 
