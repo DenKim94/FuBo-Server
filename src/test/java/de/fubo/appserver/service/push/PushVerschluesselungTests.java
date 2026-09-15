@@ -410,7 +410,7 @@ class PushVerschluesselungTests {
         PushNutzlast nutzlast = PushNutzlast.erinnerung(42L, LocalDate.of(2026, 9, 17),
                 LocalTime.of(20, 45), "Sporthalle Nord");
 
-        assertThat(nutzlast.titel()).isEqualTo("Training am Donnerstag, 20:45 Uhr");
+        assertThat(nutzlast.titel()).isEqualTo("Kicken am Donnerstag, 20:45 Uhr");
         assertThat(nutzlast.url()).isEqualTo("/termine/42");
         assertThat(nutzlast.terminId()).isEqualTo(42L);
         assertThat(nutzlast.ort()).isEqualTo("Sporthalle Nord");
@@ -422,7 +422,7 @@ class PushVerschluesselungTests {
         PushNutzlast nutzlast = PushNutzlast.terminAbgesagt(42L, LocalDate.of(2026, 9, 17),
                 LocalTime.of(20, 45), "Sporthalle Nord");
 
-        assertThat(nutzlast.titel()).isEqualTo("Training am Donnerstag fällt aus");
+        assertThat(nutzlast.titel()).isEqualTo("Kicken am Donnerstag fällt aus");
         assertThat(nutzlast.url()).isEqualTo("/termine/42");
     }
 

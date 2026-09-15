@@ -193,7 +193,7 @@ public class HallenService {
         // Abfrage fuer einen Vorgang, der ohnehin abgelehnt wird, waere verschenkt.
         if (!konfiguration.isHallenModusAktiv()) {
             throw new FachlicherFehler(Fehlercode.HALLE_MODUS_INAKTIV,
-                    "Der Hallenmodus ist abgeschaltet; es wird keine Absage an einen "
+                    "Der Hallenmodus ist abgeschaltet; es wird keine Absage an den "
                             + "Hallenbetreiber versendet.");
         }
 
@@ -306,8 +306,7 @@ public class HallenService {
         if (termin.halleAbgesagtAm() == null) {
             return Fehlercode.HALLE_BEREITS_ABGESAGT.getStandardMeldung();
         }
-        return ("Die Absage ist am %s an den Hallenbetreiber gegangen und lässt sich nicht "
-                + "zurücknehmen.").formatted(termin.halleAbgesagtAm().format(ZEITPUNKT));
+        return ("Die Absage an den Hallenbetreiber wurde am %s bereits gesendet.").formatted(termin.halleAbgesagtAm().format(ZEITPUNKT));
     }
 
     /**

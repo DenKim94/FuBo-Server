@@ -91,7 +91,7 @@ public record PushNutzlast(PushTyp typ,
     public static PushNutzlast erinnerung(Long terminId, LocalDate datum, LocalTime uhrzeit,
                                           String ort) {
         return new PushNutzlast(PushTyp.ERINNERUNG,
-                "Training am %s, %s Uhr".formatted(datum.format(WOCHENTAG), uhrzeit.format(UHRZEIT)),
+                "Kicken am %s, %s Uhr".formatted(datum.format(WOCHENTAG), uhrzeit.format(UHRZEIT)),
                 "Bitte um Rückmeldung",
                 terminId, datum, uhrzeit, ort, ziel(terminId));
     }
@@ -112,7 +112,7 @@ public record PushNutzlast(PushTyp typ,
     public static PushNutzlast terminAbgesagt(Long terminId, LocalDate datum, LocalTime uhrzeit,
                                               String ort) {
         return new PushNutzlast(PushTyp.TERMIN_ABGESAGT,
-                "Training am %s fällt aus".formatted(datum.format(WOCHENTAG)),
+                "Kicken am %s fällt aus".formatted(datum.format(WOCHENTAG)),
                 "Der Termin wurde abgesagt",
                 terminId, datum, uhrzeit, ort, ziel(terminId));
     }
