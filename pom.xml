@@ -5,7 +5,7 @@
 	<parent>
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>4.1.0</version>
+		<version>4.1.1</version>
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>de.fubo</groupId>
@@ -29,13 +29,33 @@
 			<name>Denis Kim</name>
 			<roles>
 				<role>Developer</role>
-				<role>Mainainer</role>
+				<role>Maintainer</role>
 			</roles>
 			<timezone>Europe/Berlin</timezone>
 		</developer>
 	</developers>
 	<properties>
 		<java.version>25</java.version>
+		<!--
+			Sicherheits-Overrides gegenueber der Versionsverwaltung von Spring Boot 4.1.1
+			(Stand 03.10.2026). Beide sind Patch-Versionen innerhalb derselben Linie, die
+			Boot ohnehin verwaltet - keine API-Aenderung, nur Fehlerbehebungen.
+
+			Wieder ENTFERNEN, sobald ein Boot-Patch-Release mindestens diese Versionen
+			mitbringt; ein vergessener Override haelt die Bibliothek sonst kuenftig auf
+			einem aelteren Stand fest, als Boot ihn liefern wuerde.
+
+			Tomcat 11.0.24 (Boot 4.1.1) -> 11.0.26: u. a. CVE-2026-86350 (Header-Verwechslung
+			zwischen Anfragen, Important), CVE-2026-65182 (Umgehung von Security-Constraints),
+			CVE-2026-68763 (HTTP/2-DoS).
+		-->
+		<tomcat.version>11.0.26</tomcat.version>
+		<!--
+			Jackson 3.1.5 (Boot 4.1.1) -> 3.1.7: GHSA-wjgm-6hv5-3cvf (Path-Deserialisierung),
+			GHSA-gx83-3vf8-gh7j (Comparable fehlt im Typvalidator), dazu die DoS-Fixes aus 3.1.7
+			(CVE-2026-91776, CVE-2026-91777, CVE-2026-89407, CVE-2026-89425).
+		-->
+		<jackson-bom.version>3.1.7</jackson-bom.version>
 	</properties>
 	<dependencies>
 		<dependency>
