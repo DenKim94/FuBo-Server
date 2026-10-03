@@ -1,0 +1,13 @@
+# Whitelist statt Blacklist: Alles ist ausgeschlossen, ausser dem, was der Bau braucht.
+# Grund: Im Arbeitsverzeichnis liegen Geheimnisse (.env mit DB-, SMTP- und VAPID-Werten)
+# und Daten (scripts/data, harness/). Eine Blacklist muesste jede kuenftige Datei dieser
+# Art kennen - eine vergessene Zeile schickte sie in den Build-Kontext und, mit einem
+# unbedachten "COPY . .", ins Image. Die Whitelist scheitert dagegen laut: Fehlt etwas,
+# bricht der Bau ab.
+*
+
+!.mvn/
+!mvnw
+!pom.xml
+# Nur Produktionsquellen - die Tests werden im Image-Bau weder uebersetzt noch ausgefuehrt.
+!src/main/
