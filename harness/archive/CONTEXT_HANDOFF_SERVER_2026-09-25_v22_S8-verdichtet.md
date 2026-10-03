@@ -15,9 +15,8 @@
 > - **Herleitung und Schritt für Schritt** → `harness/tmp/S<n>_UMSETZUNG.md`, für den
 >   Algorithmusteil von S5 zusätzlich `harness/tmp/S5_ALGORITHMUS.md`
 > - **Historie** → Git und `harness/archive/`. Vorfassung:
->   `CONTEXT_HANDOFF_SERVER_2026-09-25_v22_S8-verdichtet.md` (Stand vor S9); die vollständige
->   Chronik von S8 samt der sieben Abweichungen von der Anleitung und der fünf Weggabelungen trägt
->   `CONTEXT_HANDOFF_SERVER_2026-09-15_v21_S8-Abschnitte1-11.md`;
+>   `CONTEXT_HANDOFF_SERVER_2026-09-15_v21_S8-Abschnitte1-11.md` (sie trägt die vollständige
+>   Chronik von S8 samt der sieben Abweichungen von der Anleitung und der fünf Weggabelungen);
 >   letzte Langfassung mit allen Herleitungen `…_v14_S4-abgeschlossen.md`
 >
 > **Verdichtet am 31.08.2026 und erneut am 25.09.2026.** Beim zweiten Mal ist die S8-Chronik
@@ -27,19 +26,11 @@
 > Was hier steht, steht **nur** hier. Wird eine Festlegung zur Architekturregel, wandert sie
 > nach `AGENT_SERVER.md` und **verschwindet hier** – sonst laufen beide auseinander.
 
-## Stand: 03.10.2026
+## Stand: 25.09.2026
 
-**S0 bis S8 sind abgeschlossen und verifiziert.** Alles bis S8 ist auf `dev` committet (18 Commits
-für S8), **nicht gepusht**.
-
-**S9 hat begonnen – Paket 1 ist gebaut, verifiziert und am 03.10.2026 auf `dev` committet (vier
-Commits, nicht gepusht):** Abhängigkeiten auf
-**Spring Boot 4.1.1** plus zwei Sicherheits-Overrides (`tomcat.version` 11.0.26,
-`jackson-bom.version` 3.1.7), dazu `Dockerfile` und `.dockerignore` auf der Repo-Wurzel.
-`./mvnw clean verify` lief am 03.10.2026 mit dem neuen Stand grün: **483 Fälle in 34 Klassen**,
-ohne Fehlschlag. Der Probebau des Images lief durch; das JAR (`app-server-1.0.0.jar`) trägt die
-Zielversionen nachweislich. Denis' Versionsanhebung `0.0.1-SNAPSHOT` → `1.0.0` steht als eigener
-Commit davor. **Nächster Schritt liegt bei Denis:** `dev` nach `main` mergen – der Pi baut `main`.
+**S0 bis S8 sind abgeschlossen und verifiziert.** `./mvnw clean verify` lief am 15.09.2026 grün:
+**483 Fälle in 34 Klassen**, ohne Fehlschlag und ohne übersprungenen Fall. Alles ist auf `dev`
+committet (18 Commits für S8), **nicht gepusht**.
 
 | Gegenstand | Stand |
 |---|---|
@@ -50,7 +41,6 @@ Commit davor. **Nächster Schritt liegt bei Denis:** `dev` nach `main` mergen �
 | `AuditAktion` | **29** Werte |
 | Tests | **483 Fälle in 34 Klassen**, davon **fünf Klassen ohne Spring-Kontext** |
 | Bruno-Collection | alle 44 Endpunkte, acht Ordner (`~/Documents/bruno/fubo_server`, unversioniert) |
-| Plattform | **Spring Boot 4.1.1**, Tomcat 11.0.26 und Jackson 3.1.7 per Override (S9, 03.10.2026) |
 
 **Was S8 gebracht hat:** Web Push nach RFC 8030/8291/8292 **ohne Fremdbibliothek**, mit
 JDK-Bordmitteln. Sechs Endpunkte (fünf unter `/push/`, `POST /admin/push/test` für den
@@ -74,10 +64,10 @@ erst recht nicht gegen die Antwort des Dienstes.
    6.4. Alle brauchen eine laufende Anwendung und werden in einem Zug abgearbeitet. **Bei S7 mit
    besonderer Vorsicht:** Dort gehen echte Mails raus – vorher `halle_email` auf eine eigene
    Adresse setzen.
-2. **S9: Härtung und Deployment** (14 h), Anleitung `harness/tmp/S9_DEPLOYMENT.md`. Paket 1
-   (Abhängigkeiten, Dockerfile) steht; Abschnitte 3, 4, 10, 12, 13 sind nachgezogen. Offen sind
-   nginx, die Compose-Ergänzung auf dem Pi, Erstinbetriebnahme, Backup und API-Doku. Gebaut wird
-   auf dem Pi der aktuelle Stand von `main`.
+2. **S9: Härtung und Deployment** (14 h), Entwurf in `harness/tmp/S9_DEPLOYMENT.md`. Der Entwurf
+   kennt S8 noch nicht: **drei VAPID-Variablen, ausgehendes HTTPS zu den Push-Diensten und
+   `TZ=Europe/Berlin` im Compose-Dienst** kommen hinzu, ebenso die **Sicherung des
+   VAPID-Schlüsselpaars** – geht es verloren, muss jeder Spieler erneut zustimmen.
 3. **Client-Track informieren.** Der Vertrag steht bei 44 Endpunkten; die Push-Zeilen in 4.1 sind
    seit dem Commit in `fubo-api.json` **verbindlich** und nicht mehr Vorausschau.
 
@@ -310,7 +300,7 @@ die es bei der Schätzung noch nicht gab.
 | S6 | **Ergebnis und Bilanz**: „erster Eintrag gilt", Admin-Korrektur, Bilanz-Zähler, eigene Bilanz | **verifiziert (411/30)**; Handprüfliste 8.1 offen | 8 → 13,0 |
 | S7 | **Hallenmodus**: E-Mail-Absage an den Betreiber, Vorlauffrist, Hauptschalter (A23); `V012`, `V013` | **verifiziert (431/31, nach Nachtrag 434/31)**; Handprüfliste 8.1 offen | 6 → 12,0 |
 | S8 | **A25 serverseitig (Push)**: `V014`, sechs Endpunkte, Erinnerungsauftrag, Absage-Ereignis, Versandadapter ohne Fremdbibliothek – `harness/tmp/S8_PUSH_UMSETZUNG.md` | **verifiziert (483/34, 15.09.2026)**; Handprüfliste 13.1 offen | 12 → 22,5 |
-| S9 | Härtung, Deployment (Docker/nginx/Cloudflared), API-Doku – `harness/tmp/S9_DEPLOYMENT.md` | **in Arbeit**: Paket 1 (Abhängigkeiten, Dockerfile) verifiziert und committet 03.10.2026 | 14 |
+| S9 | Härtung, Deployment (Docker/nginx/Cloudflared), API-Doku – Entwurf: `harness/tmp/S9_DEPLOYMENT.md` | offen | 14 |
 
 **A25 wurde am 14.09.2026 zu S8**, die Härtung rückte auf S9. Grund: A25 bringt eine Migration,
 sechs Endpunkte, einen `@Scheduled`-Auftrag und einen Adapter zu einem fremden Dienst mit – in ein
@@ -334,7 +324,6 @@ ohnehin in `src/` und veralteten mit jedem Commit. Die Langfassung liegt in
 server/                        Repo-Wurzel (remote: FuBo-Server, oeffentlich)
   fubo-api.json                Endpunktkontrakt, 44 Endpunkte
   compose.dev.yml              postgres:17
-  Dockerfile, .dockerignore    Produktionsimage (S9); .dockerignore ist eine Whitelist
   .env / .env.example          DB-Zugang, FUBO_INITIAL_PIN, ADMIN_*, SMTP_*, FUBO_VAPID_*
   scripts/                     seed-lokal.sh + anonymisierter 30er-Datensatz
   src/main/resources/db/       migration/ V001-V014, demodata/ (nur dev und test)
@@ -529,16 +518,6 @@ mehr hier.
 der zweiten Stufe `PROFILE_AUTHENTICATED`, weil auch Gäste sie erreichen.
 `spieltag.termin.fk_termin_serie` hat bewusst kein `ON DELETE`.
 
-**Fünf Entscheidungen vom 03.10.2026 (S9, Paket 1):**
-
-| Festlegung | Grund |
-|---|---|
-| **Das Image wird auf dem Pi gebaut** (`build:` im Compose-Dienst), nicht auf dem Mac mit `docker save` | wie bei den übrigen Diensten des Stacks. Folge: Der Pi braucht einen Klon des Repositories |
-| **Der Pi baut immer den aktuellen Stand von `main`** | `main` ist der freigegebene Stand, Denis merged `dev` dorthin. **Der Merge ist damit die Freigabe fürs Zielsystem** – ohne CI hängt „nichts Ungetestetes auf den Pi" allein daran. Folge: Das Image-Tag folgt der `pom.xml`-Version, sonst überschreibt ein Neubau das Rollback-Image |
-| **`mem_limit: 1g`** für `fubo_backend` | rund 700 MB Heap bei `MaxRAMPercentage=70`; ohne Limit sähe die JVM den ganzen Pi |
-| **Schwachstellenprüfung vorerst manuell** | Preis: Die Overrides in der `pom.xml` fallen nur auf, wenn jemand nachsieht |
-| **Hostnamen vertagt** | Eine Subdomain-Ebene unter `denis-kim.dev` ist Pflicht, sonst greift das kostenlose Cloudflare-Zertifikat nicht (S9 §12, Punkt 8) |
-
 ### 6.3 Fallstricke, die weiter gelten
 
 Jeder Punkt hat schon mindestens einmal Zeit gekostet.
@@ -714,15 +693,6 @@ Jeder Punkt hat schon mindestens einmal Zeit gekostet.
 
 **Sicherheit und Betrieb**
 
-- **Ein Container ohne gesetztes Profil läuft mit `dev` – und damit mit einem Cookie ohne
-  `Secure`.** `application.yml` setzt `spring.profiles.default: dev`, `application-dev.yml`
-  schaltet `cookie-secure` ab. Am 03.10.2026 beim Schreiben des Dockerfiles gefunden; seither
-  setzt das Image `SPRING_PROFILES_ACTIVE=prod` als Vorgabe. **Wer die Zeile entfernt, prüft das
-  Cookie im Browser**, nicht nur den Healthcheck – der bliebe grün.
-- **Der Maven-Wrapper braucht im JDK-Image `unzip`.** Ohne fällt er auf `tar xzf` zurück, und
-  GNU tar liest kein ZIP. Steht im Dockerfile, fällt aber jedem auf die Füsse, der eine eigene
-  Build-Stufe schreibt.
-
 - **`Using generated security password` ist kein Indikator** – weder dafür noch dagegen, dass die
   Filterchain greift. Am Verhalten prüfen: ohne Cookie `401` mit `application/problem+json`,
   `/actuator/health` ohne Cookie `200`.
@@ -768,11 +738,10 @@ docker compose -f compose.dev.yml --env-file .env up -d
 ./mvnw clean verify
 ```
 
-**Zuletzt grün am 03.10.2026 – 483 Fälle in 34 Klassen** (S9 Paket 1 mit Spring Boot 4.1.1 und
-den beiden Overrides, 0 Fehlschläge, 0 Fehler, nichts übersprungen). Verlauf: 148/16 (22.08.),
-184 (23.08.), 244/22 (29.08.), 300/25 und 331/26 (S4, 30./31.08.), 385/29 (S5, 06.09.), 411/30
-(S6, 12.09.), 431/31 und 434/31 (S7 samt Nachtrag, 13.09.), 483/34 (S8, 15.09.), **483/34
-(S9 Paket 1, 03.10.)**.
+**Zuletzt grün am 15.09.2026 – 483 Fälle in 34 Klassen** (S8 vollständig, 0 Fehlschläge, 0 Fehler,
+nichts übersprungen). Verlauf: 148/16 (22.08.), 184 (23.08.), 244/22 (29.08.), 300/25 und 331/26
+(S4, 30./31.08.), 385/29 (S5, 06.09.), 411/30 (S6, 12.09.), 431/31 und 434/31 (S7 samt Nachtrag,
+13.09.), **483/34 (S8, 15.09.)**.
 
 **S8 brachte 49 Fälle in drei neuen Klassen** – `PushVerschluesselungTests` (16),
 `PushControllerTests` (15), `PushVersandTests` (17) –, dazu einen in
@@ -853,9 +822,8 @@ und die Prüfschritte beim Nachziehen stehen in ihrer `README.md`.
 2. **Client-Track informieren.** Der Vertrag steht bei 44 Endpunkten; die Push-Zeilen in 4.1 sind
    **verbindlich**. Weiter gilt: **`TERMIN_NICHT_ABGESAGT` gibt es nicht**, und wer vor dem
    12.09.2026 generiert hat, generiert wegen der vier `nullable`-Korrekturen neu.
-3. **S9: Härtung und Deployment** (14 h), Anleitung `harness/tmp/S9_DEPLOYMENT.md`. **Paket 1
-   (Abhängigkeiten, Dockerfile) ist verifiziert und auf `dev` committet.** Fünf Punkte aus S5 bis S8
-   gehören in die weiteren Pakete:
+3. **S9: Härtung und Deployment** (14 h), Entwurf in `harness/tmp/S9_DEPLOYMENT.md`. Fünf Punkte
+   aus S5 bis S8 gehören dort hinein:
    - die **Messung von `MAX_EXHAUSTIV` auf der Zielhardware**,
    - die Frage, ob 30 Tage Audit-Aufbewahrung für den Speicher des Pi reichen,
    - **ein Satz zum Absender in der Betriebsdokumentation** – mit S7 erscheint `SMTP_ABSENDER` zum

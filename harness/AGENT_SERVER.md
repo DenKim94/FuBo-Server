@@ -945,6 +945,16 @@ BCrypt-Hash in einer Migration wäre ein Geheimnis in der unveränderlichen Git-
   eines von beiden. Die Zone im Code deckt den Rechenweg ab, `TZ` alles, was daran vorbeiläuft.
 - **Brute-Force-Schutz** am PIN-Endpunkt; echte Client-IP aus `X-Forwarded-For`, daher
   `server.forward-headers-strategy=NATIVE`.
+- **Das Image setzt `SPRING_PROFILES_ACTIVE=prod` selbst** (S9). Ohne Profil griffe
+  `spring.profiles.default: dev`, und `application-dev.yml` schaltet `cookie-secure` ab – ein
+  Container mit vergessenem Profil liefe still mit einem Cookie ohne `Secure`.
+- **`mem_limit` im Compose-Dienst ist Pflicht.** Die JVM bemisst den Heap über
+  `-XX:MaxRAMPercentage` am sichtbaren Speicher; ohne Limit ist das der ganze Pi.
+- **Versionen nur über die Boot-Verwaltung heben.** Ein Override (`<tomcat.version>` usw.) nur
+  für eine benannte Sicherheitslücke, mit Kommentar, der den Anlass nennt und sagt, wann er
+  entfällt – ein vergessener Override friert die Bibliothek ein, sobald Boot weiterzieht.
+- **Tests laufen nicht im Image-Bau** – Testcontainers braucht einen Docker-Daemon, den es in
+  `docker build` nicht gibt. Gebaut wird nur ein Stand, der mit `./mvnw clean verify` grün war.
 - **Ergänzend:** zentrale Fehlerbehandlung (`@RestControllerAdvice`) mit einheitlichem
   Fehler-JSON, Bean Validation, CORS-Allowlist mit `allowCredentials`, Actuator-Health,
   Flyway-Migrationen, Audit-Log für Adminaktionen und Generierungsläufe.
@@ -1115,7 +1125,7 @@ Auswechselspieler-Flag.
 
 ## Techstack
 
-- Java 25, **Spring Boot 4.1.0**, Maven (Wrapper im Repository). Artefakt `de.fubo:app-server`,
+- Java 25, **Spring Boot 4.1.1**, Maven (Wrapper im Repository). Artefakt `de.fubo:app-server`,
   Basispaket `de.fubo.appserver`. Spring Boot 4: die Starter heissen
   `spring-boot-starter-webmvc` (statt `-web`) und `spring-boot-starter-flyway`;
   Test-Abhängigkeiten je Baustein als `*-test`-Starter.
