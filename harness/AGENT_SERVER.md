@@ -9,7 +9,8 @@
 > Regeln aus S6 und am 13.09.2026 um die Regeln aus S7 ergänzt; am 14.09.2026 um den
 > serverseitigen Anteil von A25 erweitert (S8) und am selben Tag um die Regeln ergänzt, die bei
 > der Umsetzung der Abschnitte 5 bis 11 hinzugekommen sind – Tests und Verifikation stehen
-> dort noch aus.** Jede Regel steht hier mit dem *einen* Grund, der sie trägt – wer
+> dort noch aus.** Am 04.10.2026 um die Bestätigung der Namensänderung per E-Mail-PIN (A22)
+> ergänzt. Jede Regel steht hier mit dem *einen* Grund, der sie trägt – wer
 > sie ändern will, muss den Grund entkräften, nicht die Zeile löschen. **Vorfälle, Daten und
 > ausführliche Herleitungen stehen nicht mehr hier**, sondern in `CONTEXT_HANDOFF_SERVER.md`
 > (6.2 Festlegungen, 6.3 Fallstricke), in `harness/tmp/S<n>_UMSETZUNG.md` und in
@@ -52,7 +53,9 @@ Ergänzungen des Entwicklers sind als *Ergänzung* gekennzeichnet.
   (`PIN_VERIFIED` → `PROFILE_AUTHENTICATED`), Rotation beim Übergang.
 - **A22** Genau ein Admin (partieller Unique-Index). Passwort-Reset über eine 5-stellige
   Bestätigungs-PIN per E-Mail, abgesichert durch kurze Gültigkeit, Versuchs- und
-  Anforderungsbegrenzung und Sitzungswiderruf nach der Änderung.
+  Anforderungsbegrenzung und Sitzungswiderruf nach der Änderung. *Ergänzung vom 04.10.2026:* Auch
+  die Änderung des **Anmeldenamens** durch den Admin wird über eine solche PIN bestätigt; erst
+  danach wird der neue Name übernommen (Regeln unter „Zugangsdatenpflege", Punkt 5).
 
 **Profile, Skills, Konfiguration**
 
@@ -253,7 +256,7 @@ Absicherung.
   und beim Adminprofil hinge `ROLE_ADMIN` ohne Passwort daran.
 - **Schreibend ist es in jedem Fall geschützt** (`409 PROFIL_GESCHUETZT`): entfernen, blockieren,
   bearbeiten, zusagen, für einen manuellen Lauf auswählen. Umbenannt nur über
-  `/admin/name/aendern`.
+  `/admin/name/aendern` und `/admin/name/bestaetigen` (Bestätigung per E-Mail-PIN, seit 04.10.2026).
 
 ### Admin-Anmeldung
 
@@ -694,7 +697,7 @@ Schreibvorgänge verschwinden ohne Fehlermeldung.** `NOT_SUPPORTED` setzt sie f�
 Methode aus; danach öffnet jedes `REQUIRED` darunter – auch das des `AuditService` – eine frische
 Transaktion. **`REQUIRES_NEW` wäre der naheliegende und hier falsche Griff:** Es löste dasselbe
 Problem, hielte aber eine Transaktion über die HTTP-Aufrufe hinweg offen, und es widerspräche der
-Regel, die `REQUIRES_NEW` allein dem Versuchszähler des Passwort-Resets zugesteht. **Die
+Regel, die `REQUIRES_NEW` allein den Versuchszählern der Bestätigungs-PINs zugesteht. **Die
 Gegenprobe ist ein Testfall, nicht das Lesen:** Steht nach einer Absage ein
 `PUSH_ABSAGE_VERSANDT` in `profil.audit_log`?
 
@@ -801,7 +804,8 @@ dafür gibt es ihn.
 
 1. **Ausbreitung immer `REQUIRED`, nie `REQUIRES_NEW`** – ein Eintrag belegt eine *vollzogene*
    Änderung. **Zähler sind etwas anderes** (sie messen einen stattgefundenen Versuch):
-   `PasswortResetRepository#versuchZaehlen` ist die einzige Stelle mit `REQUIRES_NEW`. Soll ein
+   `PasswortResetRepository#versuchZaehlen` und – seit dem 04.10.2026, aus demselben Grund –
+   `NamensaenderungRepository#versuchZaehlen` sind die einzigen Stellen mit `REQUIRES_NEW`. Soll ein
    Eintrag eine Ablehnung überleben, gehört er in den Controller, wo keine Transaktion läuft.
 2. **Ausnahmen aus dem Schreibvorgang werden nicht verschluckt** – das verschöbe den Fehler bis
    zum Commit und ersetzte die Ursache durch eine `UnexpectedRollbackException`.
@@ -852,12 +856,35 @@ BCrypt-Hash in einer Migration wäre ein Geheimnis in der unveränderlichen Git-
 3. **Die Bestätigungs-PIN trägt nur, solange alle Grenzen zusammen gelten:** fünf Versuche je
    Vorgang, 15 Minuten, drei Anforderungen je Stunde und Adresse, BCrypt, Endpunkt hinter der
    zentralen PIN, Brute-Force-Zähler. **Keine darf entfallen.** `fubo.reset.max-versuche` ist an
-   `ck_passwort_reset_versuche` gebunden und darf 5 nicht überschreiten.
+   `ck_passwort_reset_versuche` gebunden und darf 5 nicht überschreiten. **Die Grenzen gelten seit
+   dem 04.10.2026 auch für die Namensänderung** – dieselbe Art PIN, deshalb ein Satz Grenzen aus
+   `fubo.reset.*`; die Zähler sind getrennt, und `ck_name_aenderung_versuche` bindet denselben
+   Wert ein zweites Mal.
 4. **Die zentrale PIN hat genau vier Ziffern.** 10 000 Möglichkeiten tragen nur zusammen mit dem
    `BruteForceService` (fünf Fehlversuche je Adresse, 30 insgesamt, steigende Sperrdauern);
    **diese Grenzen dürfen nicht gelockert werden, solange die PIN vierstellig ist.** Das Format
    gilt dem *Setzen*; `/auth/pin/pruefen` schreibt keines vor, damit ein abweichender
    Bestandswert eingebbar bleibt.
+5. **Die Änderung des Anmeldenamens ist zweistufig** (A22, Ergänzung vom 04.10.2026):
+   `/admin/name/aendern` prüft den Namen, speichert ihn am Vorgang und verschickt die PIN
+   (`202`), `/admin/name/bestaetigen` übernimmt ihn (`204`). **Grund:** Der Anmeldename ist das
+   einzige Anmeldemerkmal, das der Reset nicht zurückholt – eine offene Adminsitzung allein darf
+   ihn deshalb nicht ändern können.
+   - **Der Name steht im ersten Schritt und am Vorgang; der Bestätigungskörper trägt keinen.** Die
+     PIN bestätigt genau den Namen, den die Nachricht nennt, und ein vergebener Name fällt vor dem
+     Versand auf.
+   - **`ZugangsdatenService#adminNameAendern` hat genau einen Aufrufer**
+     (`NamensaenderungService#einloesen`). Ein zweiter umginge die Bestätigung – ohne Fehler und
+     ohne dass ein Test es bemerkte.
+   - **Reset und Namensänderung liegen in getrennten Tabellen** (`passwort_reset`,
+     `name_aenderung`). In einer gemeinsamen wäre die Trennung eine Bedingung, die jede Abfrage
+     mitführen müsste; eine vergessene machte die PINs austauschbar.
+   - **Der Ablaufzeitpunkt entsteht in der Datenbank** (`now() + make_interval`) und wird dort
+     geprüft – Schreiben und Prüfen gegen dieselbe Uhr.
+   - **Die PIN-Erzeugung steht einmal** (`service/auth/BestaetigungsPin`) – nicht in `utils`, weil
+     sie eine `SecureRandom`-Instanz hält.
+   - **Kein Sitzungswiderruf**, auch nicht beim Einlösen (Punkt 2). Ein Fehlversuch zählt
+     zusätzlich auf den Brute-Force-Zähler, wie beim Passwortwechsel in der Sitzung.
 
 ### Spielerverwaltung durch den Admin
 

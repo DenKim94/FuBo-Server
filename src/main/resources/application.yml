@@ -110,11 +110,13 @@ fubo:
     # denn der Versand laeuft innerhalb der Transaktion des Reset-Vorgangs.
     zeitgrenze-millis: 5000
   reset:
-    # Grenzen des Passwort-Resets. Fuenf Stellen sind fuer sich genommen wenig; tragfaehig
-    # wird die Bestaetigungs-PIN erst durch die Summe dieser Grenzen. Keine davon darf
+    # Grenzen der Bestaetigungs-PIN - fuer den Passwort-Reset und, seit dem 04.10.2026, fuer
+    # die Aenderung des Admin-Anmeldenamens. Es ist dieselbe Art PIN, deshalb ein Satz Grenzen;
+    # die Zaehler selbst sind getrennt (zwei Tabellen). Fuenf Stellen sind fuer sich genommen
+    # wenig; tragfaehig wird die PIN erst durch die Summe dieser Grenzen. Keine davon darf
     # entfallen - jede einzelne traegt.
     gueltigkeit-minuten: 15         # Lebensdauer eines Vorgangs
-    max-versuche: 5                 # deckt sich mit ck_passwort_reset_versuche (0 bis 5)
+    max-versuche: 5                 # deckt sich mit ck_passwort_reset_versuche und ck_name_aenderung_versuche (0 bis 5)
     max-anforderungen-pro-stunde: 3 # je Client-Adresse; begrenzt Versand und Rateversuche
     # Loeschfrist der Vorgaenge. Betriebs- und Rechtsgroesse wie beim Audit-Log, aber
     # kuerzer: Der fachliche Beleg steht im Protokoll, hier bleiben nur technische

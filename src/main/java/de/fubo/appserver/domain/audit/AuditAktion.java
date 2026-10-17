@@ -10,7 +10,7 @@ package de.fubo.appserver.domain.audit;
  *
  * <p>Die Liste waechst mit den Meilensteinen (Generierungslaeufe in S5,
  * Ergebniskorrekturen in S6, die Hallenabsage in S7, die beiden Push-Versandlaeufe in S8) -
- * seit S8 auf <b>29</b> Werte.
+ * seit S8 auf 29 Werte, seit der Bestaetigung der Namensaenderung (04.10.2026) auf <b>31</b>.
  *
  * <p><b>Es sind zwei neue und nicht vier</b> (Entscheidung vom 14.09.2026): An- und Abmeldung
  * eines Abonnements werden <i>nicht</i> protokolliert. {@code AGENT.md} sah
@@ -108,7 +108,32 @@ public enum AuditAktion {
     PROFIL_GEAENDERT,
 
     /**
-     * Der Admin hat seinen eigenen Anmeldenamen geaendert (S3, {@code /admin/name/aendern}).
+     * Der Admin hat die Aenderung seines Anmeldenamens angefordert, und die Bestaetigungs-PIN ist
+     * versendet (Ergaenzung vom 04.10.2026, {@code /admin/name/aendern}).
+     *
+     * <p>Die Details nennen den gewuenschten Namen ({@code nameNeu}) und die Gueltigkeit. <b>Der
+     * Name gehoert hier hinein</b>, anders als der eingegebene Name eines Admin-Logins: Dort
+     * protokollierte man geratene Eingaben Fremder, hier die Absicht des angemeldeten Admins -
+     * und ein Eintrag ohne nachfolgendes {@link #ADMIN_NAME_GEAENDERT} ist genau der Fall, den
+     * jemand spaeter verstehen will.
+     *
+     * <p>Wie {@link #PASSWORT_RESET_ANGEFORDERT} entsteht der Eintrag in derselben Transaktion
+     * wie der Vorgang und rollt mit zurueck, wenn der Versand scheitert.
+     */
+    ADMIN_NAME_AENDERUNG_ANGEFORDERT,
+
+    /**
+     * Falsche Bestaetigungs-PIN beim Einloesen einer Namensaenderung (Ergaenzung vom
+     * 04.10.2026, {@code /admin/name/bestaetigen}).
+     *
+     * <p>Geschrieben im Controller, ausserhalb jeder Transaktion - derselbe Grund wie bei
+     * {@link #PASSWORT_RESET_FEHLVERSUCH}: Der Beleg soll die Ablehnung ueberleben.
+     */
+    ADMIN_NAME_PIN_FEHLVERSUCH,
+
+    /**
+     * Der Admin hat seinen eigenen Anmeldenamen geaendert (S3, {@code /admin/name/aendern};
+     * seit dem 04.10.2026 erst mit dem Einloesen der PIN ueber {@code /admin/name/bestaetigen}).
      *
      * <p><b>Ein eigener Wert und nicht {@link #PROFIL_GEAENDERT}</b>, obwohl technisch
      * dieselbe Spalte geschrieben wird: Der Name des Adminprofils ist seit dem 29.08.2026

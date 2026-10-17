@@ -58,7 +58,7 @@ import java.util.stream.Collectors;
  * Es zu entfernen scheiterte an {@code fk_admin_konto_spieler}, es zu sperren machte den
  * Adminbereich unerreichbar - in beiden Faellen spaerrte sich der Admin mit einem einzigen
  * Aufruf selbst aus. Seit S3 gilt dasselbe fuer {@link #bearbeiten}: Sein Name ist zugleich
- * der Anmeldename und wird ueber {@code /admin/name/aendern} geaendert
+ * der Anmeldename und wird ueber {@code /admin/name/aendern} und {@code /bestaetigen} geaendert
  * ({@link #adminProfilUmbenennen}), seine Skillwerte bleiben auf 0.
  *
  * <p>Geprueft wird ueber die Rolle, nicht ueber die Id: Der partielle Unique-Index
@@ -322,7 +322,7 @@ public class SpielerVerwaltungService {
      * {@code 409 PROFIL_GESCHUETZT}, wie bei {@link #entfernen} und {@link #blockieren}.
      * Sein Name ist seit dem 29.08.2026 zugleich der <b>Anmeldename</b> und damit ein
      * Anmeldemerkmal, keine Stammdatenpflege; er wird ueber {@code POST /admin/name/aendern}
-     * geaendert. Seine Skillwerte stehen auf 0, weil es ein technisches Konto ist und nie in
+     * und {@code /admin/name/bestaetigen} geaendert. Seine Skillwerte stehen auf 0, weil es ein technisches Konto ist und nie in
      * ein Team eingeteilt wird - ein gepflegter Wert dort waere eine Behauptung ueber einen
      * Spieler, den es nicht gibt.
      *
@@ -451,9 +451,7 @@ public class SpielerVerwaltungService {
      */
     @Transactional
     public String adminProfilUmbenennen(String neuerName) {
-        Spieler admin = spielerRepository.findByRolle(Rolle.ADMIN)
-                .orElseThrow(() -> new IllegalStateException(
-                        "Es gibt kein Profil mit der Rolle ADMIN - der Start-Bootstrap ist nicht gelaufen."));
+        Spieler admin = adminProfil();
 
         String alterName = admin.getName();
         pruefeNameFrei(neuerName, admin);
@@ -465,6 +463,35 @@ public class SpielerVerwaltungService {
         profilStammdatenCache.verwerfen();
 
         return alterName;
+    }
+
+    /**
+     * Prueft, ob das Adminprofil diesen Namen annehmen koennte, ohne etwas zu schreiben
+     * (Ergaenzung vom 04.10.2026).
+     *
+     * <p>Gebraucht beim Anfordern einer Namensaenderung: Ein vergebener Name soll auffallen,
+     * <b>bevor</b> eine E-Mail hinausgeht. Beim Einloesen prueft {@link #adminProfilUmbenennen}
+     * ein zweites Mal, ueber dieselbe Methode - zwischen beiden Schritten kann der Name an ein
+     * anderes Profil vergeben worden sein.
+     *
+     * @param neuerName bereits getrimmter Name
+     * @throws FachlicherFehler {@code 409 NAME_BELEGT}, wenn ein anderes Profil so heisst
+     */
+    @Transactional(readOnly = true)
+    public void pruefeAdminNameFrei(String neuerName) {
+        pruefeNameFrei(neuerName, adminProfil());
+    }
+
+    /**
+     * Laedt das Adminprofil.
+     *
+     * @throws IllegalStateException wenn es keines gibt - ein Betriebsfehler, den der
+     *                               Start-Bootstrap ausschliesst
+     */
+    private Spieler adminProfil() {
+        return spielerRepository.findByRolle(Rolle.ADMIN)
+                .orElseThrow(() -> new IllegalStateException(
+                        "Es gibt kein Profil mit der Rolle ADMIN - der Start-Bootstrap ist nicht gelaufen."));
     }
 
     /**

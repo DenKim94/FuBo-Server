@@ -121,10 +121,12 @@ public class ZugangsdatenService {
      * unmittelbar nach seiner eigenen Umbenennung aus der Sitzung. Es genuegt, dass die
      * Aenderung beim naechsten Login greift.
      *
-     * <p><b>Ein aktuelles Passwort wird nicht verlangt</b> - dasselbe Muster wie bei
-     * {@link #zentralePinAendern}, das die zentrale PIN ohne erneute Passworteingabe setzt.
-     * Nur die Passwortaenderung selbst fragt das alte Passwort ab, und zwar weil dort das
-     * Geheimnis ersetzt wird, mit dem man sich gerade ausgewiesen hat.
+     * <h2>Aufgerufen erst nach der Bestaetigung (seit dem 04.10.2026)</h2>
+     * Einziger Aufrufer ist {@link NamensaenderungService#einloesen(Long, String)} - die Methode
+     * laeuft also erst, nachdem die Bestaetigungs-PIN aus der E-Mail eingeloest ist, und in
+     * dessen Transaktion. Ein aktuelles Passwort wird weiterhin nicht verlangt; den zweiten
+     * Nachweis neben der Sitzung uebernimmt das Postfach. <b>Wer hier einen zweiten Aufrufer
+     * anschliesst, umgeht die Bestaetigung.</b>
      *
      * <h2>Betriebshinweis, der in die Dokumentation gehoert</h2>
      * Nach der Umbenennung ist {@code ADMIN_NAME} in der {@code .env} veraltet. Fuer den

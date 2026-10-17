@@ -16,7 +16,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.Map;
@@ -51,12 +50,6 @@ import java.util.Optional;
 public class PasswortResetService {
 
     private static final Logger LOG = LoggerFactory.getLogger(PasswortResetService.class);
-
-    /**
-     * Kryptografisch sichere Quelle. Ein {@code java.util.Random} waere hier ein Fehler:
-     * Aus wenigen beobachteten Werten laesst sich sein Zustand rekonstruieren.
-     */
-    private static final SecureRandom ZUFALL = new SecureRandom();
 
     /** Laenge des Drosselungsfensters; deckt sich mit dem {@code interval} in der Abfrage. */
     private static final Duration DROSSELUNGSFENSTER = Duration.ofHours(1);
@@ -112,7 +105,7 @@ public class PasswortResetService {
         // gueltig, und ein abgefangener alter Wert bliebe brauchbar.
         resetRepository.offeneEntwerten();
 
-        String pin = erzeugePin();
+        String pin = BestaetigungsPin.erzeugen();
         int gueltigkeitMinuten = konfiguration.gueltigkeitMinuten();
 
         resetRepository.anlegen(
@@ -260,16 +253,5 @@ public class PasswortResetService {
         }
         long rest = Duration.between(OffsetDateTime.now(), aelteste.plus(DROSSELUNGSFENSTER)).toSeconds();
         return Math.max(1, rest + 1);
-    }
-
-    /**
-     * Fuenf Stellen, kryptografisch sicher, mit fuehrenden Nullen.
-     *
-     * <p><b>{@code nextInt(100_000)} und nicht {@code 10_000 + nextInt(90_000)}.</b> Die
-     * zweite Variante schloesse alle PINs mit fuehrender Null aus und verkleinerte den Raum
-     * um zehn Prozent - fuer eine Formatierung, die {@code %05d} ohnehin erledigt.
-     */
-    private static String erzeugePin() {
-        return "%05d".formatted(ZUFALL.nextInt(100_000));
     }
 }

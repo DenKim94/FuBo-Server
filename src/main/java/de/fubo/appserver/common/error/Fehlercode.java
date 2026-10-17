@@ -49,6 +49,38 @@ public enum Fehlercode {
             "Zu viele Anforderungen. Bitte später erneut versuchen."),
 
     /**
+     * Die eingegebene Bestaetigungs-PIN zur Aenderung des Admin-Anmeldenamens stimmt nicht
+     * (Ergaenzung vom 04.10.2026). Der Versuch ist verbraucht; nach der letzten Wiederholung
+     * antwortet der Endpunkt mit {@link #NAME_AENDERUNG_UNGUELTIG}.
+     *
+     * <p><b>Ein eigener Code neben {@link #RESET_PIN_FALSCH}</b>, obwohl die PIN dieselbe Form hat:
+     * Beide Vorgaenge koennen gleichzeitig offen sein, und der Client muss wissen, welches
+     * Formular betroffen ist.
+     *
+     * <p><b>{@code 401} mitten in einer gueltigen Sitzung</b> - dasselbe Muster wie
+     * {@link #ADMIN_PASSWORT_FALSCH} beim Passwortwechsel. Der Client verzweigt ueber den Code;
+     * nur {@link #SESSION_UNGUELTIG} beendet die Sitzung.
+     */
+    NAME_PIN_FALSCH(HttpStatus.UNAUTHORIZED, "Die Bestätigungs-PIN ist nicht korrekt."),
+
+    /**
+     * Es gibt keine brauchbare Anforderung zur Namensaenderung: nie angefordert, abgelaufen,
+     * bereits eingeloest, durch eine neuere entwertet oder die Versuche sind erschoepft
+     * (Ergaenzung vom 04.10.2026). Die Faelle werden aus demselben Grund nicht unterschieden wie
+     * bei {@link #RESET_UNGUELTIG}: Die Folge ist dieselbe - neu anfordern.
+     */
+    NAME_AENDERUNG_UNGUELTIG(HttpStatus.CONFLICT,
+            "Es liegt keine gültige Anforderung zur Namensänderung vor. Bitte neu anfordern."),
+
+    /**
+     * Zu viele Anforderungen zur Namensaenderung von derselben Adresse (Ergaenzung vom
+     * 04.10.2026). Ein eigener Code neben {@link #RESET_GEDROSSELT}, weil ein eigener Zaehler
+     * dahintersteht - wer den einen ausschoepft, behaelt den anderen.
+     */
+    NAME_AENDERUNG_GEDROSSELT(HttpStatus.TOO_MANY_REQUESTS,
+            "Zu viele Anforderungen. Bitte später erneut versuchen."),
+
+    /**
      * Der Versand der Bestaetigungs-PIN ist fehlgeschlagen (S2b).
      *
      * <p>{@code 503} und nicht {@code 500}: Die Anwendung ist in Ordnung, ein nachgelagerter

@@ -7,7 +7,9 @@ import jakarta.validation.constraints.Size;
  * Anfragekoerper von {@code POST /api/v1/admin/name/aendern} (S3, Vorgabe des
  * Haupt-Entwicklers vom 29.08.2026).
  *
- * <p>Aendert den <b>Anmeldenamen</b> des Admins - denselben Wert, den
+ * <p>Beantragt die Aenderung des <b>Anmeldenamens</b> des Admins. Seit dem 04.10.2026 wird der
+ * Name erst uebernommen, wenn die per E-Mail versandte PIN ueber {@code /admin/name/bestaetigen}
+ * eingeloest ist. Gemeint ist derselbe Wert, den
  * {@code /auth/admin/anmelden} seit dem 29.08.2026 neben dem Passwort verlangt. Technisch ist
  * es der Name des Adminprofils; fachlich ist es ein Anmeldemerkmal, weshalb der Endpunkt
  * neben Passwort- und PIN-Aenderung steht und nicht bei der Spielerverwaltung.

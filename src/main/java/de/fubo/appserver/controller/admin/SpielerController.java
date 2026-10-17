@@ -33,7 +33,8 @@ import java.util.List;
  * <p>Seit S3 kommen das Lesen der Profile mit Skillwerten und das Bearbeitung bestehender
  * Profile hinzu. Nicht hier steht das Umbenennen des <b>Adminprofils</b>: Sein Name ist
  * zugleich der Anmeldename und damit Zugangsdatenpflege - der Endpunkt ist
- * {@code POST /admin/name/aendern} im {@code ZugangsdatenController}.
+ * {@code POST /admin/name/aendern} und {@code /admin/name/bestaetigen} im
+ * {@code ZugangsdatenController}.
  *
  * <p>Der Controller enthaelt keine Fachlogik ausser der Uebergabe; Pruefungen,
  * Transaktionsgrenze und Protokoll liegen im {@link SpielerVerwaltungService}. Anders als

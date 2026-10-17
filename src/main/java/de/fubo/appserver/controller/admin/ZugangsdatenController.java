@@ -6,11 +6,13 @@ import de.fubo.appserver.common.error.Fehlercode;
 import de.fubo.appserver.common.security.SessionCookieFactory;
 import de.fubo.appserver.domain.audit.AuditAktion;
 import de.fubo.appserver.dto.admin.AdminNameAendernRequest;
+import de.fubo.appserver.dto.admin.AdminNameBestaetigenRequest;
 import de.fubo.appserver.dto.admin.PasswortAendernRequest;
 import de.fubo.appserver.dto.admin.PinAendernRequest;
 import de.fubo.appserver.service.audit.AuditService;
 import de.fubo.appserver.service.auth.AdminService;
 import de.fubo.appserver.service.auth.BruteForceService;
+import de.fubo.appserver.service.auth.NamensaenderungService;
 import de.fubo.appserver.service.auth.ZugangsdatenService;
 import de.fubo.appserver.utils.ClientIpErmittler;
 import jakarta.servlet.http.HttpServletRequest;
@@ -23,6 +25,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Pflege der Anmeldedaten durch den angemeldeten Admin (A3, A22).
@@ -35,26 +38,33 @@ import java.util.Map;
  * {@code /auth/passwort/...}: Jene Endpunkte <i>verleihen</i> die Rolle beziehungsweise
  * arbeiten ohne sie, dieser Bereich <i>setzt sie voraus</i>.
  *
- * <p><b>Beide Endpunkte melden den Aufrufer ab</b> und loeschen deshalb das Session-Cookie.
- * Das ist kein Nebeneffekt, sondern der Zweck: Wer ein Geheimnis wechselt, soll sich einmal
- * damit anmelden.
+ * <p><b>Passwort- und PIN-Aenderung melden den Aufrufer ab</b> und loeschen deshalb das
+ * Session-Cookie. Das ist kein Nebeneffekt, sondern der Zweck: Wer ein Geheimnis wechselt, soll
+ * sich einmal damit anmelden. <b>Die Namensaenderung nicht</b> - der Name ist kein Geheimnis.
+ *
+ * <p><b>Die Namensaenderung ist seit dem 04.10.2026 zweistufig:</b> {@code /name/aendern}
+ * fordert sie an und verschickt eine Bestaetigungs-PIN, {@code /name/bestaetigen} uebernimmt
+ * den Namen. Herleitung in {@link NamensaenderungService}.
  */
 @RestController
 @RequestMapping(ApiVersionConfig.API_PRAEFIX + "/admin")
 public class ZugangsdatenController {
 
     private final ZugangsdatenService zugangsdatenService;
+    private final NamensaenderungService namensaenderungService;
     private final AdminService adminService;
     private final BruteForceService bruteForceService;
     private final SessionCookieFactory sessionCookieFactory;
     private final AuditService auditService;
 
     public ZugangsdatenController(ZugangsdatenService zugangsdatenService,
+                                  NamensaenderungService namensaenderungService,
                                   AdminService adminService,
                                   BruteForceService bruteForceService,
                                   SessionCookieFactory sessionCookieFactory,
                                   AuditService auditService) {
         this.zugangsdatenService = zugangsdatenService;
+        this.namensaenderungService = namensaenderungService;
         this.adminService = adminService;
         this.bruteForceService = bruteForceService;
         this.sessionCookieFactory = sessionCookieFactory;
@@ -131,40 +141,90 @@ public class ZugangsdatenController {
     }
 
     /**
-     * Aendert den Anmeldenamen des Admins (S3, Vorgabe des Haupt-Entwicklers vom 29.08.2026).
+     * Fordert die Aenderung des Anmeldenamens an (A22; seit dem 04.10.2026 mit Bestaetigung).
+     *
+     * <h2>Der Name wird hier noch nicht geaendert</h2>
+     * Der Dienst prueft ihn, speichert ihn am Vorgang und schickt eine Bestaetigungs-PIN an die
+     * hinterlegte Adresse; uebernommen wird er erst in {@link #adminNameBestaetigen}. Bis zum
+     * 04.10.2026 genuegte die Sitzung allein - wer an einem offenen Rechner sass, konnte den
+     * Admin mit einem Aufruf aussperren, denn der Passwort-Reset holt das Passwort zurueck, nie
+     * den Namen.
      *
      * <h2>Warum der Endpunkt hier steht und nicht bei der Spielerverwaltung</h2>
      * Technisch wird der Name des Adminprofils geschrieben - fachlich ist es der
      * <b>Anmeldename</b> fuer {@code /auth/admin/anmelden} und damit ein Anmeldemerkmal.
-     * Er gehoert neben Passwort und zentrale PIN. {@code /admin/user/bearbeiten} lehnt das
-     * Adminprofil deshalb vollstaendig ab.
+     * {@code /admin/user/bearbeiten} lehnt das Adminprofil deshalb vollstaendig ab.
      *
-     * <h2>Die Sitzung bleibt bestehen - anders als bei den beiden Endpunkten darueber</h2>
-     * Kein Sitzungswiderruf, <b>kein geloeschtes Cookie</b>. Der Name ist kein Geheimnis,
-     * dessen Bekanntwerden allein Zugang verschafft; ein Widerruf wuerfe den Admin unmittelbar
-     * nach seiner eigenen Umbenennung aus der Sitzung. Es genuegt, dass die Aenderung beim
-     * naechsten Login greift.
+     * <p><b>{@code 202} statt {@code 204}:</b> Die Anfrage ist angenommen, ihr Ziel aber noch
+     * nicht erreicht. Ein {@code 204} sagte "erledigt" - genau das, was bis zum 04.10.2026 galt
+     * und jetzt nicht mehr stimmt.
      *
-     * <p><b>Kein altes Passwort noetig</b> - dasselbe Muster wie bei
-     * {@link #zentralePinAendern}. Es wird nichts geraten, sondern gesetzt; die Berechtigung
-     * dazu hat die Filterchain bereits festgestellt.
+     * <p><b>Kein Brute-Force-Zaehler</b> - es wird nichts geraten. Begrenzt wird der Versand:
+     * drei Anforderungen je Stunde und Adresse ({@code 429 NAME_AENDERUNG_GEDROSSELT}).
      *
-     * <p><b>Betriebshinweis:</b> Nach der Aenderung ist {@code ADMIN_NAME} in der {@code .env}
-     * veraltet. Fuer den laufenden Betrieb folgenlos - der Start-Bootstrap liest den Wert nur,
-     * solange kein Admin-Konto existiert -, aber nach einem Neuaufbau von
-     * {@code profil.admin_konto} braecht der Start ab. Der Dienst schreibt deshalb alten und
-     * neuen Namen ins Log und ins Protokoll.
+     * <p><b>Betriebshinweis:</b> Nach einer Umbenennung ist {@code ADMIN_NAME} in der
+     * {@code .env} veraltet. Der Dienst schreibt beim Einloesen alten und neuen Namen ins Log
+     * und ins Protokoll.
      *
-     * @param anfrage neuer Anmeldename
+     * @param anfrage gewuenschter Anmeldename
      * @param request fuer die Ermittlung der Client-IP
-     * @return {@code 204} ohne Inhalt; <b>ohne</b> Cookie-Aenderung
+     * @return {@code 202} ohne Inhalt; <b>ohne</b> Cookie-Aenderung
      */
     @PostMapping(value = "/name/aendern", version = ApiVersionConfig.VERSION)
     public ResponseEntity<Void> adminNameAendern(@Valid @RequestBody AdminNameAendernRequest anfrage,
                                                  HttpServletRequest request) {
 
-        zugangsdatenService.adminNameAendern(
+        namensaenderungService.anfordern(
                 anfrage.bereinigterName(), ClientIpErmittler.ermitteln(request));
+
+        return ResponseEntity.accepted().build();
+    }
+
+    /**
+     * Loest die Bestaetigungs-PIN ein und uebernimmt den angeforderten Anmeldenamen (A22,
+     * Ergaenzung vom 04.10.2026).
+     *
+     * <p>Der Ablauf entspricht {@code /auth/passwort/bestaetigen} und hat dieselben Gruende:
+     * <ol>
+     *   <li><b>Bean Validation</b> zuerst (am DTO) - eine PIN im falschen Format kostet keinen
+     *       Versuch.</li>
+     *   <li><b>Sperre pruefen</b>, bevor gegen den BCrypt-Hash gerechnet wird.</li>
+     *   <li><b>Versuch zaehlen und PIN pruefen</b>; bei Misserfolg zusaetzlich auf den
+     *       Brute-Force-Zaehler zaehlen, protokollieren, ablehnen.</li>
+     *   <li><b>Bei Erfolg</b> den Zaehler der Adresse leeren und einloesen.</li>
+     * </ol>
+     *
+     * <p><b>Der Fehlversuch wird hier protokolliert, nicht im Dienst</b> - der Controller laeuft
+     * ausserhalb jeder Transaktion, und der Beleg soll die Ablehnung ueberleben.
+     *
+     * <p><b>Kein Sitzungswiderruf, kein geloeschtes Cookie</b> - der Name verschafft allein
+     * keinen Zugang; die Aenderung greift beim naechsten Login.
+     *
+     * @param anfrage Bestaetigungs-PIN; bewusst ohne Namen
+     * @param request fuer die Ermittlung der Client-IP
+     * @return {@code 204} ohne Inhalt; <b>ohne</b> Cookie-Aenderung
+     */
+    @PostMapping(value = "/name/bestaetigen", version = ApiVersionConfig.VERSION)
+    public ResponseEntity<Void> adminNameBestaetigen(@Valid @RequestBody AdminNameBestaetigenRequest anfrage,
+                                                     HttpServletRequest request) {
+
+        String clientIp = ClientIpErmittler.ermitteln(request);
+        bruteForceService.pruefeGesperrt(clientIp);
+
+        Optional<Long> vorgang = namensaenderungService.versuchPruefen(anfrage.bestaetigungsPin());
+
+        if (vorgang.isEmpty()) {
+            boolean sperreAusgeloest = bruteForceService.fehlversuchZaehlen(clientIp);
+            auditService.protokolliere(
+                    clientIp,
+                    sperreAusgeloest ? AuditAktion.PIN_GESPERRT : AuditAktion.ADMIN_NAME_PIN_FEHLVERSUCH,
+                    Map.of("endpunkt", "/admin/name/bestaetigen"));
+
+            throw new FachlicherFehler(Fehlercode.NAME_PIN_FALSCH);
+        }
+
+        bruteForceService.zuruecksetzen(clientIp);
+        namensaenderungService.einloesen(vorgang.get(), clientIp);
 
         return ResponseEntity.noContent().build();
     }

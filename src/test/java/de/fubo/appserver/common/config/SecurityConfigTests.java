@@ -309,6 +309,11 @@ class SecurityConfigTests {
                         .contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isUnauthorized());
 
+        // Ergaenzung vom 04.10.2026: die Bestaetigung der Namensaenderung
+        mockMvc.perform(post("/api/v1/admin/name/bestaetigen")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isUnauthorized());
+
         mockMvc.perform(post("/api/v1/admin/config/aendern")
                         .contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isUnauthorized());

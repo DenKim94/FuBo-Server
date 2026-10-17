@@ -4,7 +4,7 @@
     "title": "FuBo Server API",
     "version": "1.0.0",
     "summary": "Vertrag zwischen FuBo-Server und FuBo-Client.",
-    "description": "Maßgebliche Beschreibung der REST-Schnittstelle des FuBo-Servers.\n\n**Diese Datei ist die Quelle der Wahrheit für den Client-Track.** Server und Client liegen in getrennten Repositories; eine Vertragsänderung wird deshalb immer zuerst hier abgebildet und der Client anschließend nachgezogen.\n\n**Stand:** S2 (Auth und Session), S2b (Zugangsdatenpflege und Spielerverwaltung), S3 (Profile, Skills, Konfiguration, Gastverwaltung), **S4 vollständig**, **S5 vollständig**, **S6 vollständig**, **S7 vollständig** und **S8 vollständig** – Push-Benachrichtigungen (A25): Abonnement je Gerät, ein Personenschalter, die Statusauskunft über die beiden serverseitigen Ebenen und der Probeversand des Admins; versandt wird zu zwei Anlässen, der Erinnerung an eine offene Rückmeldung und der Terminabsage; dazu S7 – der Hallenmodus: den gebuchten Hallentermin per E-Mail absagen, begrenzt durch eine Vorlauffrist aus der Konfiguration; dazu S6 – die Ergebniserfassung: den Ausgang eines Termins eintragen (der erste Eintrag gilt), ihn als Admin korrigieren, ihn in der Einzelansicht lesen und die eigene Bilanz abrufen; dazu S5 – der Teamgenerator: die Einteilung eines Termins anstoßen und lesen, der Auswechselspieler bei ungerader Teilnehmerzahl und der manuelle Lauf des Admins ohne Termin (A24); dazu S4 – Termine lesen, Einzeltermin anlegen, ändern, absagen und entfernen, Terminserien, Zu- und Absagen von Spielern und Gästen, die Teilnehmerliste samt Warteschlange und die Skill-Stufe eines Gastes.\n\n**Noch nicht enthalten und deshalb hier nicht beschrieben:** Härtung und Deployment (S9) – sie bringen keine Endpunkte. Spekulative Endpunkte wären ein Vertrag über etwas, das es nicht gibt.\n\n**Der Inhalt einer Push-Nachricht steht ebenfalls nicht hier**, obwohl der Server ihn bestimmt: Er verlässt den Server nicht über diese Schnittstelle, sondern als nach RFC 8291 verschlüsselter Rumpf an den Push-Dienst des Browserherstellers. Der Service Worker des Clients wertet ihn aus; er trägt immer einen fertigen Titel und einen Rückfalltext und ist damit ohne Rückfrage anzeigbar – **das muss er sein**, denn die Erinnerung geht rund 24 Stunden vor dem Termin hinaus, und die Sitzung des Empfängers ist dann längst abgelaufen.\n\n**Auch das Audit-Log ist nicht enthalten**, obwohl A21 verlangt, dass Erfassung und Korrektur protokolliert werden: Sie *werden* protokolliert, aber keine Anforderung verlangt, das Protokoll abzurufen. Es trägt personenbezogene Daten und unterliegt einer Löschfrist von 30 Tagen; es nach außen zu öffnen wäre eine eigene Entscheidung mit Filter, Blätterung und Feldauswahl.\n\n**Vier Dinge geschehen ohne Zutun des Clients:** Ein Termin wird bei seinem Beginn selbsttätig fixiert und wechselt 30 Minuten später von `GEPLANT` auf `ABGESCHLOSSEN` (A18) – ab der Fixierung liefert `POST /teams/generieren` ein `409 TEAMS_FIXIERT`, und wird der Termin danach in die Zukunft verschoben, fällt die Fixierung zurück; eine erneute Zusage stellt in der Warteschlange hinten an; eine Änderung an den Skillwerten eines zugesagten Spielers erhöht die `teilnehmerVersion` seiner künftigen Termine; und **das Sperren eines Profils nimmt dessen Zusagen für künftige Termine zurück** – die Teilnehmerliste wird dadurch kürzer, ohne dass jemand abgesagt hätte.\n\n### Versionierung\nJeder fachliche Endpunkt liegt unter `/api/{version}/<bereich>/<ressource>/<aktion>`. Die Version steht als Präfix an Segment-Index 1, die Aktion als eigenes Segment am Ende. Umgesetzt mit `ApiVersionConfigurer#usePathSegment` aus Spring Framework 7.\n\n- `/api/v1/...` und `/api/1/...` werden beide als Version 1 gelesen; nach außen wird durchgängig `v1` verwendet.\n- Eine unbekannte Version (`/api/v99/...`) liefert `400`.\n- Ein fehlendes Versionssegment liefert `404` – ohne das Segment passt der Pfad schlicht auf kein Mapping.\n\n### Authentifizierung\nOpakes Session-Cookie (`FUBO_SESSION`, `HttpOnly`, `Secure`, `SameSite=Lax`, kein Ablaufdatum). Das Frontend kann den Token weder lesen noch prüfen und muss das auch nicht: Die Validierung passiert ausschließlich serverseitig in der Filterchain. Alle Aufrufe erfolgen mit `credentials: 'include'`.\n\n**Die zentrale PIN besteht aus vier Ziffern.** Das Eingabefeld im Frontend darf darauf ausgelegt werden. `POST /auth/pin/pruefen` schreibt der Eingabe trotzdem **kein** Format vor – ein abweichender Bestandswert aus der Erstkonfiguration muss eingebbar bleiben, und eine Mindestlänge im Vertrag wäre eine Auskunft über das Format der echten PIN. Verbindlich ist das Format nur beim *Setzen* über `POST /admin/pin/aendern`.\n\nDer Login ist zweistufig und wird serverseitig erzwungen:\n1. `PIN_VERIFIED` – zentrale PIN geprüft, Identität noch offen.\n2. `PROFILE_AUTHENTICATED` – erst hier existiert eine Rolle. Es führen drei Wege dorthin: Namensauswahl (`USER`), Gast-Login (`GAST`) und Admin-Login mit Passwort (`ADMIN`).\n\n**Das Adminprofil ist ein technisches Konto.** Es steht nicht in der Namensliste, nimmt an keinem Termin teil und wird nie in ein Team eingeteilt; seine Skillwerte stehen auf 0. Der Admin meldet sich deshalb über `POST /api/v1/auth/admin/anmelden` mit seinem Passwort an – die Namensauswahl lehnt das Adminprofil auch dann ab, wenn seine Id bekannt ist.\n\nBei jedem Stufenwechsel und bei jeder Erneuerung wird der Token rotiert (Schutz vor Session Fixation). Die `session.id` bleibt dabei erhalten.\n\n### Sitzungsdauer (Zwei-Timer-Modell)\n`gueltigBis` ist ein gleitendes Leerlauf-Fenster (Vorgabe 15 Minuten) und wandert bei jedem Aufruf nach hinten. `absolutGueltigBis` ist eine harte Obergrenze (Vorgabe 1 Stunde) und wird nie verschoben – auch nicht durch `/auth/session/erneuern`.\n\nHintergrundaufrufe (etwa das Pollen des Belegtstatus) sollen das Leerlauf-Fenster **nicht** verlängern und senden dazu `X-FuBo-Kein-Refresh: true`. Ohne diesen Header würde „15 Minuten Inaktivität\" den offenen Browser-Tab messen statt den Nutzer.\n\n### CORS\nFrontend und API liegen auf Subdomains derselben registrierbaren Domain (`app.<domain>` / `api.<domain>`). Der Server führt eine Allowlist mit `allowCredentials=true`; erlaubte Anfrageheader sind `Content-Type` und `X-FuBo-Kein-Refresh`, freigegebener Antwortheader ist `Retry-After`.\n\n### Datenschutz\nSkillbewertungen verlassen den Server nie in Richtung USER oder GAST (Anforderung A12). Sie erscheinen **ausschliesslich in Antworten unterhalb von `/admin/`** – heute in `GET /admin/user/lesen` – und erreichen `USER` und `GAST` nie; die Teamgenerierung läuft vollständig serverseitig.\n\n**Die Bilanz aus S6 ist davon ausgenommen**, und das ist kein Widerspruch: Siege und Niederlagen sind Statistik und keine Bewertung. Sie stehen deshalb sowohl in `SpielerDetails` als auch in `GET /bilanz/lesen`, wo jeder Angemeldete **seine eigene** abruft. A16 bleibt unberührt – Ergebnisse wirken nicht auf Skillwerte zurück.\n\nBis S2b enthielt kein Antwortobjekt dieser Beschreibung Skillwerte. Seit S3 gilt die genauere Fassung oben: Der Prüfpunkt ist nicht mehr „kommen Skillwerte vor\", sondern „kommen sie ausserhalb von `/admin/` vor\".\n\n### Nicht enthalten\n`GET /actuator/health` bleibt bewusst unversioniert und ist kein Teil der fachlichen API. Der Endpunkt dient dem Container-Healthcheck und wird von nginx nach außen abgeschottet.",
+    "description": "Maßgebliche Beschreibung der REST-Schnittstelle des FuBo-Servers.\n\n**Diese Datei ist die Quelle der Wahrheit für den Client-Track.** Server und Client liegen in getrennten Repositories; eine Vertragsänderung wird deshalb immer zuerst hier abgebildet und der Client anschließend nachgezogen.\n\n**Stand:** S2 (Auth und Session), S2b (Zugangsdatenpflege und Spielerverwaltung), S3 (Profile, Skills, Konfiguration, Gastverwaltung), **S4 vollständig**, **S5 vollständig**, **S6 vollständig**, **S7 vollständig** und **S8 vollständig** – Push-Benachrichtigungen (A25): Abonnement je Gerät, ein Personenschalter, die Statusauskunft über die beiden serverseitigen Ebenen und der Probeversand des Admins; versandt wird zu zwei Anlässen, der Erinnerung an eine offene Rückmeldung und der Terminabsage; dazu S7 – der Hallenmodus: den gebuchten Hallentermin per E-Mail absagen, begrenzt durch eine Vorlauffrist aus der Konfiguration; dazu S6 – die Ergebniserfassung: den Ausgang eines Termins eintragen (der erste Eintrag gilt), ihn als Admin korrigieren, ihn in der Einzelansicht lesen und die eigene Bilanz abrufen; dazu S5 – der Teamgenerator: die Einteilung eines Termins anstoßen und lesen, der Auswechselspieler bei ungerader Teilnehmerzahl und der manuelle Lauf des Admins ohne Termin (A24); dazu S4 – Termine lesen, Einzeltermin anlegen, ändern, absagen und entfernen, Terminserien, Zu- und Absagen von Spielern und Gästen, die Teilnehmerliste samt Warteschlange und die Skill-Stufe eines Gastes.\n\n**Ergänzung vom 04.10.2026:** Die Änderung des Admin-Anmeldenamens verlangt eine Bestätigungs-PIN per E-Mail – `POST /admin/name/aendern` fordert sie an, `POST /admin/name/bestaetigen` übernimmt den Namen. **Brechend** für jeden Client, der nach `aendern` von einem geänderten Namen ausgeht.\n\n**Noch nicht enthalten und deshalb hier nicht beschrieben:** Härtung und Deployment (S9) – sie bringen keine Endpunkte. Spekulative Endpunkte wären ein Vertrag über etwas, das es nicht gibt.\n\n**Der Inhalt einer Push-Nachricht steht ebenfalls nicht hier**, obwohl der Server ihn bestimmt: Er verlässt den Server nicht über diese Schnittstelle, sondern als nach RFC 8291 verschlüsselter Rumpf an den Push-Dienst des Browserherstellers. Der Service Worker des Clients wertet ihn aus; er trägt immer einen fertigen Titel und einen Rückfalltext und ist damit ohne Rückfrage anzeigbar – **das muss er sein**, denn die Erinnerung geht rund 24 Stunden vor dem Termin hinaus, und die Sitzung des Empfängers ist dann längst abgelaufen.\n\n**Auch das Audit-Log ist nicht enthalten**, obwohl A21 verlangt, dass Erfassung und Korrektur protokolliert werden: Sie *werden* protokolliert, aber keine Anforderung verlangt, das Protokoll abzurufen. Es trägt personenbezogene Daten und unterliegt einer Löschfrist von 30 Tagen; es nach außen zu öffnen wäre eine eigene Entscheidung mit Filter, Blätterung und Feldauswahl.\n\n**Vier Dinge geschehen ohne Zutun des Clients:** Ein Termin wird bei seinem Beginn selbsttätig fixiert und wechselt 30 Minuten später von `GEPLANT` auf `ABGESCHLOSSEN` (A18) – ab der Fixierung liefert `POST /teams/generieren` ein `409 TEAMS_FIXIERT`, und wird der Termin danach in die Zukunft verschoben, fällt die Fixierung zurück; eine erneute Zusage stellt in der Warteschlange hinten an; eine Änderung an den Skillwerten eines zugesagten Spielers erhöht die `teilnehmerVersion` seiner künftigen Termine; und **das Sperren eines Profils nimmt dessen Zusagen für künftige Termine zurück** – die Teilnehmerliste wird dadurch kürzer, ohne dass jemand abgesagt hätte.\n\n### Versionierung\nJeder fachliche Endpunkt liegt unter `/api/{version}/<bereich>/<ressource>/<aktion>`. Die Version steht als Präfix an Segment-Index 1, die Aktion als eigenes Segment am Ende. Umgesetzt mit `ApiVersionConfigurer#usePathSegment` aus Spring Framework 7.\n\n- `/api/v1/...` und `/api/1/...` werden beide als Version 1 gelesen; nach außen wird durchgängig `v1` verwendet.\n- Eine unbekannte Version (`/api/v99/...`) liefert `400`.\n- Ein fehlendes Versionssegment liefert `404` – ohne das Segment passt der Pfad schlicht auf kein Mapping.\n\n### Authentifizierung\nOpakes Session-Cookie (`FUBO_SESSION`, `HttpOnly`, `Secure`, `SameSite=Lax`, kein Ablaufdatum). Das Frontend kann den Token weder lesen noch prüfen und muss das auch nicht: Die Validierung passiert ausschließlich serverseitig in der Filterchain. Alle Aufrufe erfolgen mit `credentials: 'include'`.\n\n**Die zentrale PIN besteht aus vier Ziffern.** Das Eingabefeld im Frontend darf darauf ausgelegt werden. `POST /auth/pin/pruefen` schreibt der Eingabe trotzdem **kein** Format vor – ein abweichender Bestandswert aus der Erstkonfiguration muss eingebbar bleiben, und eine Mindestlänge im Vertrag wäre eine Auskunft über das Format der echten PIN. Verbindlich ist das Format nur beim *Setzen* über `POST /admin/pin/aendern`.\n\nDer Login ist zweistufig und wird serverseitig erzwungen:\n1. `PIN_VERIFIED` – zentrale PIN geprüft, Identität noch offen.\n2. `PROFILE_AUTHENTICATED` – erst hier existiert eine Rolle. Es führen drei Wege dorthin: Namensauswahl (`USER`), Gast-Login (`GAST`) und Admin-Login mit Passwort (`ADMIN`).\n\n**Das Adminprofil ist ein technisches Konto.** Es steht nicht in der Namensliste, nimmt an keinem Termin teil und wird nie in ein Team eingeteilt; seine Skillwerte stehen auf 0. Der Admin meldet sich deshalb über `POST /api/v1/auth/admin/anmelden` mit seinem Passwort an – die Namensauswahl lehnt das Adminprofil auch dann ab, wenn seine Id bekannt ist.\n\nBei jedem Stufenwechsel und bei jeder Erneuerung wird der Token rotiert (Schutz vor Session Fixation). Die `session.id` bleibt dabei erhalten.\n\n### Sitzungsdauer (Zwei-Timer-Modell)\n`gueltigBis` ist ein gleitendes Leerlauf-Fenster (Vorgabe 15 Minuten) und wandert bei jedem Aufruf nach hinten. `absolutGueltigBis` ist eine harte Obergrenze (Vorgabe 1 Stunde) und wird nie verschoben – auch nicht durch `/auth/session/erneuern`.\n\nHintergrundaufrufe (etwa das Pollen des Belegtstatus) sollen das Leerlauf-Fenster **nicht** verlängern und senden dazu `X-FuBo-Kein-Refresh: true`. Ohne diesen Header würde „15 Minuten Inaktivität\" den offenen Browser-Tab messen statt den Nutzer.\n\n### CORS\nFrontend und API liegen auf Subdomains derselben registrierbaren Domain (`app.<domain>` / `api.<domain>`). Der Server führt eine Allowlist mit `allowCredentials=true`; erlaubte Anfrageheader sind `Content-Type` und `X-FuBo-Kein-Refresh`, freigegebener Antwortheader ist `Retry-After`.\n\n### Datenschutz\nSkillbewertungen verlassen den Server nie in Richtung USER oder GAST (Anforderung A12). Sie erscheinen **ausschliesslich in Antworten unterhalb von `/admin/`** – heute in `GET /admin/user/lesen` – und erreichen `USER` und `GAST` nie; die Teamgenerierung läuft vollständig serverseitig.\n\n**Die Bilanz aus S6 ist davon ausgenommen**, und das ist kein Widerspruch: Siege und Niederlagen sind Statistik und keine Bewertung. Sie stehen deshalb sowohl in `SpielerDetails` als auch in `GET /bilanz/lesen`, wo jeder Angemeldete **seine eigene** abruft. A16 bleibt unberührt – Ergebnisse wirken nicht auf Skillwerte zurück.\n\nBis S2b enthielt kein Antwortobjekt dieser Beschreibung Skillwerte. Seit S3 gilt die genauere Fassung oben: Der Prüfpunkt ist nicht mehr „kommen Skillwerte vor\", sondern „kommen sie ausserhalb von `/admin/` vor\".\n\n### Nicht enthalten\n`GET /actuator/health` bleibt bewusst unversioniert und ist kein Teil der fachlichen API. Der Endpunkt dient dem Container-Healthcheck und wird von nginx nach außen abgeschottet.",
     "contact": {
       "name": "FuBo-Server",
       "url": "https://github.com/DenKim94/FuBo-Server"
@@ -41,7 +41,7 @@
     },
     {
       "name": "Zugangsdaten",
-      "description": "Pflege der Anmeldedaten: Passwort-Reset per E-Mail, Passwortänderung im angemeldeten Zustand und Wechsel der zentralen PIN (A3, A22)."
+      "description": "Pflege der Anmeldedaten: Passwort-Reset per E-Mail, Passwortänderung im angemeldeten Zustand, Wechsel der zentralen PIN und Änderung des Admin-Anmeldenamens mit Bestätigung per E-Mail (A3, A22)."
     },
     {
       "name": "Spielerverwaltung",
@@ -1357,8 +1357,8 @@
           "Zugangsdaten"
         ],
         "operationId": "adminNameAendern",
-        "summary": "Anmeldenamen des Admins ändern",
-        "description": "Benennt das Adminprofil um und ändert damit den **Anmeldenamen** für `/auth/admin/anmelden`. Verlangt die Rolle `ADMIN`.\n\nEin eigener Endpunkt statt eines Sonderfalls in `/admin/user/bearbeiten`: Der Name des Adminprofils ist seit dem 29.08.2026 ein Anmeldemerkmal und keine Stammdatenpflege. Er liegt unter dem Tag „Zugangsdaten\", neben `/admin/passwort/aendern` und `/admin/pin/aendern`.\n\n**Die laufende Sitzung bleibt bestehen** – anders als bei der Passwortänderung, die das Cookie löscht. Der Name ist kein Geheimnis, dessen Bekanntwerden allein Zugang verschafft; ein Widerruf würfe den Admin unmittelbar nach der Umbenennung aus seiner eigenen Sitzung. Die Änderung greift beim **nächsten** Login.\n\n**Ein aktuelles Passwort wird nicht verlangt** – dasselbe Muster wie bei `/admin/pin/aendern`, das die zentrale PIN ohne erneute Passworteingabe setzt. Nur die Passwortänderung selbst fragt das alte Passwort ab.\n\n**Betriebshinweis:** Nach einer Umbenennung ist `ADMIN_NAME` in der `.env` veraltet. Für den laufenden Betrieb ist das folgenlos – der Start-Bootstrap liest den Wert nur, solange `profil.admin_konto` leer ist. Wird diese Zeile je neu aufgebaut, sucht er wieder unter `ADMIN_NAME`; deshalb gehört der Wert nachgezogen.",
+        "summary": "Änderung des Admin-Anmeldenamens anfordern",
+        "description": "Fordert die Änderung des **Anmeldenamens** für `/auth/admin/anmelden` an. Verlangt die Rolle `ADMIN`.\n\n**Der Name wird hier noch nicht geändert** (Ergänzung vom 04.10.2026). Der Server prüft ihn, erzeugt eine fünfstellige Bestätigungs-PIN, speichert ihren BCrypt-Hash zusammen mit dem gewünschten Namen und schickt sie an die Adresse aus `admin_konto.email`. Übernommen wird der Name erst mit `POST /admin/name/bestaetigen`.\n\n**Warum die Bestätigung über das Postfach:** Der Anmeldename ist das einzige Anmeldemerkmal, das der Passwort-Reset nicht zurückholt. Wer an einer offenen Adminsitzung sitzt, könnte den Admin sonst mit einer einzigen Umbenennung dauerhaft aussperren; die Bestätigung verlangt zusätzlich den Zugriff auf das hinterlegte Postfach.\n\n**Der Name wird vor dem Versand geprüft** (`400`, `409 NAME_BELEGT`) – ein vergebener Name löst keine Nachricht aus. Die Nachricht nennt den neuen Namen, und die PIN gilt genau für ihn.\n\n**Eine ältere, noch offene Anforderung wird entwertet** – es gilt immer die zuletzt angeforderte PIN und damit der zuletzt genannte Name. Ein offener Passwort-Reset bleibt davon unberührt: Beide Vorgänge sind getrennt gespeichert, und die PIN des einen ist beim anderen wertlos.\n\n**Ein aktuelles Passwort wird nicht verlangt** – den zweiten Nachweis übernimmt das Postfach.\n\n**Die laufende Sitzung bleibt bestehen**, auch nach der Bestätigung. Der Name ist kein Geheimnis, dessen Bekanntwerden allein Zugang verschafft; die Änderung greift beim **nächsten** Login.\n\nEin eigener Endpunkt statt eines Sonderfalls in `/admin/user/bearbeiten`: Der Name des Adminprofils ist seit dem 29.08.2026 ein Anmeldemerkmal und keine Stammdatenpflege.\n\n**Betriebshinweis:** Nach einer Umbenennung ist `ADMIN_NAME` in der `.env` veraltet. Für den laufenden Betrieb ist das folgenlos – der Start-Bootstrap liest den Wert nur, solange `profil.admin_konto` leer ist. Wird diese Zeile je neu aufgebaut, sucht er wieder unter `ADMIN_NAME`; deshalb gehört der Wert nachgezogen.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1377,8 +1377,8 @@
           }
         },
         "responses": {
-          "204": {
-            "description": "Umbenannt. Kein Inhalt, **kein neues Cookie** – die Sitzung läuft weiter."
+          "202": {
+            "description": "Anforderung angenommen und Nachricht versendet. **Der Name ist noch nicht geändert** – erst `POST /admin/name/bestaetigen` übernimmt ihn. Die Bestätigungs-PIN ist 15 Minuten gültig. Kein Inhalt, **kein neues Cookie**."
           },
           "400": {
             "$ref": "#/components/responses/EingabeUngueltig"
@@ -1390,7 +1390,137 @@
             "$ref": "#/components/responses/KeineBerechtigung"
           },
           "409": {
-            "description": "Ein anderes Profil trägt diesen Namen (`NAME_BELEGT`), auch bei abweichender Gross-/Kleinschreibung.",
+            "description": "Ein anderes Profil trägt diesen Namen (`NAME_BELEGT`), auch bei abweichender Gross-/Kleinschreibung. Es wird keine Nachricht versendet.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Zu viele Anforderungen von derselben Adresse – höchstens drei je Stunde (`NAME_AENDERUNG_GEDROSSELT`).\n\nEin eigener Zähler, getrennt von dem des Passwort-Resets: Begrenzt wird eine *erfolgreiche* Handlung, die jedes Mal eine E-Mail auslöst.",
+            "headers": {
+              "Retry-After": {
+                "description": "Sekunden bis zur nächsten zulässigen Anforderung (RFC 9110).",
+                "schema": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 1
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Too Many Requests",
+                  "status": 429,
+                  "detail": "Zu viele Anforderungen. Bitte in 1837 Sekunden erneut versuchen.",
+                  "code": "NAME_AENDERUNG_GEDROSSELT",
+                  "wartesekunden": 1837
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Der E-Mail-Versand ist fehlgeschlagen (`VERSAND_FEHLGESCHLAGEN`).\n\n**Es bleibt kein Vorgang zurück** – auch eine zuvor offene Anforderung bleibt gültig, denn ihr Entwerten rollt mit zurück. Der Aufruf lässt sich unverändert wiederholen.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/name/bestaetigen": {
+      "post": {
+        "tags": [
+          "Zugangsdaten"
+        ],
+        "operationId": "adminNameBestaetigen",
+        "summary": "Bestätigungs-PIN einlösen und Anmeldenamen übernehmen",
+        "description": "Prüft die Bestätigungs-PIN aus der E-Mail und übernimmt den Namen, der bei `POST /admin/name/aendern` genannt wurde. Verlangt die Rolle `ADMIN` (Ergänzung vom 04.10.2026).\n\n**Kein Name im Körper.** Der Name steht am Vorgang; die PIN bestätigt genau ihn. Ein Name an dieser Stelle erlaubte, mit einer PIN einen anderen Namen zu setzen als den, den die Nachricht genannt hat.\n\n**Der Versuchszähler steigt, bevor die PIN geprüft wird**, und er überlebt eine abgelehnte Anfrage – fünf Versuche je Vorgang. Ein Fehlversuch zählt zusätzlich auf den Brute-Force-Zähler des PIN-Endpunkts, wie bei der Passwortänderung.\n\n**Die laufende Sitzung bleibt bestehen**, kein Cookie wird gelöscht. Die Änderung greift beim **nächsten** Login – das Anmeldeformular prüft den Namen zeichengenau.\n\n**Ein Vorgang gehört nicht zur Sitzung.** Läuft die Sitzung zwischen Anfordern und Bestätigen ab, bleibt die PIN nach erneuter Anmeldung einlösbar, solange sie gültig ist.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminNameBestaetigenRequest"
+              },
+              "examples": {
+                "standard": {
+                  "value": {
+                    "bestaetigungsPin": "04713"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Name übernommen. Kein Inhalt, **kein neues Cookie** – die Sitzung läuft weiter."
+          },
+          "400": {
+            "$ref": "#/components/responses/EingabeUngueltig"
+          },
+          "401": {
+            "description": "Die Bestätigungs-PIN ist falsch (`NAME_PIN_FALSCH`) oder es liegt keine gültige Sitzung vor (`SESSION_UNGUELTIG`).\n\nBei `NAME_PIN_FALSCH` ist ein Versuch verbraucht; nach fünf Fehlversuchen antwortet der Endpunkt mit `409`. **Nur `SESSION_UNGUELTIG` beendet die Sitzung** – der Client verzweigt über `code`, nicht über den Status.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Die Bestätigungs-PIN ist nicht korrekt.",
+                  "code": "NAME_PIN_FALSCH"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/KeineBerechtigung"
+          },
+          "409": {
+            "description": "Zwei Fälle, beide mit „neu anfordern“ als Ausweg:\n\n- `NAME_AENDERUNG_UNGUELTIG` – es gibt keinen brauchbaren Vorgang: nie angefordert, abgelaufen, bereits eingelöst, durch eine neuere Anforderung entwertet oder die fünf Versuche sind erschöpft. Die Fälle werden bewusst nicht unterschieden.\n- `NAME_BELEGT` – der Name ist **seit der Anforderung** an ein anderes Profil vergeben worden. Der Vorgang lässt sich dann nicht mehr einlösen; eine neue Anforderung mit einem anderen Namen entwertet ihn.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Conflict",
+                  "status": 409,
+                  "detail": "Es liegt keine gültige Anforderung zur Namensänderung vor. Bitte neu anfordern.",
+                  "code": "NAME_AENDERUNG_UNGUELTIG"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Gesperrt – ein Fehlversuch zählt zusätzlich auf den Brute-Force-Zähler des PIN-Endpunkts, deshalb der Code `PIN_GESPERRT`.",
+            "headers": {
+              "Retry-After": {
+                "description": "Sekunden bis zum nächsten zulässigen Versuch (RFC 9110).",
+                "schema": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 1
+                }
+              }
+            },
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -3039,7 +3169,10 @@
           "HALLE_NICHT_KONFIGURIERT",
           "HALLE_BEREITS_ABGESAGT",
           "HALLE_MODUS_INAKTIV",
-          "PUSH_NICHT_KONFIGURIERT"
+          "PUSH_NICHT_KONFIGURIERT",
+          "NAME_PIN_FALSCH",
+          "NAME_AENDERUNG_UNGUELTIG",
+          "NAME_AENDERUNG_GEDROSSELT"
         ]
       },
       "Stage": {
@@ -3459,7 +3592,7 @@
       },
       "AdminNameAendernRequest": {
         "type": "object",
-        "description": "Neuer Anmeldename des Admins.\n\nDas Adminprofil wird **ausschliesslich** über diesen Endpunkt umbenannt, nicht über `/admin/user/bearbeiten`.",
+        "description": "Gewünschter neuer Anmeldename des Admins. **Er wird erst nach der Bestätigung über `/admin/name/bestaetigen` übernommen.**\n\nDas Adminprofil wird **ausschliesslich** über dieses Endpunktpaar umbenannt, nicht über `/admin/user/bearbeiten`.",
         "properties": {
           "neuerName": {
             "type": "string",
@@ -3470,6 +3603,20 @@
         },
         "required": [
           "neuerName"
+        ]
+      },
+      "AdminNameBestaetigenRequest": {
+        "type": "object",
+        "description": "Bestätigung einer angeforderten Änderung des Admin-Anmeldenamens. Enthält bewusst **keinen** Namen – er steht am Vorgang.",
+        "properties": {
+          "bestaetigungsPin": {
+            "type": "string",
+            "pattern": "^\\d{5}$",
+            "description": "Die fünfstellige Bestätigungs-PIN aus der E-Mail, mit führenden Nullen. Dasselbe Format wie beim Passwort-Reset; eine PIN des einen Vorgangs ist beim anderen wertlos."
+          }
+        },
+        "required": [
+          "bestaetigungsPin"
         ]
       },
       "AlgorithmType": {

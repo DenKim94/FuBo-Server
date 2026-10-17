@@ -15,7 +15,8 @@
 > - **Herleitung und Schritt für Schritt** → `harness/tmp/S<n>_UMSETZUNG.md`, für den
 >   Algorithmusteil von S5 zusätzlich `harness/tmp/S5_ALGORITHMUS.md`
 > - **Historie** → Git und `harness/archive/`. Vorfassung:
->   `CONTEXT_HANDOFF_SERVER_2026-09-25_v22_S8-verdichtet.md` (Stand vor S9); die vollständige
+>   `CONTEXT_HANDOFF_SERVER_2026-10-03_v23_S9-Paket1.md` (Stand vor der Namensbestätigung),
+>   davor `…_v22_S8-verdichtet.md` (Stand vor S9); die vollständige
 >   Chronik von S8 samt der sieben Abweichungen von der Anleitung und der fünf Weggabelungen trägt
 >   `CONTEXT_HANDOFF_SERVER_2026-09-15_v21_S8-Abschnitte1-11.md`;
 >   letzte Langfassung mit allen Herleitungen `…_v14_S4-abgeschlossen.md`
@@ -27,7 +28,7 @@
 > Was hier steht, steht **nur** hier. Wird eine Festlegung zur Architekturregel, wandert sie
 > nach `AGENT_SERVER.md` und **verschwindet hier** – sonst laufen beide auseinander.
 
-## Stand: 03.10.2026
+## Stand: 04.10.2026
 
 **S0 bis S8 sind abgeschlossen und verifiziert.** Alles bis S8 ist auf `dev` committet (18 Commits
 für S8), **nicht gepusht**.
@@ -41,15 +42,24 @@ ohne Fehlschlag. Der Probebau des Images lief durch; das JAR (`app-server-1.0.0.
 Zielversionen nachweislich. Denis' Versionsanhebung `0.0.1-SNAPSHOT` → `1.0.0` steht als eigener
 Commit davor. **Nächster Schritt liegt bei Denis:** `dev` nach `main` mergen – der Pi baut `main`.
 
+**Neu am 04.10.2026 – Bestätigung der Namensänderung (A22, Ergänzung des Haupt-Entwicklers).** Die
+Änderung des Admin-Anmeldenamens verlangt eine Bestätigungs-PIN per E-Mail: `POST /admin/name/aendern`
+prüft den Namen, speichert ihn am Vorgang und verschickt die PIN (`202`), `POST /admin/name/bestaetigen`
+übernimmt ihn (`204`). Neu sind `V015` (`profil.name_aenderung`), ein Endpunkt, drei Fehlercodes, zwei
+Audit-Aktionen und die Testklasse `AdminNamensaenderungTests`; die sechs bisherigen Namensfälle sind
+aus `ZugangsdatenControllerTests` dorthin umgezogen. **Gebaut und statisch geprüft – der Testlauf steht
+aus, nichts ist committet.** Erwartet: **493 Fälle in 35 Klassen** (vorab gezählt). **Für den Client
+brechend** (4.1); Entscheidungen in 6.2, Regeln in `AGENT_SERVER.md`, „Zugangsdatenpflege" Punkt 5.
+
 | Gegenstand | Stand |
 |---|---|
-| Vertrag `fubo-api.json` | **44 Endpunkte** (S8 brachte sechs) |
-| Datenmodell | **19 Tabellen**, `V001`–`V014` |
+| Vertrag `fubo-api.json` | **45 Endpunkte** (S8 brachte sechs, die Namensbestätigung einen) |
+| Datenmodell | **20 Tabellen**, `V001`–`V015` |
 | Konfiguration | **14 Pflichtfelder** im Voll-Update |
-| `Fehlercode` | **34** Werte |
-| `AuditAktion` | **29** Werte |
-| Tests | **483 Fälle in 34 Klassen**, davon **fünf Klassen ohne Spring-Kontext** |
-| Bruno-Collection | alle 44 Endpunkte, acht Ordner (`~/Documents/bruno/fubo_server`, unversioniert) |
+| `Fehlercode` | **37** Werte |
+| `AuditAktion` | **31** Werte |
+| Tests | **483 Fälle in 34 Klassen** zuletzt grün; nach der Namensbestätigung erwartet **493 in 35**, weiterhin **fünf Klassen ohne Spring-Kontext** |
+| Bruno-Collection | alle 45 Endpunkte, acht Ordner (`~/Documents/bruno/fubo_server`, unversioniert) |
 | Plattform | **Spring Boot 4.1.1**, Tomcat 11.0.26 und Jackson 3.1.7 per Override (S9, 03.10.2026) |
 
 **Was S8 gebracht hat:** Web Push nach RFC 8030/8291/8292 **ohne Fremdbibliothek**, mit
@@ -67,19 +77,23 @@ keinen Fehlerkanal, kein Protokoll und keinen Statuscode dafür. **Wer an `Nutzl
 `P256` oder `VapidJwtErzeuger` etwas ändert, prüft gegen Anhang A** – nicht gegen ein Gerät, und
 erst recht nicht gegen die Antwort des Dienstes.
 
-**Offen ist nur noch Handarbeit und S9:**
+**Offen sind der Testlauf zur Namensbestätigung, Handarbeit und S9:**
 
-1. **Fünf Handprüflisten** – `S4_UMSETZUNG.md` 11.1, `S5_UMSETZUNG.md` 13.1, `S6_UMSETZUNG.md` 8.1,
+1. **Testlauf und Commit der Namensbestätigung** – `./mvnw clean verify`, erwartet 493/35. Danach
+   eine Handprüfung mit echter Mail (Bruno: „Anmeldenamen aendern" → PIN nach `namePin` →
+   „Anmeldenamen bestaetigen"), anschliessend `ADMIN_NAME` in der `.env` nachziehen.
+2. **Fünf Handprüflisten** – `S4_UMSETZUNG.md` 11.1, `S5_UMSETZUNG.md` 13.1, `S6_UMSETZUNG.md` 8.1,
    `S7_UMSETZUNG.md` 8.1, `S8_PUSH_UMSETZUNG.md` 13.1, dazu die drei Punkte zur Gastverwaltung aus
    6.4. Alle brauchen eine laufende Anwendung und werden in einem Zug abgearbeitet. **Bei S7 mit
    besonderer Vorsicht:** Dort gehen echte Mails raus – vorher `halle_email` auf eine eigene
    Adresse setzen.
-2. **S9: Härtung und Deployment** (14 h), Anleitung `harness/tmp/S9_DEPLOYMENT.md`. Paket 1
+3. **S9: Härtung und Deployment** (14 h), Anleitung `harness/tmp/S9_DEPLOYMENT.md`. Paket 1
    (Abhängigkeiten, Dockerfile) steht; Abschnitte 3, 4, 10, 12, 13 sind nachgezogen. Offen sind
    nginx, die Compose-Ergänzung auf dem Pi, Erstinbetriebnahme, Backup und API-Doku. Gebaut wird
    auf dem Pi der aktuelle Stand von `main`.
-3. **Client-Track informieren.** Der Vertrag steht bei 44 Endpunkten; die Push-Zeilen in 4.1 sind
-   seit dem Commit in `fubo-api.json` **verbindlich** und nicht mehr Vorausschau.
+4. **Client-Track informieren.** Der Vertrag steht bei 45 Endpunkten; die Push-Zeilen in 4.1 sind
+   seit dem Commit in `fubo-api.json` **verbindlich** und nicht mehr Vorausschau. **Dazu die brechende
+   Änderung am Namenswechsel** – sie trifft C4 (Admin-Zugang), bevor es begonnen ist.
 
 **Zwei Dinge vor jedem Lauf:** Docker muss laufen (`docker info`), und es ist `./mvnw clean verify`,
 nicht nur `verify` – `target/classes` vergisst nichts.
@@ -139,8 +153,9 @@ Vollständige Liste in `CONTEXT_HANDOFF.md`, Abschnitt 3. Serverseitig besonders
 **Maßgeblich ist `server/fubo-api.json`** – OpenAPI 3.1 in JSON auf der Repo-Wurzel und damit
 mitversioniert. **Bei Abweichungen gilt die Datei, nicht dieses Dokument.**
 
-**Umfang: 44 Endpunkte** (Landkarte in 6.1). Aufgenommen wird nur, was umgesetzt ist. **S9 bringt
-keine** – es ist Härtung und Deployment. Kernpunkte: REST/JSON, getrennte Origins mit
+**Umfang: 45 Endpunkte** (Landkarte in 6.1). Aufgenommen wird nur, was umgesetzt ist. **S9 bringt
+keine** – es ist Härtung und Deployment; der 45. kam am 04.10.2026 mit der Bestätigung der
+Namensänderung. Kernpunkte: REST/JSON, getrennte Origins mit
 CORS-Allowlist (`allowCredentials`), HttpOnly-Session-Cookie, `401`/`403`-Semantik, DTOs ohne
 Skillwerte für USER und GAST, Belegtstatus zum Pollen, einheitliches Fehler-JSON nach RFC 9457.
 
@@ -159,10 +174,11 @@ naheliegende Annahme falsch ist. Wann sie dazukam, steht in Git.
 
 | Punkt | Bedeutung für den Client |
 |---|---|
-| **Sechs brechende Änderungen** | `anmeldename` in `AdminLoginRequest`, vollständige `skills` in `SpielerAnlegenRequest`, `auswechselModus`, `hallenModusAktiv` (13.09.) und – seit S8 – `pushAktiv` und `pushErinnerungStunden` im Konfigurations-Voll-Update. Alle sechs betreffen Formulare, alle sechs liefern sonst `400` |
+| **Sieben brechende Änderungen** | `anmeldename` in `AdminLoginRequest`, vollständige `skills` in `SpielerAnlegenRequest`, `auswechselModus`, `hallenModusAktiv` (13.09.), – seit S8 – `pushAktiv` und `pushErinnerungStunden` im Konfigurations-Voll-Update und – seit dem 04.10.2026 – der **zweistufige Namenswechsel**. Die ersten sechs liefern sonst `400`. **Der siebte scheitert nicht laut:** `/admin/name/aendern` antwortet weiter mit einem Erfolgscode (`202`), ändert aber nichts mehr – ein Client ohne zweiten Schritt zeigt „gespeichert", und der alte Name bleibt |
 | `hallenModusAktiv`, `pushAktiv` | **Pflichtfelder, kein stillschweigendes `false`.** Wer sie weglässt, bekommt `400` mit dem Schlüssel im Block `felder` – sonst schaltete ein Client, der das Feld nicht kennt, die Funktion bei jedem Speichern ab. Beide sind deshalb `Boolean` und nicht `boolean`; bei Zahlenfeldern übernimmt das `@Min` dieselbe Aufgabe |
 | `/admin/config/aendern` | **Voll-Update**: vorher `lesen`, dann alle **vierzehn** änderbaren Felder samt `version` zurückschicken. `halleAbsageVorlageEffektiv` gehört **nicht** dazu – nur lesbar |
 | `/admin/ergebnis/korrigieren` | ebenfalls **Voll-Update** mit `version` – auch das unveränderte Feld mitschicken. Grund ist `deutlich`: Bei einem `boolean` wäre „weggelassen" nicht von `false` zu unterscheiden |
+| `/admin/name/aendern` → `/admin/name/bestaetigen` | **zweistufig seit dem 04.10.2026.** Der erste Aufruf antwortet `202` und schickt eine fünfstellige PIN an die Adresse des Admins; der Name ist danach **noch nicht** geändert. Der zweite nimmt nur `{ bestaetigungsPin }` – **keinen Namen**. Nach `202` also ein PIN-Feld anzeigen (fünf Ziffern, 15 Minuten gültig, fünf Versuche) und auf die Mail hinweisen. Die Sitzung bleibt in beiden Schritten bestehen; der neue Name gilt ab dem nächsten Login |
 | `/admin/termin/aendern` | **feldweise**, anders als die beiden darüber. Weglassen heisst „nicht ändern"; `ort: ""` leert den Ort. Ein Körper ohne jedes zu ändernde Feld liefert `400` |
 | `DATEN_VERALTET` (`409`) | heisst **„neu laden und erneut speichern", nicht „Eingabe falsch"**. Gilt für Konfiguration, Termine und Ergebnisse. Die `version` kommt aus dem jeweiligen `lesen` – beim Ergebnis auch aus der Antwort des Erfassens |
 | `/admin/gast/freigeben` | genau eines von `slotIds` und `alle`. Leerer Körper `400`, nicht „alle". Der Aufruf **meldet aktive Gäste ab**; vorher nachfragen |
@@ -191,6 +207,9 @@ naheliegende Annahme falsch ist. Wann sie dazukam, steht in Git.
 | `ERGEBNIS_VORHANDEN` (`409`) | **kein Bedienfehler.** Nach dem Abpfiff tippen mehrere gleichzeitig; der Zweite soll „hat schon jemand erfasst" sehen und danach das vorhandene Ergebnis, nicht eine Fehlermeldung |
 | `TERMIN_NICHT_ABGESCHLOSSEN` (`409`) | **nicht** `TERMIN_GESCHLOSSEN` – dort ist die Polarität umgekehrt. Warten hilft, aber nur bei `GEPLANT`: Der Abschluss folgt 30 bis 35 Minuten nach Beginn |
 | `PUSH_NICHT_KONFIGURIERT` (`503`) | „auf diesem Server nicht eingerichtet", **kein Fehler**. Betrifft `GET /push/schluessel/lesen` und `POST /admin/push/test`; die übrigen vier Push-Endpunkte antworten trotzdem `200`. Wiederholen hilft nie – den Bereich ausblenden |
+| `NAME_PIN_FALSCH` (`401`) | **kein Sitzungsende** – eine vertippte PIN beim Namenswechsel, wie `ADMIN_PASSWORT_FALSCH` beim Passwortwechsel. `queryClient.ts` verzweigt bereits über `code`; der neue Wert fällt dort richtig **nicht** unter das Sitzungsende |
+| `NAME_AENDERUNG_UNGUELTIG` (`409`) | heisst „neu anfordern": nichts angefordert, abgelaufen, eingelöst, durch eine neuere Anforderung entwertet oder fünf Fehlversuche. Eine neue Anforderung entwertet immer die vorige – es gilt nur die zuletzt versandte PIN |
+| `NAME_AENDERUNG_GEDROSSELT` (`429`) | drei Anforderungen je Stunde und Adresse; `Retry-After` und `wartesekunden` wie beim Reset |
 
 **Endgültiges – gehört in die Bestätigungsabfrage**
 
@@ -332,12 +351,12 @@ ohnehin in `src/` und veralteten mit jedem Commit. Die Langfassung liegt in
 
 ```
 server/                        Repo-Wurzel (remote: FuBo-Server, oeffentlich)
-  fubo-api.json                Endpunktkontrakt, 44 Endpunkte
+  fubo-api.json                Endpunktkontrakt, 45 Endpunkte
   compose.dev.yml              postgres:17
   Dockerfile, .dockerignore    Produktionsimage (S9); .dockerignore ist eine Whitelist
   .env / .env.example          DB-Zugang, FUBO_INITIAL_PIN, ADMIN_*, SMTP_*, FUBO_VAPID_*
   scripts/                     seed-lokal.sh + anonymisierter 30er-Datensatz
-  src/main/resources/db/       migration/ V001-V014, demodata/ (nur dev und test)
+  src/main/resources/db/       migration/ V001-V015, demodata/ (nur dev und test)
   src/main/java/de/fubo/appserver/
     common/      config error security
     controller/  auth admin spieltag ergebnis profil push
@@ -379,18 +398,19 @@ server/                        Repo-Wurzel (remote: FuBo-Server, oeffentlich)
   nichts von Abonnements. **Wer diese Richtung umdreht, koppelt den Absagepfad an einen fremden
   Dienst** – und eine gescheiterte Push-Nachricht liesse dann eine gespeicherte Absage scheitern.
 
-**Datenmodell: 19 Tabellen, `V001`–`V014`.** `V014` ist die erste seit S3, die eine *Tabelle*
-anlegt (`profil.push_abo`); `V009` bis `V013` ergänzen nur Spalten. **S2b, S3, S5 und S6 kamen
+**Datenmodell: 20 Tabellen, `V001`–`V015`.** `V014` war die erste seit S3, die eine *Tabelle*
+anlegt (`profil.push_abo`), `V015` legt die zweite an (`profil.name_aenderung`, 04.10.2026);
+`V009` bis `V013` ergänzen nur Spalten. **S2b, S3, S5 und S6 kamen
 ohne Migration aus** – das hängt an Voraussetzungen, die in `S5_UMSETZUNG.md` 0.4/0.6 und
 `S6_UMSETZUNG.md` 0.2/1.3 stehen; fällt eine davon, fällt die Aussage.
 
-**Die 44 Endpunkte, nach Bereichen.** Zweck, Körper und Antworten stehen in `fubo-api.json` –
+**Die 45 Endpunkte, nach Bereichen.** Zweck, Körper und Antworten stehen in `fubo-api.json` –
 hier nur die Landkarte, damit eine Änderung nicht an zwei Stellen gepflegt werden muss:
 
 | Bereich | Pfade unter `/api/v1` | Anzahl |
 |---|---|---:|
 | Anmeldung und Sitzung (S2) | `auth/pin/pruefen`, `auth/users/lesen`, `auth/user/waehlen`, `auth/gast/anmelden`, `auth/admin/anmelden`, `auth/session/{lesen,erneuern,beenden}` | 8 |
-| Zugangsdaten (S2b) | `auth/passwort/{zuruecksetzen,bestaetigen}`, `admin/{passwort,pin,name}/aendern` | 5 |
+| Zugangsdaten (S2b; Namensbestätigung 04.10.) | `auth/passwort/{zuruecksetzen,bestaetigen}`, `admin/{passwort,pin,name}/aendern`, `admin/name/bestaetigen` | 6 |
 | Spielerverwaltung (S2b, S3) | `admin/user/{anlegen,bearbeiten,entfernen,blockieren,lesen}`, `admin/skills/lesen` | 6 |
 | Konfiguration (S3) | `admin/config/{lesen,aendern}` | 2 |
 | Gastverwaltung (30.08.) | `admin/gast/{lesen,freigeben}` | 2 |
@@ -539,6 +559,19 @@ der zweiten Stufe `PROFILE_AUTHENTICATED`, weil auch Gäste sie erreichen.
 | **Schwachstellenprüfung vorerst manuell** | Preis: Die Overrides in der `pom.xml` fallen nur auf, wenn jemand nachsieht |
 | **Hostnamen vertagt** | Eine Subdomain-Ebene unter `denis-kim.dev` ist Pflicht, sonst greift das kostenlose Cloudflare-Zertifikat nicht (S9 §12, Punkt 8) |
 
+**Sechs Entscheidungen vom 04.10.2026 (Bestätigung der Namensänderung).** Die ersten drei hat der
+Haupt-Entwickler auf Rückfrage getroffen, jeweils entlang der Empfehlung; die übrigen drei sind
+Umsetzungsentscheidungen. Die daraus folgenden Regeln stehen in `AGENT_SERVER.md`.
+
+| Festlegung | Grund |
+|---|---|
+| **Der Name steht im ersten Schritt**, am Vorgang – nicht wie das Passwort beim Reset im zweiten | Die Nachricht nennt den Namen, die PIN bestätigt genau ihn, und ein vergebener Name fällt **vor** dem Versand auf. Beim Passwort wäre das falsch: Es gehört weder in eine Tabelle noch in eine Mail. Ein Name ist kein Geheimnis |
+| **Eigene Tabelle `profil.name_aenderung`** (`V015`), nicht `passwort_reset` mit Zweckspalte | Vier der sechs Reset-Abfragen bräuchten eine Zweckbedingung; eine vergessene machte die PINs austauschbar. Getrennt ist das baulich ausgeschlossen, und der Reset-Pfad bleibt unberührt. `namensaenderungUndPasswortResetBleibenGetrennt` prüft genau diesen Fall |
+| **Drei eigene Fehlercodes** statt der `RESET_*`-Codes | Beide Vorgänge können gleichzeitig offen sein; der Client muss wissen, welches Formular betroffen ist, und die `RESET_*`-Texte sprechen vom Zurücksetzen |
+| `/admin/name/aendern` antwortet **`202`**, nicht mehr `204` | `204` hiess „erledigt", und genau das stimmt nicht mehr. Ein Client, der nur `response.ok` prüft, merkt den Unterschied trotzdem nicht – deshalb steht die brechende Wirkung in 4.1 |
+| **Grenzen aus `fubo.reset.*`**, aber eigene Zähler | Dieselbe Art PIN, also ein Satz Grenzen; zwei liefen auseinander. Eigene Felder in `FuboProperties` hätten drei Testklassen gebrochen, ohne dass jemand die Werte getrennt einstellen will |
+| **`NAME_BELEGT` beim Einlösen rollt ganz zurück** – die Anforderung bleibt offen | Der Name kann zwischen beiden Schritten vergeben werden. Danach ist die Anforderung nicht mehr einlösbar, und die nächste entwertet sie. Sie beim Scheitern zu schliessen, bräuchte eine zweite Transaktion für einen Randfall |
+
 ### 6.3 Fallstricke, die weiter gelten
 
 Jeder Punkt hat schon mindestens einmal Zeit gekostet.
@@ -635,7 +668,17 @@ Jeder Punkt hat schon mindestens einmal Zeit gekostet.
   alle drei werden in `@BeforeEach` zurückgesetzt. **Und die `@Scheduled`-Aufträge:** deshalb steht
   `fubo.push.erinnerung-aktiv` im Testprofil auf `false`.
 - **`REQUIRES_NEW` und `@Transactional` am Test vertragen sich nicht.** Die eigene Transaktion
-  sieht die Testdaten unter READ COMMITTED nicht.
+  sieht die Testdaten unter READ COMMITTED nicht. Betrifft `PasswortResetControllerTests` und seit
+  dem 04.10.2026 `AdminNamensaenderungTests`.
+- **Eine Testklasse ohne Transaktion, die den Admin-Namen ändert, muss ihn zurückschreiben** – sonst
+  scheitert in jeder folgenden Klasse die Admin-Anmeldung mit `401`, und die Ursache steht in einer
+  ganz anderen Klasse. `AdminNamensaenderungTests` sichert Name, Passwort-Hash und den Namen des
+  fremden Profils in `@BeforeEach`, schreibt sie in `@AfterEach` zurück und verwirft danach den
+  `ProfilStammdatenCache`, weil die Rückstellung per SQL an ihm vorbeiläuft. Ihre Client-Adressen
+  liegen in `203.0.113.100` bis `.199`.
+- **Zwei echte PINs in einem Fall stimmen einmal in 100 000 Läufen überein.** Wo ein Fall zwei
+  verschiedene braucht, ersetzt er den gespeicherten Hash durch den einer bekannten PIN – sonst
+  fiele er selten und grundlos um.
 - **Eine Änderung an `FuboProperties` bricht drei Testklassen**, die den Record von Hand bauen
   (`SessionAuthFilterTests`, `SessionCookieFactoryTests`, `BruteForceServiceTests`).
 - **`sitzungsIdZu(token)` nur mit noch gültigem Token aufrufen** – jeder Stufenwechsel rotiert ihn.
@@ -674,7 +717,9 @@ Jeder Punkt hat schon mindestens einmal Zeit gekostet.
   `PushVersandTests` kein `@Transactional` und räumen von Hand auf.
 - **Ein eigener `@Import`-Satz oder eigene `properties` kosten einen zweiten Anwendungskontext**
   und damit einen zweiten Datenbankcontainer. Drei Klassen haben einen
-  (`PasswortResetControllerTests`, `HallenmodusTests`, `PushVersandTests`); bei der letzten ist es
+  (`PasswortResetControllerTests`, `HallenmodusTests`, `PushVersandTests`) – `AdminNamensaenderungTests`
+  übernimmt den Satz von `PasswortResetControllerTests` **wortgleich** und kostet deshalb keinen
+  weiteren; bei der letzten ist es
   unvermeidbar, weil sie eingerichtete VAPID-Schlüssel braucht, während das globale Testprofil sie
   leer lässt – genau dieser Zustand ist der `503`-Fall von `PushControllerTests`.
 - **Termine für Lesetests entstehen per SQL, nicht über den Adminendpunkt.** Der Lesepfad soll
@@ -774,6 +819,11 @@ den beiden Overrides, 0 Fehlschläge, 0 Fehler, nichts übersprungen). Verlauf: 
 (S6, 12.09.), 431/31 und 434/31 (S7 samt Nachtrag, 13.09.), 483/34 (S8, 15.09.), **483/34
 (S9 Paket 1, 03.10.)**.
 
+**Erwartet nach der Namensbestätigung (04.10.2026): 493 Fälle in 35 Klassen** – vorab gezählt:
+sechs Fälle aus `ZugangsdatenControllerTests` verlegt, 16 in der neuen `AdminNamensaenderungTests`.
+`SecurityConfigTests` bleibt bei 26; der neue Pfad steht als Zusicherung im Bündelfall. **Der Lauf
+steht aus.**
+
 **S8 brachte 49 Fälle in drei neuen Klassen** – `PushVerschluesselungTests` (16),
 `PushControllerTests` (15), `PushVersandTests` (17) –, dazu einen in
 `KonfigurationControllerTests` (die beiden Push-Felder sind Pflicht) und zwei Pfadmuster als
@@ -827,12 +877,15 @@ Drei Punkte zur Gastverwaltung stehen in keiner Anleitung, die Bruno-Requests un
 | `anzGuests` von 4 auf 2 senken bei vier belegten Plätzen | Plätze 3 und 4 mit `wirksam: false` und weiter `belegt: true`; gelöscht wird nichts |
 
 **Die Bruno-Collection ist die zweite Hälfte der Verifikation.** Sie liegt unversioniert in
-`~/Documents/bruno/fubo_server` und deckt alle 44 Endpunkte in acht Ordnern ab (`auth`, `admin`,
-`termine`, `teams`, `ergebnis`, `halle`, `push`, `system`). Stand 25.09.2026; Format, Konventionen
+`~/Documents/bruno/fubo_server` und deckt alle 45 Endpunkte in acht Ordnern ab (`auth`, `admin`,
+`termine`, `teams`, `ergebnis`, `halle`, `push`, `system`). Stand 04.10.2026; Format, Konventionen
 und die Prüfschritte beim Nachziehen stehen in ihrer `README.md`.
 
 ## 7. Nächste Schritte
 
+0. **Namensbestätigung abschliessen** (04.10.2026): `./mvnw clean verify` (erwartet 493/35), dann
+   committen und eine Handprüfung mit echter Mail über Bruno – Umlaute und Name in der Nachricht,
+   `202`/`204`, danach `ADMIN_NAME` in der `.env` und `adminName` in den Bruno-Umgebungen nachziehen.
 1. **Die fünf Handprüflisten in einem Zug abarbeiten** – `S4_UMSETZUNG.md` 11.1,
    `S5_UMSETZUNG.md` 13.1, `S6_UMSETZUNG.md` 8.1, `S7_UMSETZUNG.md` 8.1,
    `S8_PUSH_UMSETZUNG.md` 13.1, dazu die drei Punkte aus 6.4. Die wertvollsten Punkte:
@@ -850,8 +903,9 @@ und die Prüfschritte beim Nachziehen stehen in ihrer `README.md`.
    - **S6:** Die SQL-Gegenprobe, die die Bilanz gegen die Ergebnisse zählt – sie steht wiederholbar
      im Bruno-Ordnerkommentar `ergebnis/`, **mit `LEFT JOIN`**: Ohne ihn findet sie genau den
      Fehler nicht, bei dem eine Bilanz stehen bleibt, obwohl sie auf null gehörte.
-2. **Client-Track informieren.** Der Vertrag steht bei 44 Endpunkten; die Push-Zeilen in 4.1 sind
-   **verbindlich**. Weiter gilt: **`TERMIN_NICHT_ABGESAGT` gibt es nicht**, und wer vor dem
+2. **Client-Track informieren.** Der Vertrag steht bei 45 Endpunkten; die Push-Zeilen in 4.1 sind
+   **verbindlich**. **Neu und brechend:** der zweistufige Namenswechsel (4.1, „Sieben brechende
+   Änderungen") – er gehört in C4. Weiter gilt: **`TERMIN_NICHT_ABGESAGT` gibt es nicht**, und wer vor dem
    12.09.2026 generiert hat, generiert wegen der vier `nullable`-Korrekturen neu.
 3. **S9: Härtung und Deployment** (14 h), Anleitung `harness/tmp/S9_DEPLOYMENT.md`. **Paket 1
    (Abhängigkeiten, Dockerfile) ist verifiziert und auf `dev` committet.** Fünf Punkte aus S5 bis S8

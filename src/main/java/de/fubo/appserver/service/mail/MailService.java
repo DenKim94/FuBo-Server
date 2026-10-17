@@ -16,12 +16,13 @@ import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 
 /**
- * Versendet die Nachrichten der Anwendung. Es sind zwei: die
- * Bestaetigungs-PIN beim Zuruecksetzen des Admin-Passworts (A22) und die Absage des
+ * Versendet die Nachrichten der Anwendung. Es sind drei: die
+ * Bestaetigungs-PIN beim Zuruecksetzen des Admin-Passworts (A22), die Bestaetigungs-PIN bei der
+ * Aenderung des Admin-Anmeldenamens (A22, seit dem 04.10.2026) und die Absage des
  * Hallentermins an den Betreiber (A23, S7).
  *
- * <p><b>Die zweite ist die erste, die das Projekt verlaesst.</b> Die Bestaetigungs-PIN geht an
- * den Admin; die Hallenabsage geht an einen Fremden, und sie laesst sich nicht zuruecknehmen.
+ * <p><b>Die Hallenabsage ist die erste, die das Projekt verlaesst.</b> Die Bestaetigungs-PINs gehen
+ * an den Admin; die Hallenabsage geht an einen Fremden, und sie laesst sich nicht zuruecknehmen.
  * Deshalb steht vor ihrem Versand jede Pruefung des {@code HallenService}, und deshalb traegt
  * ihr Text echte Umlaute.
  *
@@ -50,6 +51,8 @@ public class MailService {
     private static final Logger LOG = LoggerFactory.getLogger(MailService.class);
 
     private static final String BETREFF_RESET = "FuBo – Zurücksetzen des Admin-Passworts";
+
+    private static final String BETREFF_NAME = "FuBo – Änderung des Admin-Anmeldenamens";
 
     /** Wochentag in Langform; das Sprachkennzeichen steht ausdruecklich hier (S7, 4.3). */
     private static final DateTimeFormatter WOCHENTAG =
@@ -110,6 +113,62 @@ public class MailService {
 
         // Bewusst ohne die PIN und ohne die Adresse: Beide gehoeren nicht ins Log.
         LOG.info("Bestaetigungs-PIN fuer das Zuruecksetzen des Admin-Passworts versendet.");
+    }
+
+    /**
+     * Schickt die Bestaetigungs-PIN fuer die Aenderung des Admin-Anmeldenamens (A22, Ergaenzung
+     * vom 04.10.2026).
+     *
+     * <p><b>Die Nachricht nennt den neuen Namen.</b> Die PIN bestaetigt genau ihn; wer die
+     * Nachricht liest, soll wissen, was er mit dem Eintippen freigibt. Der Name ist kein
+     * Geheimnis, und die Nachricht geht an das Postfach des Admins selbst.
+     *
+     * <p><b>Der Hinweis fuer den Fall, dass niemand die Aenderung angefordert hat, ist ein anderer
+     * als beim Reset:</b> Dort kennt jemand die zentrale PIN; hier sitzt jemand an einer
+     * angemeldeten Adminsitzung. Der Ausweg ist der Passwortwechsel - er widerruft alle
+     * Adminsitzungen.
+     *
+     * @param empfaenger         Zieladresse aus {@code admin_konto.email}
+     * @param pin                fuenfstellige Bestaetigungs-PIN im Klartext
+     * @param gueltigkeitMinuten Lebensdauer des Vorgangs, fuer den Text
+     * @param neuerName          der Name, den die PIN bestaetigt
+     * @throws FachlicherFehler {@code 503}, wenn der Versand scheitert
+     */
+    public void sendeNamensaenderungsPin(String empfaenger, String pin, int gueltigkeitMinuten,
+                                         String neuerName) {
+        SimpleMailMessage nachricht = new SimpleMailMessage();
+        nachricht.setFrom(absender);
+        nachricht.setTo(empfaenger);
+        nachricht.setSubject(BETREFF_NAME);
+        nachricht.setText("""
+                Hallo,
+
+                für das Admin-Konto wurde die Änderung des Anmeldenamens angefordert.
+
+                Neuer Anmeldename: %s
+                Bestätigungs-PIN:  %s
+
+                Diese PIN ist %d Minuten gültig und gilt nur für diesen Namen. Der Name
+                wird erst übernommen, wenn die PIN in der Anwendung bestätigt ist.
+
+                Wenn Du die Änderung nicht angefordert hast, dann ignoriere diese
+                Nachricht und ändere Dein Admin-Passwort: Jemand hat Zugriff auf eine
+                angemeldete Adminsitzung.
+
+                Freundliche Grüße
+
+                -- Dies ist eine automatisch erzeugte Nachricht, bitte nicht antworten.
+                """.formatted(neuerName, pin, gueltigkeitMinuten));
+
+        try {
+            versender.send(nachricht);
+        } catch (MailException e) {
+            LOG.error("Versand der Bestaetigungs-PIN zur Namensaenderung fehlgeschlagen.", e);
+            throw new FachlicherFehler(Fehlercode.VERSAND_FEHLGESCHLAGEN);
+        }
+
+        // Bewusst ohne PIN, Adresse und Namen: Nichts davon gehoert ins Anwendungslog.
+        LOG.info("Bestaetigungs-PIN fuer die Aenderung des Admin-Anmeldenamens versendet.");
     }
 
     /**
