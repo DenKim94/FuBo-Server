@@ -60,17 +60,17 @@ public class NamensaenderungRepository {
      * {@code ck_name_aenderung_versuche} - Herleitung bei {@link PasswortResetRepository}.
      */
     private static final String SQL_VERSUCH_ZAEHLEN = """
-            UPDATE profil.name_aenderung
-               SET versuche = versuche + 1
-             WHERE id = (SELECT id
-                           FROM profil.name_aenderung
-                          WHERE verbraucht_am IS NULL
-                          ORDER BY erstellt_am DESC, id DESC
-                          LIMIT 1)
-               AND verbraucht_am IS NULL
-               AND gueltig_bis > now()
-               AND versuche < :maxVersuche
-         RETURNING id, pin_hash
+               UPDATE profil.name_aenderung
+                  SET versuche = versuche + 1
+                WHERE id = (SELECT id
+                              FROM profil.name_aenderung
+                             WHERE verbraucht_am IS NULL
+                             ORDER BY erstellt_am DESC, id DESC
+                             LIMIT 1)
+                  AND verbraucht_am IS NULL
+                  AND gueltig_bis > now()
+                  AND versuche < :maxVersuche
+            RETURNING id, pin_hash
             """;
 
     /**
@@ -81,12 +81,12 @@ public class NamensaenderungRepository {
      * soll nicht doch noch durchgehen.
      */
     private static final String SQL_EINLOESEN = """
-            UPDATE profil.name_aenderung
-               SET verbraucht_am = now()
-             WHERE id = :id
-               AND verbraucht_am IS NULL
-               AND gueltig_bis > now()
-         RETURNING neuer_name
+               UPDATE profil.name_aenderung
+                  SET verbraucht_am = now()
+                WHERE id = :id
+                  AND verbraucht_am IS NULL
+                  AND gueltig_bis > now()
+            RETURNING neuer_name
             """;
 
     /**
@@ -116,10 +116,11 @@ public class NamensaenderungRepository {
     /**
      * Entwertet alle offenen Anforderungen.
      *
-     * @return Anzahl entwerteter Anforderungen
+     * <p>Ohne Rueckgabewert: Wie viele es waren, entscheidet nichts - der Aufrufer legt danach in
+     * jedem Fall eine neue Anforderung an.
      */
-    public int offeneEntwerten() {
-        return jdbc.sql(SQL_OFFENE_ENTWERTEN).update();
+    public void offeneEntwerten() {
+        jdbc.sql(SQL_OFFENE_ENTWERTEN).update();
     }
 
     /**
@@ -155,7 +156,7 @@ public class NamensaenderungRepository {
     public Optional<OffeneNamensaenderung> versuchZaehlen(int maxVersuche) {
         return jdbc.sql(SQL_VERSUCH_ZAEHLEN)
                 .param("maxVersuche", maxVersuche)
-                .query((rs, zeile) -> new OffeneNamensaenderung(rs.getLong("id"), rs.getString("pin_hash")))
+                .query((rs, _) -> new OffeneNamensaenderung(rs.getLong("id"), rs.getString("pin_hash")))
                 .optional();
     }
 
@@ -169,7 +170,7 @@ public class NamensaenderungRepository {
     public Optional<String> einloesen(Long id) {
         return jdbc.sql(SQL_EINLOESEN)
                 .param("id", id)
-                .query((rs, zeile) -> rs.getString("neuer_name"))
+                .query((rs, _) -> rs.getString("neuer_name"))
                 .optional();
     }
 
@@ -182,7 +183,7 @@ public class NamensaenderungRepository {
     public AnforderungsFenster anforderungenDerLetztenStunde(String clientIp) {
         return jdbc.sql(SQL_DROSSELUNG)
                 .param("clientIp", clientIp)
-                .query((rs, zeile) -> new AnforderungsFenster(
+                .query((rs, _) -> new AnforderungsFenster(
                         rs.getInt("anzahl"),
                         rs.getObject("aeltestes", OffsetDateTime.class)))
                 .single();

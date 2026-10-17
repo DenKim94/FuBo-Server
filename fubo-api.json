@@ -16,12 +16,11 @@
       "description": "Lokale Entwicklung (Profil dev, cookie-secure=false)"
     },
     {
-      "url": "https://api.{domain}",
-      "description": "Betrieb auf dem Raspberry Pi hinter nginx und Cloudflared",
+      "url": "https://tunnel-fubo-app.{domain}",
+      "description": "Betrieb auf dem Raspberry Pi hinter nginx und Cloudflared. Das Frontend liegt unter https://fubo-app.{domain}",
       "variables": {
         "domain": {
-          "default": "example.org",
-          "description": "Registrierbare Domain; das Frontend liegt unter app.{domain}"
+          "default": "denis-kim.dev"
         }
       }
     }
