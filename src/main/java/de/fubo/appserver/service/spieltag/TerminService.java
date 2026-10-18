@@ -66,7 +66,7 @@ public class TerminService {
      * Test braucht sie nicht verstellbar: Er legt den Termin einfach weit genug in die
      * Vergangenheit.
      */
-    private static final int ABSCHLUSS_NACH_MINUTEN = 30;
+    private static final int ABSCHLUSS_NACH_MINUTEN = 25;
 
     private final TerminRepository terminRepository;
     private final TeilnahmeService teilnahmeService;
