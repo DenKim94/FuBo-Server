@@ -29,6 +29,11 @@ public enum TerminStatus {
      *
      * <p>Die Zeile bleibt bestehen: Fuenf Tabellen haengen mit {@code ON DELETE CASCADE}
      * am Termin, und die Rueckmeldungen sind der einzige Beleg dafuer, wer zugesagt hatte.
+     *
+     * <p><b>Den Wert setzt seit dem 18.10.2026 auch der automatische Abschluss</b> (A18):
+     * Erreichen die Zusagen 30 Minuten nach Beginn {@code min_teilnehmer} nicht, hat der
+     * Termin nicht stattgefunden und wird {@code ABGESAGT} statt {@link #ABGESCHLOSSEN}. Es
+     * hat dann niemand abgesagt - der Wert sagt "faellt aus", nicht "wurde abgesagt von".
      */
     ABGESAGT,
 

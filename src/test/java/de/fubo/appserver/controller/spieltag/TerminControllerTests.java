@@ -91,30 +91,50 @@ class TerminControllerTests {
     // --------------------------------------------------------------------- Liste
 
     /**
-     * Ohne Stichtag enthaelt die Liste nur, was noch kommt.
+     * Ohne Stichtag kommen alle Termine - vergangene und kuenftige - und die Liste beginnt
+     * beim aeltesten (Aenderung vom 18.10.2026, vorher galt "ab heute").
      *
-     * <p>Der Vorgabewert haelt die Antwort klein; die Historie bleibt ueber {@code ab}
-     * erreichbar, und S6 wird sie fuer die Ergebnisanzeige brauchen.
+     * <p>Der Vergleich mit {@code min(datum)} aus der Datenbank ist der eigentliche Beleg: Er
+     * faende auch eine Untergrenze, die zufaellig hinter den beiden Testterminen liegt.
      */
     @Test
-    void listeEnthaeltNurKuenftigeTermine() throws Exception {
+    void ohneStichtagKommenAlleTermineAbDemAeltesten() throws Exception {
         Long vergangen = terminAnlegen(LocalDate.now().minusDays(BASIS_TAGE), null);
         Long kuenftig = terminAnlegen(LocalDate.now().plusDays(BASIS_TAGE), null);
 
-        List<Long> ids = idsAus(liste(spielerSitzung(), null));
+        List<Map<String, Object>> liste = liste(spielerSitzung(), null);
+        List<Long> ids = idsAus(liste);
+
+        assertThat(ids).contains(vergangen, kuenftig);
+        assertThat(ids.indexOf(vergangen)).isLessThan(ids.indexOf(kuenftig));
+        LocalDate aeltester = jdbc.queryForObject(
+                "SELECT min(datum) FROM spieltag.termin", LocalDate.class);
+        assertThat(liste.getFirst().get("datum")).isEqualTo(aeltester.toString());
+    }
+
+    /**
+     * Mit dem heutigen Tag als Stichtag bleibt, was noch kommt - so bekommt ein Client die
+     * frueheren "nur kuenftige" Termine.
+     */
+    @Test
+    void stichtagHeuteSchneidetVergangenesAb() throws Exception {
+        Long vergangen = terminAnlegen(LocalDate.now().minusDays(BASIS_TAGE), null);
+        Long kuenftig = terminAnlegen(LocalDate.now().plusDays(BASIS_TAGE), null);
+
+        List<Long> ids = idsAus(liste(spielerSitzung(), LocalDate.now().toString()));
 
         assertThat(ids).contains(kuenftig).doesNotContain(vergangen);
     }
 
-    /** Mit einem Stichtag in der Vergangenheit wird die Historie sichtbar. */
+    /** Der Stichtag gilt einschliesslich: am Tag selbst ist der Termin dabei, am Tag danach nicht. */
     @Test
-    void stichtagOeffnetDieHistorie() throws Exception {
-        Long vergangen = terminAnlegen(LocalDate.now().minusDays(BASIS_TAGE), null);
+    void stichtagGiltEinschliesslich() throws Exception {
+        LocalDate tag = LocalDate.now().minusDays(BASIS_TAGE);
+        Long termin = terminAnlegen(tag, null);
+        String token = spielerSitzung();
 
-        List<Long> ids = idsAus(liste(spielerSitzung(),
-                LocalDate.now().minusDays(BASIS_TAGE + 1).toString()));
-
-        assertThat(ids).contains(vergangen);
+        assertThat(idsAus(liste(token, tag.toString()))).contains(termin);
+        assertThat(idsAus(liste(token, tag.plusDays(1).toString()))).doesNotContain(termin);
     }
 
     /**

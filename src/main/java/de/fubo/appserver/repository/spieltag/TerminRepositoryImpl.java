@@ -1,5 +1,6 @@
 package de.fubo.appserver.repository.spieltag;
 
+import de.fubo.appserver.domain.spieltag.AutomatischerAbschluss;
 import de.fubo.appserver.domain.spieltag.Erinnerungstermin;
 import de.fubo.appserver.domain.spieltag.Hallentermin;
 import de.fubo.appserver.domain.spieltag.TerminEintrag;
@@ -79,7 +80,16 @@ class TerminRepositoryImpl implements TerminRepositoryCustom {
             """;
 
     /**
-     * Die Uebersicht: alles ab dem Stichtag, in zeitlicher Reihenfolge.
+     * Die Uebersicht: alles ab dem Stichtag, in zeitlicher Reihenfolge - ohne Stichtag alles.
+     *
+     * <p><b>Hier bedeutet {@code NULL} ausdruecklich "keine Grenze"</b>, anders als bei
+     * {@code :spielerId} und {@code :gastName} im Rumpf, wo {@code NULL} "trifft nie" heisst.
+     * Beides steht an der jeweiligen Stelle im SQL, nicht im Dienst.
+     *
+     * <p><b>Der {@code CAST} ist noetig:</b> Ein {@code NULL}-Parameter hat keinen Typ, und
+     * PostgreSQL kann ihn in {@code ? IS NULL} nicht herleiten ("could not determine data
+     * type of parameter"). Dasselbe Muster wie in {@code KontingentRepository}. Der Parameter
+     * kommt zweimal vor; beide Stellen tragen denselben Wert.
      *
      * <p><b>Abgesagte Termine bleiben enthalten.</b> Der Spieler soll sehen, dass sein
      * Training ausfaellt, statt einen Termin vorzufinden, der spurlos verschwunden ist;
@@ -87,7 +97,7 @@ class TerminRepositoryImpl implements TerminRepositoryCustom {
      * ueber die Anzeige, und die gehoert ins Frontend.
      */
     private static final String SQL_UEBERSICHT = SQL_RUMPF + """
-             WHERE t.datum >= :ab
+             WHERE (CAST(:ab AS date) IS NULL OR t.datum >= CAST(:ab AS date))
              GROUP BY t.id
              ORDER BY t.datum, t.uhrzeit
             """;
@@ -203,7 +213,28 @@ class TerminRepositoryImpl implements TerminRepositoryCustom {
             """;
 
     /**
-     * Der automatische Abschluss aus A18.
+     * Der automatische Abschluss aus A18, seit dem 18.10.2026 mit zwei Zielen.
+     *
+     * <p><b>Mindestzahl erreicht: {@code ABGESCHLOSSEN}. Nicht erreicht: {@code ABGESAGT}.</b>
+     * Ein Termin, zu dem zu wenige gekommen waeren, hat nicht stattgefunden - ein Abschluss
+     * behauptete das Gegenteil und liesse ein Ergebnis zu, fuer das es keine Einteilung gibt
+     * (den Generator lehnt {@code ZU_WENIG_TEILNEHMER} ab).
+     *
+     * <p><b>Eine Anweisung mit {@code CASE}, nicht zwei nacheinander.</b> Mit zwei
+     * Anweisungen entschiede die Reihenfolge: Liefe der Abschluss zuerst, fiele jeder Termin
+     * hindurch und die Absage fande keinen {@code GEPLANT}-Termin mehr - ohne Fehler, nur mit
+     * falschem Status. Die Zusagen werden ausserdem im selben Schnappschuss gezaehlt, der
+     * auch den Status setzt. Der Zustand kann sich zwischen Zaehlen und Schreiben nicht
+     * mehr aendern: Nach Terminbeginn nimmt der Termin keine Rueckmeldung mehr an (A7).
+     *
+     * <p><b>Gezaehlt wird {@code tn.zusage}, ohne weiteren Filter</b> - dieselbe Zahl wie
+     * {@code zusagen} in der Terminliste ({@link #SQL_RUMPF}), die der Spieler sieht. Eine
+     * Absage ({@code zusage = false}) zaehlt nicht, ein Gast schon. {@code :minTeilnehmer}
+     * kommt als Parameter aus {@code ConfigService}, wie jeder Wert aus der Konfiguration:
+     * Dieses Repository kennt die Konfigurationstabelle nicht.
+     *
+     * <p><b>{@code RETURNING status} liefert den neuen Wert je Zeile</b> - daraus zaehlt der
+     * Aufrufer beide Ziele getrennt, ohne eine zweite Abfrage.
      *
      * <p><b>Nur aus {@code GEPLANT} heraus.</b> Ein abgesagter Termin bleibt abgesagt - er
      * hat nicht stattgefunden, und ein Abschluss behauptete das Gegenteil. Ein bereits
@@ -215,11 +246,19 @@ class TerminRepositoryImpl implements TerminRepositoryCustom {
      * Zaehlers setzte ab S5 grundlos Generierungskontingente zurueck.
      */
     private static final String SQL_ABSCHLIESSEN = """
-            UPDATE spieltag.termin
-               SET status  = 'ABGESCHLOSSEN',
-                   version = version + 1
-             WHERE status = 'GEPLANT'
-               AND (datum + uhrzeit) <= :grenze
+            UPDATE spieltag.termin t
+               SET status  = CASE
+                                 WHEN (SELECT count(*)
+                                         FROM spieltag.teilnahme tn
+                                        WHERE tn.termin_id = t.id
+                                          AND tn.zusage) < :minTeilnehmer
+                                 THEN 'ABGESAGT'
+                                 ELSE 'ABGESCHLOSSEN'
+                             END,
+                   version = t.version + 1
+             WHERE t.status = 'GEPLANT'
+               AND (t.datum + t.uhrzeit) <= :grenze
+            RETURNING t.status
             """;
 
     /**
@@ -417,8 +456,16 @@ class TerminRepositoryImpl implements TerminRepositoryCustom {
     }
 
     @Override
-    public int abgelaufeneAbschliessen(LocalDateTime grenze) {
-        return jdbc.sql(SQL_ABSCHLIESSEN).param("grenze", grenze).update();
+    public AutomatischerAbschluss abgelaufeneAbschliessen(LocalDateTime grenze, int minTeilnehmer) {
+        List<String> neueStatus = jdbc.sql(SQL_ABSCHLIESSEN)
+                .param("grenze", grenze)
+                .param("minTeilnehmer", minTeilnehmer)
+                .query(String.class)
+                .list();
+        int abgesagt = (int) neueStatus.stream()
+                .filter(TerminStatus.ABGESAGT.name()::equals)
+                .count();
+        return new AutomatischerAbschluss(neueStatus.size() - abgesagt, abgesagt);
     }
 
     @Override

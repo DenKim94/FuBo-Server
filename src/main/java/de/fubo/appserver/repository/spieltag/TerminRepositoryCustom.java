@@ -1,5 +1,6 @@
 package de.fubo.appserver.repository.spieltag;
 
+import de.fubo.appserver.domain.spieltag.AutomatischerAbschluss;
 import de.fubo.appserver.domain.spieltag.Erinnerungstermin;
 import de.fubo.appserver.domain.spieltag.Hallentermin;
 import de.fubo.appserver.domain.spieltag.TerminEintrag;
@@ -27,15 +28,17 @@ import java.util.Optional;
 public interface TerminRepositoryCustom {
 
     /**
-     * Liefert alle Termine ab einem Stichtag samt Zusagenzahl und eigener Rueckmeldung.
+     * Liefert die Termine ab einem Stichtag samt Zusagenzahl und eigener Rueckmeldung;
+     * ohne Stichtag alle Termine, beginnend beim aeltesten.
      *
      * <p>Sortiert nach Datum und Uhrzeit - das ist zugleich die Reihenfolge, in der das
      * Dashboard sie anzeigt (A9).
      *
-     * @param ab        Stichtag einschliesslich
+     * @param ab        Stichtag einschliesslich oder {@code null} fuer "keine Untergrenze"
      * @param spielerId Profil-Id des Aufrufers oder {@code null} bei einer Gastsitzung
      * @param gastName  Gastname des Aufrufers oder {@code null} bei einer Spielersitzung
-     * @return Termine ab dem Stichtag; leere Liste, wenn keiner passt
+     * @return Termine ab dem Stichtag beziehungsweise alle Termine; leere Liste, wenn keiner
+     *         passt
      */
     List<TerminEintrag> findeUebersicht(LocalDate ab, Long spielerId, String gastName);
 
@@ -138,14 +141,20 @@ public interface TerminRepositoryCustom {
     int teamsFixieren(LocalDateTime jetzt);
 
     /**
-     * Setzt alle geplanten Termine auf {@code ABGESCHLOSSEN}, deren Beginn lange genug
-     * zurueckliegt (A18, Ergaenzung vom 30.08.2026).
+     * Beendet alle geplanten Termine, deren Beginn lange genug zurueckliegt (A18, Ergaenzung
+     * vom 30.08.2026; erweitert am 18.10.2026).
      *
-     * @param grenze spaetester Beginn, der noch abgeschlossen wird - also
-     *               "jetzt minus 30 Minuten"
-     * @return Anzahl abgeschlossener Termine
+     * <p><b>Zwei moegliche Ziele in einer Anweisung:</b> Haben mindestens {@code minTeilnehmer}
+     * Teilnehmer zugesagt, wird der Termin {@code ABGESCHLOSSEN}; sonst {@code ABGESAGT}, weil
+     * er mangels Teilnehmern nicht stattgefunden hat. Gezaehlt werden Zusagen, nicht
+     * Rueckmeldungen - eine Absage zaehlt nicht mit.
+     *
+     * @param grenze        spaetester Beginn, der noch beendet wird - also
+     *                      "jetzt minus 30 Minuten"
+     * @param minTeilnehmer Mindestzahl aus {@code configs.app_config.min_teilnehmer}
+     * @return Anzahl der Termine je Ziel; beide Zahlen {@code 0}, wenn nichts faellig war
      */
-    int abgelaufeneAbschliessen(LocalDateTime grenze);
+    AutomatischerAbschluss abgelaufeneAbschliessen(LocalDateTime grenze, int minTeilnehmer);
 
     /**
      * Meldet, ob fachliche Daten auf den Termin verweisen (A19).

@@ -480,12 +480,17 @@ class TerminVerwaltungControllerTests {
      *
      * <p>Der Termin liegt einen Tag zurueck - damit ist der Fall unabhaengig davon, zu
      * welcher Tageszeit der Testlauf stattfindet.
+     *
+     * <p><b>Genau die Mindestzahl an Zusagen</b> - seit dem 18.10.2026 entscheidet sie, ob der
+     * Termin {@code ABGESCHLOSSEN} oder {@code ABGESAGT} wird. Die Grenze selbst gehoert noch
+     * zur erreichten Mindestzahl; eine Zusage weniger prueft der Fall darunter.
      */
     @Test
     void abgelaufeneTermineWerdenAbgeschlossen() throws Exception {
         Long vergangen = jdbc.queryForObject("""
                 INSERT INTO spieltag.termin (datum, uhrzeit) VALUES (?, ?) RETURNING id
                 """, Long.class, LocalDate.now().minusDays(1), UHRZEIT);
+        zusagenAnlegen(vergangen, mindestzahl(), true);
         Long kuenftig = angelegterTermin(tag(39));
 
         terminService.abgelaufeneAbschliessen();
@@ -494,6 +499,63 @@ class TerminVerwaltungControllerTests {
         assertThat(terminZeile(kuenftig).get("status"))
                 .as("Was noch kommt, bleibt geplant")
                 .isEqualTo("GEPLANT");
+    }
+
+    /**
+     * Wurde die Mindestzahl nicht erreicht, wird der Termin abgesagt statt abgeschlossen
+     * (A18, Aenderung vom 18.10.2026).
+     *
+     * <p><b>Eine Zusage zu wenig, dazu mehrere Absagen:</b> Nur {@code zusage = true} zaehlt.
+     * Zaehlte die Abfrage Rueckmeldungen statt Zusagen, laege die Zeilenzahl ueber der
+     * Mindestzahl, und der Fall wuerde den Fehler nicht finden.
+     *
+     * <p>Die Zusagen bleiben als Beleg stehen, {@code teilnehmer_version} bleibt unberuehrt,
+     * und ein zweiter Lauf fasst den Termin nicht noch einmal an ({@code version}).
+     *
+     * <p>Der Termin liegt vier Tage zurueck - eigener Zeitstreifen, siehe die uebrigen
+     * Abschlussfaelle.
+     */
+    @Test
+    void terminUnterDerMindestzahlWirdAbgesagtStattAbgeschlossen() throws Exception {
+        Long terminId = jdbc.queryForObject("""
+                INSERT INTO spieltag.termin (datum, uhrzeit) VALUES (?, ?) RETURNING id
+                """, Long.class, LocalDate.now().minusDays(4), UHRZEIT);
+        zusagenAnlegen(terminId, mindestzahl() - 1, true);
+        zusagenAnlegen(terminId, 3, false);
+        int zeilenVorher = jdbc.queryForObject(
+                "SELECT count(*) FROM spieltag.teilnahme WHERE termin_id = ?", Integer.class, terminId);
+
+        terminService.abgelaufeneAbschliessen();
+
+        assertThat(terminZeile(terminId).get("status")).isEqualTo("ABGESAGT");
+        assertThat(teilnehmerVersion(terminId))
+                .as("Der automatische Wechsel aendert den Teilnehmerkreis nicht")
+                .isZero();
+        assertThat(jdbc.queryForObject(
+                "SELECT count(*) FROM spieltag.teilnahme WHERE termin_id = ?", Integer.class, terminId))
+                .as("Die Rueckmeldungen bleiben als Beleg stehen")
+                .isEqualTo(zeilenVorher);
+
+        Object versionNachErstemLauf = terminZeile(terminId).get("version");
+        terminService.abgelaufeneAbschliessen();
+        assertThat(terminZeile(terminId).get("version"))
+                .as("Ein zweiter Lauf fasst den Termin nicht noch einmal an")
+                .isEqualTo(versionNachErstemLauf);
+    }
+
+    /**
+     * Ein Termin ganz ohne Rueckmeldungen ist der haeufigste Fall unter der Mindestzahl und
+     * wird ebenfalls abgesagt - kein Sonderfall fuer "nie jemand gemeldet".
+     */
+    @Test
+    void terminOhneJedeRueckmeldungWirdAbgesagt() throws Exception {
+        Long terminId = jdbc.queryForObject("""
+                INSERT INTO spieltag.termin (datum, uhrzeit) VALUES (?, ?) RETURNING id
+                """, Long.class, LocalDate.now().minusDays(5), UHRZEIT);
+
+        terminService.abgelaufeneAbschliessen();
+
+        assertThat(terminZeile(terminId).get("status")).isEqualTo("ABGESAGT");
     }
 
     /**
@@ -816,6 +878,21 @@ class TerminVerwaltungControllerTests {
     private int teilnehmerVersion(Long terminId) {
         return jdbc.queryForObject(
                 "SELECT teilnehmer_version FROM spieltag.termin WHERE id = ?", Integer.class, terminId);
+    }
+
+    /** Mindestzahl aus der Konfiguration - nie eine feste Zahl, die Vorgabe ist verstellbar. */
+    private int mindestzahl() {
+        return jdbc.queryForObject("SELECT min_teilnehmer FROM configs.app_config", Integer.class);
+    }
+
+    /** Legt {@code anzahl} Gastrueckmeldungen an; Gaeste, weil sie keine Profilzeile brauchen. */
+    private void zusagenAnlegen(Long terminId, int anzahl, boolean zusage) {
+        for (int i = 1; i <= anzahl; i++) {
+            jdbc.update("""
+                    INSERT INTO spieltag.teilnahme (termin_id, gast_name, gast_stufe, zusage)
+                    VALUES (?, ?, 'MITTEL', ?)
+                    """, terminId, "Testgast " + (zusage ? "Zusage " : "Absage ") + i, zusage);
+        }
     }
 
     private Map<String, Object> terminZeile(Long terminId) {

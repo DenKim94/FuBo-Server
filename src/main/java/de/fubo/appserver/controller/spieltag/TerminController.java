@@ -55,7 +55,11 @@ public class TerminController {
     }
 
     /**
-     * Liefert die Termine ab einem Stichtag.
+     * Liefert die Termine, auf Wunsch ab einem Stichtag.
+     *
+     * <p><b>Ohne {@code ab} kommen alle Termine, auch vergangene</b> - die Liste beginnt beim
+     * aeltesten Eintrag. Bis zum 18.10.2026 galt "ab heute"; ein Client, der nur kommende
+     * Termine zeigen will, setzt den heutigen Tag selbst.
      *
      * <p>Der Einstieg beider Dashboards aus A9: je Termin die Stammdaten, die Zahl der
      * Zusagen und die eigene Rueckmeldung - genug fuer die Kachelansicht, ohne dass der
@@ -66,7 +70,7 @@ public class TerminController {
      * mit ihr steht das erwartete Format am Endpunkt und stimmt mit dem ueberein, was der
      * Vertrag zusagt ({@code format: date}).
      *
-     * @param ab      Stichtag einschliesslich; fehlt er, gilt der heutige Tag
+     * @param ab      Stichtag einschliesslich; fehlt er, gibt es keine Untergrenze
      * @param sitzung aufrufende Sitzung; nie {@code null}, weil die Filterchain den Zugriff
      *                sonst gar nicht durchgelassen haette
      * @return {@code 200} mit den Terminen, nach Datum und Uhrzeit sortiert

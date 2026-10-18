@@ -4,6 +4,7 @@ import de.fubo.appserver.common.error.FachlicherFehler;
 import de.fubo.appserver.common.error.Fehlercode;
 import de.fubo.appserver.domain.audit.AuditAktion;
 import de.fubo.appserver.domain.auth.AktiveSitzung;
+import de.fubo.appserver.domain.spieltag.AutomatischerAbschluss;
 import de.fubo.appserver.domain.spieltag.Termin;
 import de.fubo.appserver.domain.spieltag.TerminAbgesagtEreignis;
 import de.fubo.appserver.domain.spieltag.TerminEintrag;
@@ -83,6 +84,12 @@ public class TerminService {
      * Endpunkt, blieben zwei davon stumm, und es fiele niemandem auf: Eine ausbleibende
      * Benachrichtigung ist der Normalfall.
      *
+     * <p><b>Der automatische Abschluss ({@link #abgelaufeneAbschliessen}) setzt seit dem
+     * 18.10.2026 ebenfalls auf {@code ABGESAGT} und veroeffentlicht bewusst nichts.</b> Der
+     * Termin hat dann vor mindestens 30 Minuten begonnen; eine Nachricht "Termin abgesagt"
+     * kaeme nach dem Anpfiff und liesse sich nicht zurueckholen (A25b nennt als Anlass die
+     * Absage durch den Admin).
+     *
      * <p><b>Der Empfaenger laeuft nach dem Commit</b>
      * ({@code @TransactionalEventListener(AFTER_COMMIT)}). Bei einem Rollback geht also nichts
      * hinaus - eine Absage, die fachlich nie stattgefunden hat, liesse sich nicht
@@ -113,24 +120,29 @@ public class TerminService {
     // ------------------------------------------------------------------ Lesen
 
     /**
-     * Liefert die Termine ab einem Stichtag (S4, Abschnitt 2.1).
+     * Liefert die Termine, auf Wunsch ab einem Stichtag (S4, Abschnitt 2.1).
      *
-     * <p><b>Der Stichtag ist der heutige Tag, wenn keiner angegeben ist.</b> Vergangene
-     * Termine sind damit nicht enthalten, solange sie nicht ausdruecklich angefragt werden -
-     * das haelt die Antwort klein und macht die Historie trotzdem erreichbar; S6 wird sie
-     * fuer die Ergebnisanzeige brauchen.
+     * <p><b>Ohne Stichtag gibt es keine Untergrenze</b> (Aenderung vom 18.10.2026, bis dahin
+     * galt "ab heute"): Die Liste beginnt beim aeltesten Termin und enthaelt damit auch
+     * vergangene. Wer nur kommende Termine will, uebergibt den heutigen Tag. Preis: Die
+     * Antwort waechst mit der Zahl der Termine, nicht mehr mit der Zahl der kommenden.
+     *
+     * <p><b>{@code null} wird unveraendert durchgereicht</b> und nicht durch einen
+     * Ersatzwert wie {@code LocalDate.MIN} ersetzt: Dessen Jahr liegt ausserhalb des
+     * Wertebereichs von PostgreSQL-{@code DATE}, die Abfrage scheiterte mit einem {@code 500}.
+     * Dass "kein Stichtag" "keine Grenze" heisst, entscheidet das Repository an einer Stelle.
      *
      * <p><b>Abgesagte Termine bleiben in der Liste.</b> Der Spieler soll sehen, dass sein
      * Training ausfaellt, statt einen Termin vorzufinden, der spurlos verschwunden ist.
      *
-     * @param ab      Stichtag einschliesslich oder {@code null} fuer "ab heute"
+     * @param ab      Stichtag einschliesslich oder {@code null} fuer "alle Termine"
      * @param sitzung aufrufende Sitzung; entscheidet, wessen Rueckmeldung mitgeliefert wird
-     * @return Termine ab dem Stichtag, nach Datum und Uhrzeit sortiert
+     * @return Termine ab dem Stichtag beziehungsweise alle Termine, nach Datum und Uhrzeit
+     *         sortiert
      */
     @Transactional(readOnly = true)
     public List<TerminEintrag> uebersichtLesen(LocalDate ab, AktiveSitzung sitzung) {
-        LocalDate stichtag = ab != null ? ab : LocalDate.now(uhr);
-        return terminRepository.findeUebersicht(stichtag, sitzung.spielerId(), sitzung.gastName());
+        return terminRepository.findeUebersicht(ab, sitzung.spielerId(), sitzung.gastName());
     }
 
     /**
@@ -498,6 +510,14 @@ public class TerminService {
      * <p><b>Nur aus {@code GEPLANT} heraus</b> - ein abgesagter Termin hat nicht
      * stattgefunden, und ein Abschluss behauptete das Gegenteil.
      *
+     * <p><b>Wurde die Mindestzahl nicht erreicht, wird der Termin {@code ABGESAGT} statt
+     * {@code ABGESCHLOSSEN}</b> (Aenderung vom 18.10.2026). Er hat nicht stattgefunden, und
+     * ohne Einteilung liesse sich fuer ihn ohnehin kein Ergebnis erfassen. Die Zusagen bleiben
+     * als Beleg stehen. <b>Die Mindestzahl wird beim Lauf frisch gelesen</b> und nicht beim
+     * Terminbeginn festgehalten: Wer sie nach dem Anpfiff aendert, aendert auch das Urteil
+     * ueber noch nicht beendete Termine - bis zu 35 Minuten lang, danach ist der Termin
+     * entschieden.
+     *
      * <p><b>Kein Eintrag im Audit-Log.</b> Dort stehen Adminaktionen; dies ist eine
      * Systemhandlung ohne Handelnden, wie der Aufraeumlauf des Protokolls selbst. Sie geht in
      * die Anwendungsprotokollierung - und nur dann, wenn wirklich etwas geschehen ist, sonst
@@ -509,19 +529,24 @@ public class TerminService {
         LocalDateTime jetzt = LocalDateTime.now(uhr);
 
         // Zwei Anweisungen, ein Auftrag (S5, 10.2): Das Fixieren greift bei Beginn, der
-        // Abschluss 30 Minuten spaeter. Eine zweite @Scheduled-Methode waere ein zweiter Takt
+        // Abschluss ABSCHLUSS_NACH_MINUTEN spaeter. Eine zweite @Scheduled-Methode waere ein zweiter Takt
         // fuer dieselbe Sache - und der zweite Ort, an dem jemand die Frist verstellt.
         int fixiert = terminRepository.teamsFixieren(jetzt);
 
         LocalDateTime grenze = jetzt.minusMinutes(ABSCHLUSS_NACH_MINUTEN);
-        int anzahl = terminRepository.abgelaufeneAbschliessen(grenze);
+        short minTeilnehmer = configService.lesen().getMinTeilnehmer();
+        AutomatischerAbschluss abschluss = terminRepository.abgelaufeneAbschliessen(grenze, minTeilnehmer);
 
         if (fixiert > 0) {
             LOG.info("Teameinteilungen fixiert: {} (Beginn vor {} oder frueher).", fixiert, jetzt);
         }
-        if (anzahl > 0) {
+        if (abschluss.abgeschlossen() > 0) {
             LOG.info("Termine automatisch abgeschlossen: {} (Beginn vor {} oder frueher).",
-                    anzahl, grenze);
+                    abschluss.abgeschlossen(), grenze);
+        }
+        if (abschluss.abgesagt() > 0) {
+            LOG.info("Termine automatisch abgesagt, Mindestzahl {} nicht erreicht: {} "
+                    + "(Beginn vor {} oder frueher).", minTeilnehmer, abschluss.abgesagt(), grenze);
         }
     }
 
