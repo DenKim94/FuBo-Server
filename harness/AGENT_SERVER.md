@@ -10,7 +10,8 @@
 > serverseitigen Anteil von A25 erweitert (S8) und am selben Tag um die Regeln ergänzt, die bei
 > der Umsetzung der Abschnitte 5 bis 11 hinzugekommen sind – Tests und Verifikation stehen
 > dort noch aus.** Am 04.10.2026 um die Bestätigung der Namensänderung per E-Mail-PIN (A22)
-> ergänzt. Jede Regel steht hier mit dem *einen* Grund, der sie trägt – wer
+> ergänzt, am 18.10.2026 um den automatischen Wechsel auf `ABGESAGT` bei unterschrittener
+> Mindestzahl (A18). Jede Regel steht hier mit dem *einen* Grund, der sie trägt – wer
 > sie ändern will, muss den Grund entkräften, nicht die Zeile löschen. **Vorfälle, Daten und
 > ausführliche Herleitungen stehen nicht mehr hier**, sondern in `CONTEXT_HANDOFF_SERVER.md`
 > (6.2 Festlegungen, 6.3 Fallstricke), in `harness/tmp/S<n>_UMSETZUNG.md` und in
@@ -75,6 +76,27 @@ Ergänzungen des Entwicklers sind als *Ergänzung* gekennzeichnet.
 - **A11** Über der Maximalzahl in die Warteschlange; Reihenfolge serverseitig bestimmt.
 - **A18** Einzeltermin oder befristete Serie (Enddatum Pflicht, Ort optional). *Ergänzung:* Status
   wechselt **30 Minuten nach Beginn** automatisch auf `ABGESCHLOSSEN`, sofern nicht abgesagt.
+  *Ergänzung vom 18.10.2026:* Hat der Termin dann die Mindestzahl an Zusagen (A10) nicht erreicht
+  und wurde nicht vom Admin abgesagt, wechselt er stattdessen auf **`ABGESAGT`** – er hat nicht
+  stattgefunden.
+  - **Gezählt werden Zusagen** (`zusage = true`), keine Rückmeldungen und ohne weiteren Filter –
+    dieselbe Zahl, die die Terminliste als `zusagen` zeigt. Ein anderer Filter ließe Anzeige und
+    Entscheidung auseinanderlaufen. Gäste zählen mit, Absagen nicht.
+  - **Eine Anweisung mit `CASE`, nicht zwei nacheinander.** Mit zwei entschiede die Reihenfolge:
+    Läuft der Abschluss zuerst, findet die Absage keinen `GEPLANT`-Termin mehr – ohne Fehler, nur
+    mit falschem Status. Nach Terminbeginn ändert sich die Zusagenzahl nicht mehr (A7), die Zahl
+    gilt also zwischen Zählen und Schreiben.
+  - **Die Mindestzahl kommt als Parameter aus `ConfigService`**, nicht aus dem SQL – das
+    Repository kennt die Konfigurationstabelle nicht. Sie wird **beim Lauf frisch gelesen** und nicht
+    am Terminbeginn festgehalten: Eine Änderung nach dem Anpfiff wirkt noch bis zu 35 Minuten auf
+    Termine, die der Auftrag noch nicht beendet hat.
+  - **Beide Ziele werden getrennt gezählt und protokolliert** (`AutomatischerAbschluss`). Eine
+    Absage ohne Handelnden ist die, nach der später jemand sucht; eine Summe machte sie unsichtbar.
+  - **Nur der automatische Wechsel prüft die Mindestzahl.** Der Admin kann über
+    `/admin/termin/aendern` weiterhin früher auf `ABGESCHLOSSEN` setzen, auch darunter.
+  - **Bekannte Grenze:** Es gilt `min_teilnehmer` wörtlich, nicht die wirksame Untergrenze der
+    Aufstellung `max(min_teilnehmer, 2)`. Bei `min_teilnehmer = 1` und einer Zusage wird der Termin
+    abgeschlossen, obwohl kein Team entsteht.
 - **A19** Der Admin bearbeitet oder entfernt Einzeltermine (Datum, Uhrzeit, Ort, Status).
 
 **Teamgenerierung**
@@ -134,6 +156,11 @@ Ergänzungen des Entwicklers sind als *Ergänzung* gekennzeichnet.
     `TERMIN_NICHT_ABGESCHLOSSEN`. **`TERMIN_GESCHLOSSEN` wird nicht wiederverwendet:** Es bedeutet
     „nimmt keine Änderung mehr an" – hier ist die Polarität umgekehrt, der Termin ist *noch nicht*
     so weit. Derselbe Code für zwei entgegengesetzte Zustände wäre für den Aufrufer unbrauchbar.
+    Ein wegen unterschrittener Mindestzahl automatisch abgesagter Termin (A18) ist keiner und bekommt
+    denselben Code; für ihn gab es auch keine Einteilung, weil der Generator unter der Mindestzahl
+    mit `ZU_WENIG_TEILNEHMER` ablehnt. **Randfall:** Hat ein Termin bei erreichter Mindestzahl eine
+    Einteilung bekommen und sinken die Zusagen später unter die Grenze, wird er trotzdem `ABGESAGT`;
+    die Einteilung bleibt stehen, ein Ergebnis lässt sich nicht erfassen.
   - **Erfassen darf jeder Angemeldete, auch `GAST`** – der Endpunkt liegt deshalb ausserhalb von
     `/admin/`. „Der erste Eintrag gilt" ergibt nur einen Sinn, wenn mehrere es versuchen dürfen.
     Korrigieren darf nur der Admin; das ist der ganze Unterschied der beiden Pfade.
@@ -342,7 +369,8 @@ noch Bedingung kennen muss.
   `Termin`-Entity geladen sein – ihre Version im Speicher wäre veraltet, und der nächste Flush
   scheiterte an einem Sperrkonflikt, den niemand verursacht hat. Der Rückmeldepfad liest den
   Termin deshalb nativ, nicht über `findById`.
-- **Der automatische Abschluss erhöht ihn nicht** – er ändert den Teilnehmerkreis nicht.
+- **Der automatische Abschluss erhöht ihn nicht**, auch nicht beim Wechsel auf `ABGESAGT` – er
+  ändert den Teilnehmerkreis nicht.
 
 ### Termine
 
@@ -377,11 +405,12 @@ noch Bedingung kennen muss.
    gesperrt, mit einem Grund, der in der Vergangenheit liegt. Die Spalte ist grösstenteils
    redundant; was sie hinzufügt, ist ein benennbarer Fehlercode statt eines Scheiterns an einer
    impliziten Statusprüfung.
-8. **Ein geplanter Termin schliesst sich 30 Minuten nach Beginn selbst ab** (A18); der Auftrag
-   läuft alle fünf Minuten, der Übergang also zwischen 30 und 35 Minuten. **Aufräumung, kein
+8. **Ein geplanter Termin beendet sich 30 Minuten nach Beginn selbst** (A18) – mit Mindestzahl als
+   `ABGESCHLOSSEN`, sonst als `ABGESAGT` (Regeln unter A18); der Auftrag läuft alle fünf Minuten, der Übergang also zwischen 30 und 35 Minuten. **Aufräumung, kein
    Torwächter** – ob gemeldet werden darf, entscheidet die Uhrzeit. Die Frist ist eine Konstante
    im Dienst, kein Konfigurationsfeld: ein weiteres Pflichtfeld im Voll-Update wäre brechend. Der
-   Lauf geht in die Anwendungsprotokollierung, nicht ins Audit-Log – er hat keinen Handelnden.
+   Lauf geht in die Anwendungsprotokollierung, nicht ins Audit-Log – er hat keinen Handelnden. Das
+   gilt auch für die Absage unter der Mindestzahl.
 
 ### Teamzuteilung und Gast-Slots
 
@@ -526,11 +555,15 @@ erst hinaus, wenn er fertig ist. Daraus folgen zwei Regeln, die zusammen gelten:
    darf die Antwort auf die Absage nicht verändern.**
 
 **Ausgelöst wird vom Statuswechsel, nicht vom Endpunkt.** A25b nennt `/admin/termin/absagen`,
-aber **drei** Pfade setzen einen Termin von `GEPLANT` auf `ABGESAGT`: `TerminService#absagen`,
-`TerminService#aendern` mit Zielstatus `ABGESAGT` (A19) und seit S7 `HallenService#absagen`, das
-einen geplanten Termin mit absagt. Hinge das Ereignis an einem Endpunkt, bliebe eine Absage über
-die beiden anderen Wege stumm – und es fiele niemandem auf, weil ausbleibende Nachrichten der
-Normalfall sind. Der dritte Pfad schreibt nativ und veröffentlicht das Ereignis ausdrücklich.
+aber **vier** Pfade setzen einen Termin von `GEPLANT` auf `ABGESAGT`: `TerminService#absagen`,
+`TerminService#aendern` mit Zielstatus `ABGESAGT` (A19), seit S7 `HallenService#absagen`, das
+einen geplanten Termin mit absagt, und seit dem 18.10.2026 `TerminService#abgelaufeneAbschliessen`
+bei unterschrittener Mindestzahl (A18). Hinge das Ereignis an einem Endpunkt, bliebe eine Absage
+über die beiden anderen Admin-Wege stumm – und es fiele niemandem auf, weil ausbleibende
+Nachrichten der Normalfall sind. Der dritte Pfad schreibt nativ und veröffentlicht das Ereignis
+ausdrücklich. **Der vierte veröffentlicht bewusst nichts:** Er greift frühestens 30 Minuten nach
+Terminbeginn, eine Absagenachricht käme nach dem Anpfiff und liesse sich nicht zurückholen, und
+A25b nennt als Anlass die Absage durch den Admin. **Wer dort ein Ereignis nachrüstet, ändert A25b.**
 **Der Statuswechsel ist zugleich die Einmal-Bedingung:** `ABGESAGT` ist nur aus `GEPLANT` heraus
 erreichbar und endgültig; eine zusätzliche Spalte braucht es nicht.
 

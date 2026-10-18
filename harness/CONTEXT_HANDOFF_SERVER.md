@@ -15,7 +15,8 @@
 > - **Herleitung und Schritt für Schritt** → `harness/tmp/S<n>_UMSETZUNG.md`, für den
 >   Algorithmusteil von S5 zusätzlich `harness/tmp/S5_ALGORITHMUS.md`
 > - **Historie** → Git und `harness/archive/`. Vorfassung:
->   `CONTEXT_HANDOFF_SERVER_2026-10-03_v23_S9-Paket1.md` (Stand vor der Namensbestätigung),
+>   `CONTEXT_HANDOFF_SERVER_2026-10-04_v24_S9-Namensbestaetigung.md` (Stand vor dem automatischen
+>   Wechsel auf `ABGESAGT`), davor `…_v23_S9-Paket1.md` (Stand vor der Namensbestätigung),
 >   davor `…_v22_S8-verdichtet.md` (Stand vor S9); die vollständige
 >   Chronik von S8 samt der sieben Abweichungen von der Anleitung und der fünf Weggabelungen trägt
 >   `CONTEXT_HANDOFF_SERVER_2026-09-15_v21_S8-Abschnitte1-11.md`;
@@ -28,7 +29,7 @@
 > Was hier steht, steht **nur** hier. Wird eine Festlegung zur Architekturregel, wandert sie
 > nach `AGENT_SERVER.md` und **verschwindet hier** – sonst laufen beide auseinander.
 
-## Stand: 04.10.2026
+## Stand: 18.10.2026
 
 **S0 bis S8 sind abgeschlossen und verifiziert.** Alles bis S8 ist auf `dev` committet (18 Commits
 für S8), **nicht gepusht**.
@@ -47,9 +48,23 @@ Commit davor. **Nächster Schritt liegt bei Denis:** `dev` nach `main` mergen �
 prüft den Namen, speichert ihn am Vorgang und verschickt die PIN (`202`), `POST /admin/name/bestaetigen`
 übernimmt ihn (`204`). Neu sind `V015` (`profil.name_aenderung`), ein Endpunkt, drei Fehlercodes, zwei
 Audit-Aktionen und die Testklasse `AdminNamensaenderungTests`; die sechs bisherigen Namensfälle sind
-aus `ZugangsdatenControllerTests` dorthin umgezogen. **Gebaut und statisch geprüft – der Testlauf steht
-aus, nichts ist committet.** Erwartet: **493 Fälle in 35 Klassen** (vorab gezählt). **Für den Client
+aus `ZugangsdatenControllerTests` dorthin umgezogen. **Auf `dev` committet (`52c08e7`, `5caccef`, nicht
+gepusht);** ein grüner Lauf ist hier nicht festgehalten – erwartet waren **493 Fälle in 35 Klassen**. **Für den Client
 brechend** (4.1); Entscheidungen in 6.2, Regeln in `AGENT_SERVER.md`, „Zugangsdatenpflege" Punkt 5.
+
+**Neu am 18.10.2026 – Automatisch abgesagt statt abgeschlossen (A18, Ergänzung des
+Haupt-Entwicklers).** Erreicht ein Termin 30 Minuten nach Beginn die Mindestzahl an Zusagen nicht
+und hat der Admin ihn nicht abgesagt, setzt der Auftrag ihn auf `ABGESAGT` statt auf
+`ABGESCHLOSSEN`. Betroffen sind `TerminRepositoryImpl#abgelaufeneAbschliessen` (eine einzige
+`UPDATE … CASE … RETURNING`-Anweisung), `TerminService#abgelaufeneAbschliessen` (liest die Mindestzahl
+bei jedem Lauf) und der neue Record `AutomatischerAbschluss`. **Dazu in demselben Wurf:**
+`GET /termine/lesen` hat ohne `ab` jetzt keine Untergrenze und liefert alle Termine ab dem ältesten
+– bis dahin galt „ab heute". **Kein neuer Endpunkt, kein neuer Fehlercode, keine Migration;** der
+Vertrag ist textlich nachgezogen (`TerminStatus`, `/ergebnis/erfassen`, `/termine/lesen`). **Gebaut und
+gegen PostgreSQL 16 von Hand geprüft – der Testlauf steht aus, nichts ist committet.** Erwartet:
+**496 Fälle in 35 Klassen**, nachgezählt (+1 in `TerminControllerTests`, +2 in
+`TerminVerwaltungControllerTests`). Regeln: `AGENT_SERVER.md`, A18 und „Termine" Punkt 8; für den
+Client 4.1.
 
 | Gegenstand | Stand |
 |---|---|
@@ -58,7 +73,7 @@ brechend** (4.1); Entscheidungen in 6.2, Regeln in `AGENT_SERVER.md`, „Zugangs
 | Konfiguration | **14 Pflichtfelder** im Voll-Update |
 | `Fehlercode` | **37** Werte |
 | `AuditAktion` | **31** Werte |
-| Tests | **483 Fälle in 34 Klassen** zuletzt grün; nach der Namensbestätigung erwartet **493 in 35**, weiterhin **fünf Klassen ohne Spring-Kontext** |
+| Tests | **483 Fälle in 34 Klassen** zuletzt grün dokumentiert; nach Namensbestätigung und A18-Änderung nachgezählt **496 in 35**, der Lauf steht aus; weiterhin **fünf Klassen ohne Spring-Kontext** |
 | Bruno-Collection | alle 45 Endpunkte, acht Ordner (`~/Documents/bruno/fubo_server`, unversioniert) |
 | Plattform | **Spring Boot 4.1.1**, Tomcat 11.0.26 und Jackson 3.1.7 per Override (S9, 03.10.2026) |
 
@@ -77,9 +92,10 @@ keinen Fehlerkanal, kein Protokoll und keinen Statuscode dafür. **Wer an `Nutzl
 `P256` oder `VapidJwtErzeuger` etwas ändert, prüft gegen Anhang A** – nicht gegen ein Gerät, und
 erst recht nicht gegen die Antwort des Dienstes.
 
-**Offen sind der Testlauf zur Namensbestätigung, Handarbeit und S9:**
+**Offen sind der Testlauf, Handarbeit und S9:**
 
-1. **Testlauf und Commit der Namensbestätigung** – `./mvnw clean verify`, erwartet 493/35. Danach
+1. **Testlauf und Commit der A18-Änderung** – `./mvnw clean verify`, erwartet **496/35**
+   (Namensbestätigung und automatische Absage zusammen). Danach für die Namensbestätigung
    eine Handprüfung mit echter Mail (Bruno: „Anmeldenamen aendern" → PIN nach `namePin` →
    „Anmeldenamen bestaetigen"), anschliessend `ADMIN_NAME` in der `.env` nachziehen.
 2. **Fünf Handprüflisten** – `S4_UMSETZUNG.md` 11.1, `S5_UMSETZUNG.md` 13.1, `S6_UMSETZUNG.md` 8.1,
@@ -94,6 +110,8 @@ erst recht nicht gegen die Antwort des Dienstes.
 4. **Client-Track informieren.** Der Vertrag steht bei 45 Endpunkten; die Push-Zeilen in 4.1 sind
    seit dem Commit in `fubo-api.json` **verbindlich** und nicht mehr Vorausschau. **Dazu die brechende
    Änderung am Namenswechsel** – sie trifft C4 (Admin-Zugang), bevor es begonnen ist.
+   **Dazu zwei Verhaltensänderungen ohne Schemaänderung** (4.1): Ein Termin kann ohne Zutun des Admins
+   `ABGESAGT` werden, und `/termine/lesen` ohne `ab` liefert auch vergangene Termine.
 
 **Zwei Dinge vor jedem Lauf:** Docker muss laufen (`docker info`), und es ist `./mvnw clean verify`,
 nicht nur `verify` – `target/classes` vergisst nichts.
@@ -205,7 +223,7 @@ naheliegende Annahme falsch ist. Wann sie dazukam, steht in Git.
 | `KONTINGENT_ERSCHOEPFT` (`409`) | **kein `Retry-After`** – kein Zeitproblem, sondern ein Zustand, der sich mit dem Teilnehmerkreis ändert |
 | `TEILNEHMER_GEAENDERT` (`409`) | jemand hat während des Laufs zu- oder abgesagt. **Unverändert wiederholbar**; das Kontingent steht unter dem neuen Stand wieder offen |
 | `ERGEBNIS_VORHANDEN` (`409`) | **kein Bedienfehler.** Nach dem Abpfiff tippen mehrere gleichzeitig; der Zweite soll „hat schon jemand erfasst" sehen und danach das vorhandene Ergebnis, nicht eine Fehlermeldung |
-| `TERMIN_NICHT_ABGESCHLOSSEN` (`409`) | **nicht** `TERMIN_GESCHLOSSEN` – dort ist die Polarität umgekehrt. Warten hilft, aber nur bei `GEPLANT`: Der Abschluss folgt 30 bis 35 Minuten nach Beginn |
+| `TERMIN_NICHT_ABGESCHLOSSEN` (`409`) | **nicht** `TERMIN_GESCHLOSSEN` – dort ist die Polarität umgekehrt. Warten hilft nur bei `GEPLANT` und nur, wenn der Termin die Mindestzahl erreicht hat: Der Abschluss folgt 30 bis 35 Minuten nach Beginn; darunter wird der Termin stattdessen `ABGESAGT`, und die Erfassung bleibt gesperrt |
 | `PUSH_NICHT_KONFIGURIERT` (`503`) | „auf diesem Server nicht eingerichtet", **kein Fehler**. Betrifft `GET /push/schluessel/lesen` und `POST /admin/push/test`; die übrigen vier Push-Endpunkte antworten trotzdem `200`. Wiederholen hilft nie – den Bereich ausblenden |
 | `NAME_PIN_FALSCH` (`401`) | **kein Sitzungsende** – eine vertippte PIN beim Namenswechsel, wie `ADMIN_PASSWORT_FALSCH` beim Passwortwechsel. `queryClient.ts` verzweigt bereits über `code`; der neue Wert fällt dort richtig **nicht** unter das Sitzungsende |
 | `NAME_AENDERUNG_UNGUELTIG` (`409`) | heisst „neu anfordern": nichts angefordert, abgelaufen, eingelöst, durch eine neuere Anforderung entwertet oder fünf Fehlversuche. Eine neue Anforderung entwertet immer die vorige – es gilt nur die zuletzt versandte PIN |
@@ -215,7 +233,7 @@ naheliegende Annahme falsch ist. Wann sie dazukam, steht in Git.
 
 | Punkt | Bedeutung für den Client |
 |---|---|
-| `TerminStatus` | `GEPLANT`, `ABGESAGT`, `ABGESCHLOSSEN`. **Eine Absage ist endgültig** – kein Weg zurück nach `GEPLANT` |
+| `TerminStatus` | `GEPLANT`, `ABGESAGT`, `ABGESCHLOSSEN`. **Eine Absage ist endgültig** – kein Weg zurück nach `GEPLANT`, auch nicht bei der automatischen Absage unter der Mindestzahl |
 | `/admin/termin/entfernen` | löscht endgültig, aber nur ohne Verweise (`409 TERMIN_IN_VERWENDUNG`). **Der einzige Weg zurück aus einer versehentlichen Absage** – ein abgesagter Termin belegt seinen Zeitpunkt weiter |
 | **Ein Ergebnis lässt sich nicht löschen** | A21 sieht nur die Korrektur vor. Es gibt keinen Endpunkt dafür, und es wird keinen geben, ohne dass jemand ihn anfordert |
 | **Eine versandte Hallenabsage lässt sich nicht zurücknehmen** | Es gibt keinen Endpunkt und keinen Weg, die Mail ungeschehen zu machen. Die Bestätigungsabfrage muss sagen, dass die Nachricht **sofort** hinausgeht |
@@ -236,6 +254,7 @@ naheliegende Annahme falsch ist. Wann sie dazukam, steht in Git.
 | Punkt | Bedeutung für den Client |
 |---|---|
 | `ABGESCHLOSSEN` | **setzt der Server 30 Minuten nach Terminbeginn selbst** (A18). Torwächter für Rückmeldungen ist aber die Uhrzeit, nicht der Status |
+| `ABGESAGT` unter der Mindestzahl | **setzt der Server statt `ABGESCHLOSSEN`**, wenn 30 Minuten nach Beginn weniger Zusagen als `minTeilnehmer` vorliegen und der Admin nicht abgesagt hat (A18). **Ohne Push-Ereignis**, und der Status unterscheidet sie nicht von einer Admin-Absage. Der Admin kann weiterhin früher auf `ABGESCHLOSSEN` setzen, auch darunter |
 | `TEAMS_FIXIERT` (`409`) | ab Terminbeginn, spätestens fünf Minuten nach Anpfiff. Verschiebt der Admin den Termin in die Zukunft, fällt es zurück |
 | Sperren eines Profils | **nimmt dessen Zusagen für künftige Termine zurück** – die Teilnehmerliste wird kürzer, ohne dass jemand abgesagt hätte |
 | Bilanz nach einer Korrektur | wird **gedreht, nicht addiert**. Die Zähler entstehen bei jeder Änderung neu aus den Ergebnissen; die Bilanzen anderer Termine bleiben unberührt |
@@ -705,7 +724,7 @@ Jeder Punkt hat schon mindestens einmal Zeit gekostet.
   auf `LocalDate.now(uhr)` um** – die `Clock`-Bean ist injizierbar.
 - **Eine Testklasse ohne `@Transactional` sieht die geplanten Aufträge.** Ohne Test-Transaktion
   sind angelegte Termine wirklich geschrieben, und der A18-Auftrag setzt geplante Termine nach
-  Beginn auf `ABGESCHLOSSEN` – alle fünf Minuten. **Ein vergangener Termin, der `GEPLANT` bleiben
+  Beginn auf `ABGESCHLOSSEN`, unter der Mindestzahl auf `ABGESAGT` – alle fünf Minuten. **Ein vergangener Termin, der `GEPLANT` bleiben
   soll, wird zur Zeitbombe.** `HallenmodusTests` legt ihn deshalb als `ABGESAGT` an;
   `PushVersandTests` legt seine Termine weit in die Zukunft.
 - **Ein Rollback lässt sich in einer `@Transactional`-Testklasse nicht prüfen.** Die
@@ -821,8 +840,14 @@ den beiden Overrides, 0 Fehlschläge, 0 Fehler, nichts übersprungen). Verlauf: 
 
 **Erwartet nach der Namensbestätigung (04.10.2026): 493 Fälle in 35 Klassen** – vorab gezählt:
 sechs Fälle aus `ZugangsdatenControllerTests` verlegt, 16 in der neuen `AdminNamensaenderungTests`.
-`SecurityConfigTests` bleibt bei 26; der neue Pfad steht als Zusicherung im Bündelfall. **Der Lauf
-steht aus.**
+`SecurityConfigTests` bleibt bei 26; der neue Pfad steht als Zusicherung im Bündelfall.
+Committet; ein grüner Lauf ist nicht festgehalten.
+
+**Erwartet nach der A18-Änderung (18.10.2026): 496 Fälle in 35 Klassen** – mit
+`grep -c '^\s*@Test\s*$'` über `src/test` nachgezählt. `TerminControllerTests`: zwei Fälle zum
+Stichtag ersetzt durch drei (+1); `TerminVerwaltungControllerTests`: ein Fall angepasst, zwei neue
+(+2). Die SQL der Anweisung ist zusätzlich von Hand gegen PostgreSQL 16 gelaufen, einschliesslich
+Wiederholung; **der Lauf mit Testcontainers steht aus.**
 
 **S8 brachte 49 Fälle in drei neuen Klassen** – `PushVerschluesselungTests` (16),
 `PushControllerTests` (15), `PushVersandTests` (17) –, dazu einen in
@@ -883,8 +908,8 @@ und die Prüfschritte beim Nachziehen stehen in ihrer `README.md`.
 
 ## 7. Nächste Schritte
 
-0. **Namensbestätigung abschliessen** (04.10.2026): `./mvnw clean verify` (erwartet 493/35), dann
-   committen und eine Handprüfung mit echter Mail über Bruno – Umlaute und Name in der Nachricht,
+0. **Testlauf abschliessen** (18.10.2026): `./mvnw clean verify` (erwartet 496/35), die A18-Änderung
+   committen und für die Namensbestätigung eine Handprüfung mit echter Mail über Bruno – Umlaute und Name in der Nachricht,
    `202`/`204`, danach `ADMIN_NAME` in der `.env` und `adminName` in den Bruno-Umgebungen nachziehen.
 1. **Die fünf Handprüflisten in einem Zug abarbeiten** – `S4_UMSETZUNG.md` 11.1,
    `S5_UMSETZUNG.md` 13.1, `S6_UMSETZUNG.md` 8.1, `S7_UMSETZUNG.md` 8.1,
@@ -921,6 +946,14 @@ und die Prüfschritte beim Nachziehen stehen in ihrer `README.md`.
 
 **Offene Punkte, die keine Aufgabe für heute sind:**
 
+- **Die Mindestzahl der automatischen Absage wird beim Lauf gelesen, nicht am Termin festgehalten.**
+  Eine Änderung nach Terminbeginn wirkt noch bis zu 35 Minuten auf unentschiedene Termine. Die
+  Alternative – die Mindestzahl am Termin speichern (neue Spalte, Migration, Regel für den Zeitpunkt) –
+  ist nicht gebaut; nachrüsten nur auf Anforderung.
+- **Handprüfung der automatischen Absage:** Ein Termin in der Vergangenheit lässt sich nicht anlegen
+  (Punkt 4 unter „Termine"). Also: Termin anlegen, `datum`/`uhrzeit` per SQL zurückdatieren,
+  `minTeilnehmer` über der Zusagenzahl lassen, bis zu fünf Minuten warten, Status und Anwendungslog
+  prüfen.
 - **`MAX_EXHAUSTIV = 24` ist gesetzt, nicht gemessen.** `C(24,12) ≈ 2,7 Mio.` ist auf einem
   Entwicklungsrechner tragbar; ob auch auf dem Raspberry Pi 5, zeigt erst eine Messung auf der
   Zielhardware – sie gehört zu S9. **Mit A24 ist die Grenze zugleich der einzige Schutz vor
