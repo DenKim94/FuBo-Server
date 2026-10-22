@@ -561,7 +561,10 @@ public class TerminService {
      * aendert nicht, wer mitspielt, wohl aber die Grundlage jeder Teameinteilung: Dieselben
      * Namen ergeben eine andere Aufteilung. Ohne diesen Ausloeser bliebe eine gespeicherte
      * Einteilung als aktuell gekennzeichnet, obwohl sie es nicht mehr ist - und das
-     * Generierungskontingent bliebe verbraucht.
+     * Generierungskontingent bliebe verbraucht. Beide Zaehler steigen: {@code teilnehmer_version}
+     * fuer das Veraltet-Kennzeichen, {@code kontingent_version} fuer das Kontingent (Aenderung
+     * vom 22.10.2026: Ein Skillwechsel gehoert neben der neuen Zusage zu den zwei Ausloesern,
+     * die das Kontingent oeffnen; eine Absage oder Sperrung tut es nicht).
      *
      * <h2>Warum die Methode hier liegt und nicht in der Profilverwaltung</h2>
      * Das Wissen, dass Skillwerte auf Termine wirken, gehoert zum Fachbereich
@@ -574,8 +577,8 @@ public class TerminService {
      * @return Anzahl betroffener Termine; {@code 0}, wenn der Spieler nirgends zugesagt hat
      */
     @Transactional
-    public int teilnehmerVersionErhoehenFuerSpieler(Long spielerId) {
-        return terminRepository.teilnehmerVersionErhoehenFuerSpieler(
+    public int skillaenderungNachtragen(Long spielerId) {
+        return terminRepository.teilnehmerUndKontingentVersionErhoehenFuerSpieler(
                 spielerId, LocalDateTime.now(uhr));
     }
 
@@ -589,6 +592,10 @@ public class TerminService {
      * nichts mehr - die Kontingente blieben verbraucht und bestehende Einteilungen
      * faelschlich aktuell, obwohl ein Spieler weniger da ist. Falsch herum ist der Code
      * lauffaehig und wirkungslos; das ist der Fehler, der hier gemacht werden kann.
+     *
+     * <p><b>Nur {@code teilnehmer_version} steigt, nicht {@code kontingent_version}</b>
+     * (Aenderung vom 22.10.2026): Die Einteilung veraltet, das Kontingent bleibt, wie es ist -
+     * ein Weggang ist eine Absage und oeffnet nichts.
      *
      * <p><b>Derselbe Zeitpunkt fuer beide Schritte</b> - sonst koennte ein Termin dazwischen
      * die Grenze "kuenftig" ueberschreiten und nur von einem der beiden erfasst werden.

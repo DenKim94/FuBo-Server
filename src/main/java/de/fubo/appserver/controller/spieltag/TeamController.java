@@ -20,9 +20,12 @@ import org.springframework.web.bind.annotation.RestController;
  * Die Teamgenerierung am Termin (A15, A20a, A20b; S5 Abschnitt 9.3).
  *
  * <p><b>Zum Pfad:</b> {@code /api/{version}/teams/generieren} liegt bewusst <b>nicht</b> unter
- * {@code /admin/}. Jeder Angemeldete darf generieren, auch ein {@code GAST} - das ist A15, und
- * das Kontingent begrenzt es, nicht die Rolle. Die Entscheidung faellt allein ueber den Pfad;
- * eine Rollenpruefung im Controller waere genau das, was {@code AGENT_SERVER.md} verbietet.
+ * {@code /admin/}: Die Filterchain laesst jede angemeldete Sitzung durch, auch ein {@code GAST}
+ * (A15). <b>Wer tatsaechlich generieren darf, entscheidet der Dienst</b> (Aenderung vom
+ * 22.10.2026): der Admin und jeder Teilnehmer mit Zusage an genau diesem Termin; alle anderen
+ * bekommen {@code 403 KEINE_ZUSAGE}. Die Regel haengt an Termindaten, die die Filterchain
+ * nicht kennt - eine Rollenpruefung im Controller waere genau das, was {@code AGENT_SERVER.md}
+ * verbietet. Das Kontingent begrenzt danach die Zahl der Laeufe.
  *
  * <p><b>Der Unterschied zu {@code /admin/teams/generieren} ist einzig das Praefix</b> (A24).
  * Das ist gewollt - dieselbe Handlung, zwei Zugangsstufen -, macht einen Tippfehler im Pfad
@@ -65,7 +68,8 @@ public class TeamController {
      * @param anfrage Id des betroffenen Termins
      * @param request fuer die Client-IP im Protokoll
      * @param sitzung aufrufende Sitzung; liefert den Akteur des Kontingents
-     * @return {@code 201} mit der neuen Einteilung
+     * @return {@code 201} mit der neuen Einteilung; {@code 403 KEINE_ZUSAGE}, wenn der Aufrufer
+     *         weder Admin ist noch an diesem Termin zugesagt hat
      */
     @PostMapping(value = "/generieren", version = ApiVersionConfig.VERSION)
     public ResponseEntity<Teameinteilung> generieren(@Valid @RequestBody TerminIdRequest anfrage,

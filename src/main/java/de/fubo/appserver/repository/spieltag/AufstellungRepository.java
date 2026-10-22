@@ -47,9 +47,10 @@ public class AufstellungRepository {
      *
      * <h2>Die Warteschlange bleibt draussen</h2>
      * Entschieden am 31.08.2026 (0.4, Punkt 2): Eingeteilt wird, wer spielt. A15 traegt das -
-     * sagt jemand ab, ruecken die Wartenden nach, {@code teilnehmer_version} steigt, die
-     * Einteilung veraltet und die Kontingente stehen wieder offen. Die Warteschlange kann
-     * also gar nicht "zu spaet" eingeteilt werden.
+     * sagt jemand ab, ruecken die Wartenden nach, {@code teilnehmer_version} steigt und die
+     * Einteilung veraltet. (Das Kontingent oeffnet eine Absage seit dem 22.10.2026 nicht
+     * mehr; wer noch Laeufe uebrig hat, kann die veraltete Einteilung neu erzeugen.) Die
+     * Warteschlange kann also gar nicht "zu spaet" eingeteilt werden.
      *
      * <h2>{@code (tn.spieler_id IS NULL OR s.aktiv)}</h2>
      * Der Filter auf gesperrte Profile ist eine <b>Absicherung fuer Bestandsdaten</b>: Seit

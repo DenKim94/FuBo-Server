@@ -325,6 +325,9 @@ class TerminControllerTests {
         assertThat(teilnehmerVersion(terminId))
                 .as("Jede Rueckmeldung ist eine Teilnehmeraenderung (A15)")
                 .isEqualTo(vorher + 1);
+        assertThat(kontingentVersion(terminId))
+                .as("Eine neue Zusage oeffnet das Generierungskontingent (22.10.2026)")
+                .isEqualTo(1);
     }
 
     /**
@@ -348,6 +351,39 @@ class TerminControllerTests {
         assertThat(teilnehmerVersion(terminId))
                 .as("Auch eine Absage aendert den Teilnehmerkreis")
                 .isEqualTo(2);
+        assertThat(kontingentVersion(terminId))
+                .as("Die Absage oeffnet das Generierungskontingent nicht (22.10.2026)")
+                .isEqualTo(1);
+    }
+
+    /**
+     * Nur eine <b>neue</b> Zusage steigert {@code kontingent_version}: nicht die wiederholte,
+     * wohl aber die Zusage nach einer Absage (22.10.2026).
+     *
+     * <p>Die Unterscheidung trifft eine einzige SQL-Anweisung, die den Zustand vor dem Upsert
+     * liest; ein getrenntes Lesen davor waere bei gleichzeitigen Meldungen nicht verlaesslich.
+     * Die {@code teilnehmer_version} steigt dagegen bei jeder Meldung.
+     */
+    @Test
+    void nurEineNeueZusageSteigertDieKontingentVersion() throws Exception {
+        Long terminId = terminAnlegen(LocalDate.now().plusDays(BASIS_TAGE + 31), null);
+        String token = sitzungFuer(spielerId(0));
+
+        rueckmeldung(token, terminId, true).andExpect(status().isNoContent());
+        assertThat(kontingentVersion(terminId)).as("erste Zusage").isEqualTo(1);
+
+        rueckmeldung(token, terminId, true).andExpect(status().isNoContent());
+        assertThat(kontingentVersion(terminId)).as("wiederholte Zusage").isEqualTo(1);
+
+        rueckmeldung(token, terminId, false).andExpect(status().isNoContent());
+        assertThat(kontingentVersion(terminId)).as("Absage").isEqualTo(1);
+
+        rueckmeldung(token, terminId, false).andExpect(status().isNoContent());
+        assertThat(kontingentVersion(terminId)).as("wiederholte Absage").isEqualTo(1);
+
+        rueckmeldung(token, terminId, true).andExpect(status().isNoContent());
+        assertThat(kontingentVersion(terminId)).as("Zusage nach Absage").isEqualTo(2);
+        assertThat(teilnehmerVersion(terminId)).as("jede Meldung zaehlt hier").isEqualTo(5);
     }
 
     /**
@@ -691,6 +727,11 @@ class TerminControllerTests {
     private int anzahlTeilnahmen(Long terminId) {
         return jdbc.queryForObject(
                 "SELECT count(*) FROM spieltag.teilnahme WHERE termin_id = ?", Integer.class, terminId);
+    }
+
+    private int kontingentVersion(Long terminId) {
+        return jdbc.queryForObject(
+                "SELECT kontingent_version FROM spieltag.termin WHERE id = ?", Integer.class, terminId);
     }
 
     private int teilnehmerVersion(Long terminId) {

@@ -227,9 +227,11 @@ public enum Fehlercode {
      * aufgebraucht (A15, S5 Abschnitt 6.1).
      *
      * <p>Massgeblich ist {@code configs.app_config.anz_team_generator}, gezaehlt <b>je Nutzer,
-     * je Termin und je {@code teilnehmer_version}</b>. Das Kontingent wird nie zurueckgesetzt,
-     * sondern durch einen neuen Schluessel umgangen: Sagt jemand zu oder ab, steigt der Zaehler,
-     * und dieselbe Person darf wieder generieren.
+     * je Termin und je {@code kontingent_version}</b>. Das Kontingent wird nie zurueckgesetzt,
+     * sondern durch einen neuen Schluessel umgangen: Sagt jemand neu zu oder aendert der Admin
+     * einen Skillwert oder eine Gast-Stufe eines Teilnehmers, steigt der Zaehler, und dieselbe
+     * Person darf wieder generieren. <b>Eine Absage oeffnet das Kontingent nicht</b> (A15,
+     * Ergaenzung vom 22.10.2026) - sie verkleinert den Kreis, statt etwas Neues zu liefern.
      *
      * <p>{@code 409} und nicht {@code 429}: Es ist keine Drosselung ueber die Zeit, sondern ein
      * Zustand, der sich mit dem Teilnehmerkreis aendert - ein {@code Retry-After} liesse sich
@@ -242,6 +244,28 @@ public enum Fehlercode {
             "Für diesen Teilnehmerstand wurde bereits die zulässige Anzahl an Läufen verbraucht."),
 
     /**
+     * Der Aufrufer hat fuer diesen Termin nicht zugesagt und darf deshalb keine Teams
+     * generieren (A15, Ergaenzung vom 22.10.2026).
+     *
+     * <p>Generieren duerfen nur Teilnehmer mit Zusage und der Admin. Wer nie gemeldet oder
+     * abgesagt hat, steht nicht in der Teilnehmerliste - er koennte sonst Kontingent
+     * verbrauchen und Teams einsehen, die ihn nichts angehen. Gemeint ist die
+     * <b>Zusage</b> und nicht die Aufstellung: Auch wer in der Warteschlange steht, hat
+     * zugesagt und darf generieren.
+     *
+     * <p>{@code 403} und kein {@code 409}: Es ist keine Frage des Zustands, der sich von
+     * selbst aendert, sondern eine Berechtigung - die der Aufrufer sich aber durch eine
+     * Zusage verschaffen kann. Deshalb ein eigener Code und nicht {@link #KEINE_BERECHTIGUNG},
+     * der "Rolle fehlt" meint: Die Oberflaeche soll hier zur Zusage raten koennen und nicht
+     * allgemein eine Berechtigung vermissen.
+     *
+     * <p><b>Der Admin ist ausgenommen</b> - er steht vor Ort und liest die Teams vor, hat aber
+     * nie eine Teilnahmezeile (das Adminprofil kann nicht zusagen).
+     */
+    KEINE_ZUSAGE(HttpStatus.FORBIDDEN,
+            "Teams generieren darf nur, wer für diesen Termin zugesagt hat."),
+
+    /**
      * Waehrend des Generierungslaufs hat sich der Teilnehmerkreis geaendert (A15, S5
      * Abschnitt 6.3).
      *
@@ -249,9 +273,11 @@ public enum Fehlercode {
      * sie ab, wird der Lauf verworfen. <b>Die Alternative waere eine Sperre auf dem Termin</b>
      * ueber die gesamte Rechnung - bei einem Vorgang von Millisekunden der schlechtere Handel.
      *
-     * <p><b>Es geht nichts verloren:</b> Das Kontingent wurde unter dem alten Schluessel
-     * verbucht und steht unter dem neuen wieder offen. Der Aufruf laesst sich unveraendert
-     * wiederholen - genau das sagt {@code detail}.
+     * <p><b>Es geht nichts verloren:</b> Der Lauf rollt als Ganzes zurueck, auch das verbuchte
+     * Kontingent. Der Aufruf laesst sich unveraendert wiederholen - genau das sagt
+     * {@code detail}. <b>Gegengeprueft wird {@code teilnehmer_version}</b>, nicht
+     * {@code kontingent_version}: Auch eine Absage waehrend des Laufs macht ihn unbrauchbar,
+     * obwohl sie das Kontingent nicht oeffnet.
      */
     TEILNEHMER_GEAENDERT(HttpStatus.CONFLICT,
             "Der Teilnehmerkreis hat sich zwischenzeitlich geändert. Bitte erneut versuchen."),

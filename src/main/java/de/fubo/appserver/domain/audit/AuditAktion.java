@@ -245,7 +245,8 @@ public enum AuditAktion {
      *
      * <p>Als {@code entitaet} steht {@code termin}, als {@code entitaet_id} die Termin-Id.
      * <b>Handelnder ist der Aufrufer und nicht der Admin</b> - {@code /teams/generieren} liegt
-     * ausserhalb von {@code /admin/}, jeder Angemeldete darf generieren.
+     * ausserhalb von {@code /admin/}; generieren darf der Admin oder wer am Termin zugesagt
+     * hat (seit 22.10.2026).
      *
      * <p>Die Details nennen Verfahren, Seed, Teilnehmerzahl und Kosten. <b>Sie sind hier
      * Beiwerk</b>, anders als beim manuellen Lauf: Der Lauf selbst steht mit allem Noetigen in

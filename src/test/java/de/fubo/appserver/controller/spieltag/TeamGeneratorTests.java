@@ -155,19 +155,111 @@ class TeamGeneratorTests {
     }
 
     /**
-     * Eine Absage setzt das Kontingent wieder frei (A15).
+     * Eine Absage oeffnet das Kontingent <b>nicht</b> (A15, Aenderung vom 22.10.2026).
      *
-     * <p><b>Nicht durch Zuruecksetzen, sondern durch einen neuen Schluessel:</b> Die Absage
-     * erhoeht {@code teilnehmer_version}, und damit passt keine bestehende Kontingentzeile
+     * <p>Wer absagt, verkleinert den Kreis und liefert keinen Grund fuer einen weiteren Lauf.
+     * Die Absage erhoeht {@code teilnehmer_version} (die Einteilung veraltet), aber nicht
+     * {@code kontingent_version}, die im Schluessel des Kontingents steht. Frueher teilten sich
+     * beide Aufgaben einen Zaehler, und jede Absage verschaffte allen einen weiteren Lauf.
+     */
+    @Test
+    void eineAbsageOeffnetDasKontingentNicht() throws Exception {
+        Long terminId = terminMitZusagen(8);
+        String token = spielerSitzung(0);
+
+        generieren(token, terminId).andExpect(status().isCreated());
+        int kontingentVorher = kontingentVersion(terminId);
+        int teilnehmerVorher = teilnehmerVersion(terminId);
+
+        rueckmeldung(spielerSitzung(7), terminId, false).andExpect(status().isNoContent());
+
+        assertThat(kontingentVersion(terminId)).isEqualTo(kontingentVorher);
+        assertThat(teilnehmerVersion(terminId)).isEqualTo(teilnehmerVorher + 1);
+        assertThat(fehlercode(generieren(token, terminId).andExpect(status().isConflict())))
+                .isEqualTo("KONTINGENT_ERSCHOEPFT");
+    }
+
+    /**
+     * Eine neue Zusage oeffnet das Kontingent wieder (A15).
+     *
+     * <p><b>Nicht durch Zuruecksetzen, sondern durch einen neuen Schluessel:</b> Die Zusage
+     * erhoeht {@code kontingent_version}, und damit passt keine bestehende Kontingentzeile
      * mehr. Genau das ist der Mechanismus, und genau das prueft dieser Fall.
      */
     @Test
-    void nachEinerAbsageStehtDasKontingentWiederOffen() throws Exception {
+    void eineNeueZusageOeffnetDasKontingent() throws Exception {
+        Long terminId = terminMitZusagen(8);
+        String token = spielerSitzung(0);
+
+        generieren(token, terminId).andExpect(status().isCreated());
+        rueckmeldung(spielerSitzung(8), terminId, true).andExpect(status().isNoContent());
+
+        generieren(token, terminId).andExpect(status().isCreated());
+    }
+
+    /**
+     * Eine Zusage nach einer Absage zaehlt als neue Zusage - die Absage selbst nicht.
+     *
+     * <p>Beide Schritte in einem Fall, weil erst ihr Zusammenspiel den Unterschied zeigt: Nach
+     * der Absage bleibt das Kontingent zu, nach der erneuten Zusage ist es offen.
+     */
+    @Test
+    void eineZusageNachEinerAbsageOeffnetDasKontingent() throws Exception {
         Long terminId = terminMitZusagen(8);
         String token = spielerSitzung(0);
 
         generieren(token, terminId).andExpect(status().isCreated());
         rueckmeldung(spielerSitzung(7), terminId, false).andExpect(status().isNoContent());
+        generieren(token, terminId).andExpect(status().isConflict());
+
+        rueckmeldung(spielerSitzung(7), terminId, true).andExpect(status().isNoContent());
+
+        generieren(token, terminId).andExpect(status().isCreated());
+    }
+
+    /**
+     * Eine wiederholte Zusage aendert nichts und oeffnet nichts.
+     *
+     * <p>Ohne diesen Fall liesse sich das Kontingent durch wiederholtes Zusagen aufladen.
+     */
+    @Test
+    void eineWiederholteZusageOeffnetDasKontingentNicht() throws Exception {
+        Long terminId = terminMitZusagen(8);
+        String token = spielerSitzung(0);
+
+        generieren(token, terminId).andExpect(status().isCreated());
+        rueckmeldung(spielerSitzung(7), terminId, true).andExpect(status().isNoContent());
+
+        assertThat(fehlercode(generieren(token, terminId).andExpect(status().isConflict())))
+                .isEqualTo("KONTINGENT_ERSCHOEPFT");
+    }
+
+    /** Eine Skillaenderung durch den Admin oeffnet das Kontingent (A15). */
+    @Test
+    void eineSkillaenderungOeffnetDasKontingent() throws Exception {
+        Long terminId = terminMitZusagen(8);
+        String token = spielerSitzung(0);
+
+        generieren(token, terminId).andExpect(status().isCreated());
+        skillAendern(spielerId(2), 1);
+
+        generieren(token, terminId).andExpect(status().isCreated());
+    }
+
+    /** Die Stufenaenderung eines Gastes durch den Admin oeffnet das Kontingent (A15, A17). */
+    @Test
+    void eineGastStufenaenderungOeffnetDasKontingent() throws Exception {
+        Long terminId = terminMitZusagen(7);
+        gastZusageAnlegen(terminId, "Testgast 2", "SCHWACH", 1);
+        String token = spielerSitzung(0);
+
+        generieren(token, terminId).andExpect(status().isCreated());
+        mockMvc.perform(post("/api/v1/admin/teilnahme/gast-stufe")
+                        .cookie(new Cookie(COOKIE, adminSitzung()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"terminId\":%d,\"gastName\":\"Testgast 2\",\"stufe\":\"STARK\"}"
+                                .formatted(terminId)))
+                .andExpect(status().isNoContent());
 
         generieren(token, terminId).andExpect(status().isCreated());
     }
@@ -272,17 +364,20 @@ class TeamGeneratorTests {
     }
 
     /**
-     * Ein Gast darf generieren (A15).
+     * Ein Gast mit Zusage darf generieren (A15).
      *
      * <p>Der Endpunkt liegt bewusst nicht unter {@code /admin/}. Das Kontingent zaehlt fuer
      * ihn ueber den belegten Gastplatz - ohne {@code gastSlotId} in der Sitzung waeren beide
-     * Akteurspalten leer und {@code ck_kontingent_akteur} liesse die Zeile nicht zu.
+     * Akteurspalten leer und {@code ck_kontingent_akteur} liesse die Zeile nicht zu. Die
+     * Zusage gibt er ueber den echten Endpunkt ab; sie ist seit dem 22.10.2026 Voraussetzung.
      */
     @Test
-    void gastDarfGenerieren() throws Exception {
+    void gastMitZusageDarfGenerieren() throws Exception {
         Long terminId = terminMitZusagen(8);
+        String gast = gastSitzung("Testgast 1");
+        rueckmeldung(gast, terminId, true).andExpect(status().isNoContent());
 
-        generieren(gastSitzung("Testgast 1"), terminId).andExpect(status().isCreated());
+        generieren(gast, terminId).andExpect(status().isCreated());
 
         assertThat(jdbc.queryForObject("""
                 SELECT count(*) FROM spieltag.generierung_kontingent
@@ -290,6 +385,127 @@ class TeamGeneratorTests {
                 """, Integer.class, terminId))
                 .as("Der Gast zaehlt ueber seinen Platz")
                 .isEqualTo(1);
+    }
+
+    // --------------------------------------------------------------------- Berechtigung
+
+    /**
+     * Wer nicht zugesagt hat, darf nicht generieren (Aenderung vom 22.10.2026).
+     *
+     * <p>Neben der Antwort wird geprueft, dass nichts entstanden ist: weder ein Lauf noch eine
+     * Kontingentzeile. Die Pruefung muss vor dem Verbuchen liegen.
+     */
+    @Test
+    void werNichtZugesagtHatDarfNichtGenerieren() throws Exception {
+        Long terminId = terminMitZusagen(8);
+
+        ResultActions ergebnis = generieren(spielerSitzung(8), terminId)
+                .andExpect(status().isForbidden());
+
+        assertThat(fehlercode(ergebnis)).isEqualTo("KEINE_ZUSAGE");
+        assertThat(anzahlLaeufe(terminId)).isZero();
+        assertThat(anzahlKontingentzeilen(terminId)).isZero();
+    }
+
+    /** Wer abgesagt hat, darf nicht mehr generieren - auch nicht mit frueherer Zusage. */
+    @Test
+    void werAbgesagtHatDarfNichtGenerieren() throws Exception {
+        Long terminId = terminMitZusagen(8);
+        rueckmeldung(spielerSitzung(7), terminId, false).andExpect(status().isNoContent());
+
+        assertThat(fehlercode(generieren(spielerSitzung(7), terminId)
+                .andExpect(status().isForbidden()))).isEqualTo("KEINE_ZUSAGE");
+    }
+
+    /**
+     * Die Zusage eines anderen Termins genuegt nicht.
+     *
+     * <p>Die Pruefung gilt dem Termin der Anfrage und nicht "irgendeinem kuenftigen".
+     */
+    @Test
+    void dieZusageAnEinemAnderenTerminGenuegtNicht() throws Exception {
+        Long terminId = terminMitZusagen(8);
+        Long anderer = terminAnlegen(LocalDate.now().plusDays(BASIS_TAGE + 7));
+        zusageAnlegen(anderer, spielerId(9), 1);
+
+        assertThat(fehlercode(generieren(spielerSitzung(9), terminId)
+                .andExpect(status().isForbidden()))).isEqualTo("KEINE_ZUSAGE");
+    }
+
+    /**
+     * Wartende mit Zusage duerfen generieren.
+     *
+     * <p>Sie haben zugesagt; ob sie nachruecken, ergibt sich erst aus der Aufstellung. Sie
+     * auszuschliessen hiesse, ihre Zusage nur dann gelten zu lassen, wenn es eng wird.
+     */
+    @Test
+    void wartendeMitZusageDuerfenGenerieren() throws Exception {
+        maxTeilnehmerSetzen(6);
+        Long terminId = terminMitZusagen(8);
+
+        Map<String, Object> einteilung = alsKarte(
+                generieren(spielerSitzung(7), terminId).andExpect(status().isCreated()));
+
+        assertThat(alleNamen(einteilung)).doesNotContain(spielerName(7));
+    }
+
+    /** Der Admin darf immer generieren, auch ohne selbst zuzusagen. */
+    @Test
+    void derAdminDarfOhneZusageGenerieren() throws Exception {
+        Long terminId = terminMitZusagen(8);
+
+        generieren(adminSitzung(), terminId).andExpect(status().isCreated());
+
+        assertThat(jdbc.queryForObject("""
+                SELECT count(*) FROM spieltag.generierung_kontingent
+                 WHERE termin_id = ? AND akteur_spieler_id = ?
+                """, Integer.class, terminId, adminSpielerId()))
+                .as("Der Admin zaehlt mit eigenem Kontingent")
+                .isEqualTo(1);
+    }
+
+    /** Ein Gast ohne Zusage darf nicht generieren, auch wenn er angemeldet ist. */
+    @Test
+    void einGastOhneZusageDarfNichtGenerieren() throws Exception {
+        Long terminId = terminMitZusagen(8);
+
+        assertThat(fehlercode(generieren(gastSitzung("Testgast 1"), terminId)
+                .andExpect(status().isForbidden()))).isEqualTo("KEINE_ZUSAGE");
+    }
+
+    /** Ein Gast, der seine Zusage zurueckzieht, verliert das Recht wieder. */
+    @Test
+    void einGastNachAbsageDarfNichtGenerieren() throws Exception {
+        Long terminId = terminMitZusagen(8);
+        String gast = gastSitzung("Testgast 1");
+        rueckmeldung(gast, terminId, true).andExpect(status().isNoContent());
+        rueckmeldung(gast, terminId, false).andExpect(status().isNoContent());
+
+        assertThat(fehlercode(generieren(gast, terminId).andExpect(status().isForbidden())))
+                .isEqualTo("KEINE_ZUSAGE");
+    }
+
+    /** Ein unbekannter Termin bleibt {@code 404}; die Berechtigung kommt danach. */
+    @Test
+    void einUnbekannterTerminLiefert404StattKeineZusage() throws Exception {
+        assertThat(fehlercode(generieren(spielerSitzung(8), 999_999_999L)
+                .andExpect(status().isNotFound()))).isEqualTo("INHALT_NICHT_GEFUNDEN");
+    }
+
+    /**
+     * Ein Aussenstehender erfaehrt nichts ueber den Zustand des Termins.
+     *
+     * <p>Die Berechtigung steht vor der Statuspruefung: Fuer einen abgesagten Termin bekommt
+     * der Nicht-Teilnehmer {@code 403} und nicht {@code 409 TERMIN_GESCHLOSSEN}.
+     */
+    @Test
+    void einAussenstehenderErfaehrtDenTerminstatusNicht() throws Exception {
+        Long terminId = terminMitZusagen(8);
+        jdbc.update("UPDATE spieltag.termin SET status = 'ABGESAGT', version = version + 1 WHERE id = ?",
+                terminId);
+
+        assertThat(fehlercode(generieren(spielerSitzung(8), terminId)
+                .andExpect(status().isForbidden()))).isEqualTo("KEINE_ZUSAGE");
     }
 
     // --------------------------------------------------------------------- Gaeste und Snapshot
@@ -440,6 +656,22 @@ class TeamGeneratorTests {
         assertThat(teams(einzeln(spielerSitzung(0), terminId))).containsEntry("veraltet", true);
     }
 
+    /**
+     * Auch eine Absage laesst die Einteilung veralten, obwohl sie das Kontingent nicht oeffnet.
+     *
+     * <p>Das Kennzeichen haengt an {@code teilnehmer_version}: Der Kreis ist ein anderer, und
+     * jemand hat die Aufstellung vielleicht schon vorgelesen.
+     */
+    @Test
+    void eineAbsageLaesstDieEinteilungVeralten() throws Exception {
+        Long terminId = terminMitZusagen(8);
+        generieren(spielerSitzung(0), terminId).andExpect(status().isCreated());
+
+        rueckmeldung(spielerSitzung(7), terminId, false).andExpect(status().isNoContent());
+
+        assertThat(teams(einzeln(spielerSitzung(0), terminId))).containsEntry("veraltet", true);
+    }
+
     // --------------------------------------------------------------------- Hilfsmittel
 
     /**
@@ -576,6 +808,33 @@ class TeamGeneratorTests {
                   JOIN profil.skill_kategorie k ON k.schluessel = gv.kategorie
                  WHERE gv.stufe = ? AND k.aktiv
                 """, BigDecimal.class, stufe);
+    }
+
+    private int kontingentVersion(Long terminId) {
+        return jdbc.queryForObject(
+                "SELECT kontingent_version FROM spieltag.termin WHERE id = ?", Integer.class, terminId);
+    }
+
+    private int teilnehmerVersion(Long terminId) {
+        return jdbc.queryForObject(
+                "SELECT teilnehmer_version FROM spieltag.termin WHERE id = ?", Integer.class, terminId);
+    }
+
+    private int anzahlKontingentzeilen(Long terminId) {
+        return jdbc.queryForObject(
+                "SELECT count(*) FROM spieltag.generierung_kontingent WHERE termin_id = ?",
+                Integer.class, terminId);
+    }
+
+    /** Aendert einen Skillwert ueber den echten Admin-Endpunkt. */
+    private void skillAendern(Long spielerId, int angriff) throws Exception {
+        mockMvc.perform(post("/api/v1/admin/user/bearbeiten")
+                        .cookie(new Cookie(COOKIE, adminSitzung()))
+                        .header("CF-Connecting-IP", "198.51.100.60")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"spielerId\":%d,\"skills\":{\"ANGRIFF\":%d}}"
+                                .formatted(spielerId, angriff)))
+                .andExpect(status().isNoContent());
     }
 
     private int anzahlLaeufe(Long terminId) {

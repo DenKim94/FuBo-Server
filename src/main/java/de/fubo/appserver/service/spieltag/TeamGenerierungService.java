@@ -4,6 +4,7 @@ import de.fubo.appserver.common.error.FachlicherFehler;
 import de.fubo.appserver.common.error.Fehlercode;
 import de.fubo.appserver.domain.audit.AuditAktion;
 import de.fubo.appserver.domain.auth.AktiveSitzung;
+import de.fubo.appserver.domain.auth.Rolle;
 import de.fubo.appserver.domain.config.AppConfig;
 import de.fubo.appserver.domain.spieltag.Aufstellungsspieler;
 import de.fubo.appserver.domain.spieltag.ManuelleAuswahl;
@@ -20,6 +21,7 @@ import de.fubo.appserver.domain.team.Zuteilungssatz;
 import de.fubo.appserver.domain.team.Zuteilungszeile;
 import de.fubo.appserver.repository.spieltag.KontingentRepository;
 import de.fubo.appserver.repository.spieltag.TeamGenerierungRepository;
+import de.fubo.appserver.repository.spieltag.TeilnahmeRepository;
 import de.fubo.appserver.repository.spieltag.TerminRepository;
 import de.fubo.appserver.service.audit.AuditService;
 import de.fubo.appserver.service.config.ConfigService;
@@ -65,6 +67,7 @@ public class TeamGenerierungService {
 
     private final AufstellungService aufstellungService;
     private final TerminRepository terminRepository;
+    private final TeilnahmeRepository teilnahmeRepository;
     private final KontingentRepository kontingentRepository;
     private final TeamGenerierungRepository teamGenerierungRepository;
     private final ConfigService configService;
@@ -75,6 +78,7 @@ public class TeamGenerierungService {
 
     public TeamGenerierungService(AufstellungService aufstellungService,
                                   TerminRepository terminRepository,
+                                  TeilnahmeRepository teilnahmeRepository,
                                   KontingentRepository kontingentRepository,
                                   TeamGenerierungRepository teamGenerierungRepository,
                                   ConfigService configService,
@@ -84,6 +88,7 @@ public class TeamGenerierungService {
                                   AuditService auditService) {
         this.aufstellungService = aufstellungService;
         this.terminRepository = terminRepository;
+        this.teilnahmeRepository = teilnahmeRepository;
         this.kontingentRepository = kontingentRepository;
         this.teamGenerierungRepository = teamGenerierungRepository;
         this.configService = configService;
@@ -100,8 +105,8 @@ public class TeamGenerierungService {
      *
      * <h2>Die Reihenfolge der neun Schritte ist Teil der Zusicherung</h2>
      * <ol>
-     *   <li>Termin laden, Zustand pruefen</li>
-     *   <li>{@code teilnehmer_version} merken</li>
+     *   <li>Termin laden, <b>Berechtigung</b> und Zustand pruefen</li>
+     *   <li>{@code teilnehmer_version} und {@code kontingent_version} merken</li>
      *   <li>Aufstellung ermitteln - prueft Mindestzahl und Skillwerte</li>
      *   <li><b>Kontingent verbrauchen</b></li>
      *   <li>Seed ziehen, rechnen, Auswechselspieler bestimmen</li>
@@ -115,20 +120,37 @@ public class TeamGenerierungService {
      * bei {@code EXHAUSTIV} eine Zehntelsekunde CPU an jeden, der zu oft drueckt - und macht
      * daraus ein Mittel, den Server zu beschaeftigen.
      *
+     * <p><b>Wer generieren darf (Aenderung vom 22.10.2026):</b> der Admin und jeder
+     * Teilnehmer <b>mit Zusage</b> an genau diesem Termin - Spieler wie Gast. Wartende zaehlen
+     * mit: Sie haben zugesagt, und ob sie nachruecken, entscheidet sich erst durch die
+     * Aufstellung. Wer nie oder nicht mehr zugesagt hat, bekommt {@code 403 KEINE_ZUSAGE}.
+     * Die Regel haengt an Daten des Termins und kann deshalb nicht im Pfad der Filterchain
+     * stehen, sondern gehoert hierher (gleiche Aufteilung wie bei
+     * {@code TeilnahmeService#pruefeKeinAdminprofil}). Sie steht <b>nach</b> der Pruefung
+     * auf Existenz - ein unbekannter Termin bleibt {@code 404} - und <b>vor</b> Status und
+     * Fixierung: Ein Aussenstehender erfaehrt nichts ueber den Zustand eines Termins, an dem
+     * er nicht teilnimmt.
+     *
+     * <p><b>Zwei Schluessel:</b> Das Kontingent haengt an {@code kontingent_version}, die
+     * Gegenpruefung am Ende an {@code teilnehmer_version}. Eine Absage veraendert den
+     * Teilnehmerkreis (also scheitert ein gleichzeitig laufender Lauf mit
+     * {@code TEILNEHMER_GEAENDERT}), oeffnet aber kein Kontingent.
+     *
      * <p><b>Zustand vor Aufstellung.</b> Ein abgesagter oder begonnener Termin soll den Grund
      * melden, den der Nutzer nicht beheben kann, nicht {@code ZU_WENIG_TEILNEHMER}. Dass der
      * {@link AufstellungService} den Status ein zweites Mal prueft, ist kein Versehen: Dort
      * beantwortet er "wer steht auf dem Platz", hier ist er der Torwaechter des Schreibpfads.
      *
      * <p><b>Alles in einer Transaktion.</b> Scheitert die Gegenpruefung in Schritt 8, rollen
-     * Kontingent, Abloesung und Zuteilungen gemeinsam zurueck - das Kontingent steht danach
-     * unter dem neuen Schluessel ohnehin wieder offen.
+     * Kontingent, Abloesung und Zuteilungen gemeinsam zurueck - der gescheiterte Lauf kostet
+     * also kein Kontingent.
      *
      * @param terminId betroffener Termin
      * @param sitzung  aufrufende Sitzung; liefert Akteur und Anzeigenamen
      * @param clientIp Adresse des Aufrufers, fuer das Protokoll
      * @return die soeben geschriebene Einteilung, aus der Datenbank zurueckgelesen
      * @throws FachlicherFehler {@code 404 INHALT_NICHT_GEFUNDEN};
+     *                          {@code 403 KEINE_ZUSAGE};
      *                          {@code 409 TERMIN_GESCHLOSSEN}; {@code 409 TEAMS_FIXIERT};
      *                          {@code 409 ZU_WENIG_TEILNEHMER};
      *                          {@code 409 SKILLWERTE_UNVOLLSTAENDIG};
@@ -142,6 +164,8 @@ public class TeamGenerierungService {
                 .orElseThrow(() -> new FachlicherFehler(Fehlercode.INHALT_NICHT_GEFUNDEN,
                         "Es gibt keinen Termin mit dieser Id."));
 
+        pruefeBerechtigung(terminId, sitzung);
+
         if (zustand.status() != TerminStatus.GEPLANT) {
             throw new FachlicherFehler(Fehlercode.TERMIN_GESCHLOSSEN,
                     "Für diesen Termin lassen sich keine Teams mehr generieren.");
@@ -154,7 +178,8 @@ public class TeamGenerierungService {
         AppConfig konfiguration = configService.lesen();
         Aufstellung aufstellung = aufstellungService.fuerTermin(terminId);
 
-        kontingentVerbrauchen(terminId, sitzung, version, konfiguration.getAnzTeamGenerator());
+        kontingentVerbrauchen(terminId, sitzung, zustand.kontingentVersion(),
+                konfiguration.getAnzTeamGenerator());
 
         long seed = seedQuelle.naechster();
         Teamergebnis ergebnis = teamrechner.rechne(aufstellung,
@@ -281,8 +306,36 @@ public class TeamGenerierungService {
         kontingentRepository.verbrauche(terminId, spielerId, gastSlotId, version, grenze)
                 .orElseThrow(() -> new FachlicherFehler(Fehlercode.KONTINGENT_ERSCHOEPFT,
                         "Für diesen Teilnehmerstand wurden bereits " + grenze
-                                + " Läufe verbraucht. Sobald jemand zu- oder absagt, "
-                                + "steht das Kontingent wieder offen."));
+                                + " Läufe verbraucht. Sobald jemand neu zusagt oder sich "
+                                + "ein Skillwert ändert, steht das Kontingent wieder offen."));
+    }
+
+    /**
+     * Stellt sicher, dass die Sitzung an diesem Termin generieren darf (22.10.2026).
+     *
+     * <h2>Admin oder Teilnehmer mit Zusage</h2>
+     * Der Admin darf immer - er steht vor Ort und liest die Teams vor, auch ohne selbst zu
+     * spielen. Jeder andere braucht eine Teilnahme mit {@code zusage = true}: Spieler ueber
+     * die Profil-Id, Gast ueber den Namen. Die Pruefung ist die einzige Quelle dieser Regel;
+     * der Pfad {@code /teams/generieren} bleibt fuer jede angemeldete Sitzung offen, weil
+     * die Filterchain keine Termindaten kennt.
+     *
+     * <p><b>Warum {@code Rolle.ADMIN} und nicht "hat keine Zusage":</b> Ein Admin, der selbst
+     * zugesagt hat, wird ohnehin durchgelassen; einer, der es nicht hat, soll nicht auf die
+     * Idee kommen muessen, fuer die Teameinteilung zuzusagen.
+     *
+     * <p><b>Der Gastname wird als Name verglichen</b> ({@code gast_name} ist je Termin
+     * eindeutig). Ein gleichnamiger Gast mit anderer Sitzung und Zusage am selben Termin
+     * ist nicht ausgeschlossen, aber auch kein Zugewinn an Rechten: Er koennte dieselbe
+     * Teilnahme nutzen, die A7 ihm ohnehin zuweist.
+     */
+    private void pruefeBerechtigung(Long terminId, AktiveSitzung sitzung) {
+        if (sitzung.rolle() == Rolle.ADMIN) {
+            return;
+        }
+        if (!teilnahmeRepository.hatZugesagt(terminId, sitzung.spielerId(), sitzung.gastName())) {
+            throw new FachlicherFehler(Fehlercode.KEINE_ZUSAGE);
+        }
     }
 
     /**
@@ -290,9 +343,9 @@ public class TeamGenerierungService {
      *
      * <p><b>Gegenpruefen statt sperren.</b> Die Alternative waere ein
      * {@code SELECT ... FOR SHARE} auf dem Termin ueber die gesamte Rechnung - bei einem
-     * Vorgang von Millisekunden der schlechtere Handel. Es geht nichts verloren: Das
-     * Kontingent wurde unter dem alten Schluessel verbucht und steht unter dem neuen wieder
-     * offen.
+     * Vorgang von Millisekunden der schlechtere Handel. Es geht nichts verloren: Die
+     * Ausnahme rollt die Transaktion zurueck, und mit ihr das verbuchte Kontingent.
+     * Geprueft wird {@code teilnehmer_version}, also auch eine Absage waehrend des Laufs.
      */
     private void pruefeVersionUnveraendert(Long terminId, int version) {
         int jetzt = terminRepository.zustand(terminId)

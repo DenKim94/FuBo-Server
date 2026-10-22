@@ -129,7 +129,14 @@ class TerminRepositoryImpl implements TerminRepositoryCustom {
             """;
 
     /**
-     * Erhoeht beide Zaehler eines Termins.
+     * Erhoeht die Zaehler eines Termins: immer {@code teilnehmer_version}, auf Wunsch auch
+     * {@code kontingent_version}.
+     *
+     * <p><b>Zwei Zaehler, weil zwei Fragen</b> (A15, Ergaenzung vom 22.10.2026):
+     * {@code teilnehmer_version} beantwortet "hat sich der Kreis geaendert" und steigt bei
+     * jeder Teilnehmeraenderung; {@code kontingent_version} beantwortet "darf wieder
+     * generiert werden" und steigt nur, wenn etwas Neues hinzukommt. <b>Eine Absage erhoeht
+     * nur die erste</b> - sonst oeffnete jeder, der absagt, allen anderen weitere Laeufe.
      *
      * <p><b>{@code version} wird mit hochgezaehlt</b>, obwohl es die Spalte des Optimistic
      * Locking ist: Die Regel aus {@code AGENT_SERVER.md} verlangt das fuer jede
@@ -145,6 +152,8 @@ class TerminRepositoryImpl implements TerminRepositoryCustom {
     private static final String SQL_TEILNEHMER_VERSION = """
             UPDATE spieltag.termin
                SET teilnehmer_version = teilnehmer_version + 1,
+                   kontingent_version = kontingent_version
+                                        + CASE WHEN :kontingent THEN 1 ELSE 0 END,
                    version            = version + 1
              WHERE id = :terminId
             """;
@@ -171,6 +180,8 @@ class TerminRepositoryImpl implements TerminRepositoryCustom {
     private static final String SQL_TEILNEHMER_VERSION_SPIELER = """
             UPDATE spieltag.termin t
                SET teilnehmer_version = t.teilnehmer_version + 1,
+                   kontingent_version = t.kontingent_version
+                                        + CASE WHEN :kontingent THEN 1 ELSE 0 END,
                    version            = t.version + 1
              WHERE t.status = 'GEPLANT'
                AND (t.datum + t.uhrzeit) > :jetzt
@@ -181,9 +192,9 @@ class TerminRepositoryImpl implements TerminRepositoryCustom {
                               AND tn.zusage)
             """;
 
-    /** Status, Fixierung und Teilnehmerzaehler, nativ gelesen (S5, 2.4 und 6.3). */
+    /** Status, Fixierung und beide Zaehler, nativ gelesen (S5, 2.4 und 6.3). */
     private static final String SQL_ZUSTAND_LESEN = """
-            SELECT status, teams_fixiert, teilnehmer_version
+            SELECT status, teams_fixiert, teilnehmer_version, kontingent_version
               FROM spieltag.termin
              WHERE id = :terminId
             """;
@@ -428,14 +439,39 @@ class TerminRepositoryImpl implements TerminRepositoryCustom {
 
     @Override
     public int teilnehmerVersionErhoehen(Long terminId) {
-        return jdbc.sql(SQL_TEILNEHMER_VERSION).param("terminId", terminId).update();
+        return versionErhoehen(terminId, false);
+    }
+
+    @Override
+    public int teilnehmerUndKontingentVersionErhoehen(Long terminId) {
+        return versionErhoehen(terminId, true);
     }
 
     @Override
     public int teilnehmerVersionErhoehenFuerSpieler(Long spielerId, LocalDateTime jetzt) {
+        return versionErhoehenFuerSpieler(spielerId, jetzt, false);
+    }
+
+    @Override
+    public int teilnehmerUndKontingentVersionErhoehenFuerSpieler(Long spielerId,
+                                                                 LocalDateTime jetzt) {
+        return versionErhoehenFuerSpieler(spielerId, jetzt, true);
+    }
+
+    /** Eine Anweisung fuer beide Varianten - der Unterschied ist ein einziger Wahrheitswert. */
+    private int versionErhoehen(Long terminId, boolean kontingent) {
+        return jdbc.sql(SQL_TEILNEHMER_VERSION)
+                .param("terminId", terminId)
+                .param("kontingent", kontingent)
+                .update();
+    }
+
+    private int versionErhoehenFuerSpieler(Long spielerId, LocalDateTime jetzt,
+                                           boolean kontingent) {
         return jdbc.sql(SQL_TEILNEHMER_VERSION_SPIELER)
                 .param("spielerId", spielerId)
                 .param("jetzt", jetzt)
+                .param("kontingent", kontingent)
                 .update();
     }
 
@@ -446,7 +482,8 @@ class TerminRepositoryImpl implements TerminRepositoryCustom {
                 .query((rs, zeile) -> new Terminzustand(
                         TerminStatus.valueOf(rs.getString("status")),
                         rs.getBoolean("teams_fixiert"),
-                        rs.getInt("teilnehmer_version")))
+                        rs.getInt("teilnehmer_version"),
+                        rs.getInt("kontingent_version")))
                 .optional();
     }
 

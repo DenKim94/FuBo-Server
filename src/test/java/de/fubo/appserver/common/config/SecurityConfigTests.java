@@ -450,7 +450,7 @@ class SecurityConfigTests {
                 .andExpect(status().isForbidden());
 
         // A24: Der manuelle Lauf ist eine Adminbefugnis. Der offene Endpunkt daneben
-        // (/api/v1/teams/generieren) steht bewusst allen Rollen offen - siehe
+        // (/api/v1/teams/generieren) steht der Filterchain nach allen Rollen offen - siehe
         // userUndGastDuerfenGeschuetzteEndpunkteAufrufen.
         mockMvc.perform(post("/api/v1/admin/teams/generieren")
                         .contentType(MediaType.APPLICATION_JSON).content("{}")
@@ -513,10 +513,13 @@ class SecurityConfigTests {
                         .cookie(new Cookie(COOKIE, gastSitzung())))
                 .andExpect(status().isBadRequest());
 
-        // S5, A15: Generieren darf jeder Angemeldete, auch ein GAST - der Endpunkt liegt
-        // bewusst NICHT unter /admin/. Begrenzt wird ueber das Kontingent, nicht ueber die
-        // Rolle. Der leere Koerper faellt danach durch die Eingabepruefung, und genau das ist
-        // der Beleg: Ein 400 kommt erst zustande, wenn die Filterchain durchgelassen hat.
+        // S5, A15: Die Filterchain laesst jede angemeldete Sitzung an /teams/generieren, auch
+        // einen GAST - der Endpunkt liegt bewusst NICHT unter /admin/. Wer tatsaechlich
+        // generieren darf (Admin oder Teilnehmer mit Zusage), entscheidet seit dem 22.10.2026
+        // der Dienst anhand der Termindaten (403 KEINE_ZUSAGE; siehe TeamGeneratorTests), und
+        // das Kontingent begrenzt die Laeufe. Der leere Koerper faellt VOR dem Dienst durch die
+        // Eingabepruefung, und genau das ist der Beleg: Ein 400 kommt erst zustande, wenn die
+        // Filterchain durchgelassen hat.
         mockMvc.perform(post("/api/v1/teams/generieren")
                         .contentType(MediaType.APPLICATION_JSON).content("{}")
                         .cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))

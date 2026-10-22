@@ -173,7 +173,8 @@ public class TerminVerwaltungController {
      *
      * <p>Der Vorgang zaehlt als Teilnehmeraenderung und erhoeht die
      * {@code teilnehmerVersion} des Termins (A15) - der Teilnehmerkreis bleibt, seine
-     * Zusammensetzung nach Staerke nicht.
+     * Zusammensetzung nach Staerke nicht - und oeffnet das Generierungskontingent neu
+     * ({@code kontingent_version}, seit 22.10.2026).
      *
      * @param anfrage Termin, Gastname und neue Stufe
      * @param request fuer die Ermittlung der Client-IP

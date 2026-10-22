@@ -799,7 +799,8 @@ class SpielerControllerTests {
     // --------------------------------------------------------------------- Teilnehmer-Version
 
     /**
-     * Eine Skillaenderung erhoeht die {@code teilnehmer_version} kuenftiger Termine (A15).
+     * Eine Skillaenderung erhoeht {@code teilnehmer_version} und {@code kontingent_version}
+     * kuenftiger Termine (A15).
      *
      * <p><b>Der Pflichtpunkt aus S3</b>, Abschnitt 3.5: Dort stand der Vorgang mangels
      * {@code spieltag}-Dienst nur als Kommentar. Eine geaenderte Bewertung aendert nicht, wer
@@ -820,6 +821,9 @@ class SpielerControllerTests {
                 .andExpect(status().isNoContent());
 
         assertThat(teilnehmerVersion(terminId)).isEqualTo(1);
+        assertThat(kontingentVersion(terminId))
+                .as("Ein Skillwechsel oeffnet das Generierungskontingent (22.10.2026)")
+                .isEqualTo(1);
     }
 
     /**
@@ -844,6 +848,8 @@ class SpielerControllerTests {
 
         assertThat(teilnehmerVersion(vergangen)).as("gespielt ist gespielt").isZero();
         assertThat(teilnehmerVersion(abgesagt)).as("wer abgesagt hat, spielt nicht mit").isZero();
+        assertThat(kontingentVersion(vergangen)).isZero();
+        assertThat(kontingentVersion(abgesagt)).isZero();
     }
 
     // --------------------------------------------------------------------- Sperren und Zusagen
@@ -877,7 +883,7 @@ class SpielerControllerTests {
      * Die {@code teilnehmer_version} steigt dabei - und zwar <b>bevor</b> die Zusage faellt.
      *
      * <p><b>Die Reihenfolge ist die ganze Schwierigkeit des Nachtrags.</b>
-     * {@code teilnehmerVersionErhoehenFuerSpieler} sucht ueber
+     * {@code teilnehmerVersionErhoehenFuerSpieler} (Sperren) sucht ueber
      * {@code EXISTS (... AND tn.zusage)}; steht die Zusage schon auf {@code false}, findet es
      * nichts mehr. Falsch herum ist der Code lauffaehig und wirkungslos: Die Kontingente
      * blieben verbraucht, bestehende Einteilungen faelschlich aktuell - und dieser Fall waere
@@ -891,6 +897,22 @@ class SpielerControllerTests {
         blockieren(spielerId, true).andExpect(status().isNoContent());
 
         assertThat(teilnehmerVersion(terminId)).isEqualTo(1);
+    }
+
+    /**
+     * Das Sperren oeffnet das Generierungskontingent <b>nicht</b> (22.10.2026).
+     *
+     * <p>Es ist ein Weggang und damit eine Absage: Die Einteilung veraltet
+     * ({@code teilnehmer_version} steigt), aber niemand bekommt dadurch einen weiteren Lauf.
+     */
+    @Test
+    void sperrenOeffnetDasKontingentNicht() throws Exception {
+        Long spielerId = ersterSpieler();
+        Long terminId = terminMitZusage(LocalDate.now().plusDays(305), spielerId);
+
+        blockieren(spielerId, true).andExpect(status().isNoContent());
+
+        assertThat(kontingentVersion(terminId)).isZero();
     }
 
     /**
@@ -929,6 +951,11 @@ class SpielerControllerTests {
                 INSERT INTO spieltag.teilnahme (termin_id, spieler_id, zusage) VALUES (?, ?, true)
                 """, terminId, spielerId);
         return terminId;
+    }
+
+    private int kontingentVersion(Long terminId) {
+        return jdbc.queryForObject(
+                "SELECT kontingent_version FROM spieltag.termin WHERE id = ?", Integer.class, terminId);
     }
 
     private int teilnehmerVersion(Long terminId) {

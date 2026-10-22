@@ -77,13 +77,14 @@ public interface TerminRepositoryCustom {
     Optional<Long> einfuegenWennFrei(Long serieId, LocalDate datum, LocalTime uhrzeit, String ort);
 
     /**
-     * Erhoeht {@code teilnehmer_version} eines Termins um eins (A15).
+     * Erhoeht {@code teilnehmer_version} eines Termins um eins - <b>und nur sie</b> (A15).
      *
-     * <p>Der Zaehler steigt bei <b>jeder</b> Teilnehmeraenderung und ist ab S5 der einzige
-     * Ausloeser fuer das Zuruecksetzen des Generierungskontingents und das
-     * Veraltet-Kennzeichen einer Teameinteilung. <b>Eine Luecke laesst sich spaeter nicht
-     * mehr rekonstruieren</b> - deshalb wird er schon in S4 gefuehrt, obwohl ihn hier noch
-     * niemand auswertet.
+     * <p>Der Zaehler steigt bei <b>jeder</b> Teilnehmeraenderung und bestimmt das
+     * Veraltet-Kennzeichen einer Teameinteilung. <b>Das Kontingent oeffnet er nicht</b>
+     * (Ergaenzung vom 22.10.2026): Dafuer ist {@code kontingent_version} zustaendig, und der
+     * Aufrufer waehlt bewusst zwischen dieser Methode und
+     * {@link #teilnehmerUndKontingentVersionErhoehen}. Gedacht fuer alles, was den Kreis nur
+     * <i>verkleinert</i> - die Absage.
      *
      * @param terminId betroffener Termin
      * @return Anzahl geaenderter Zeilen; {@code 0}, wenn es die Id nicht gibt
@@ -91,12 +92,42 @@ public interface TerminRepositoryCustom {
     int teilnehmerVersionErhoehen(Long terminId);
 
     /**
+     * Erhoeht {@code teilnehmer_version} <b>und</b> {@code kontingent_version} eines Termins
+     * um eins (A15, Ergaenzung vom 22.10.2026).
+     *
+     * <p>Fuer jede Aenderung, die etwas Neues in den Kreis bringt und deshalb eine weitere
+     * Einteilung rechtfertigt: eine neue Zusage und die Aenderung einer Gast-Stufe.
+     *
+     * @param terminId betroffener Termin
+     * @return Anzahl geaenderter Zeilen; {@code 0}, wenn es die Id nicht gibt
+     */
+    int teilnehmerUndKontingentVersionErhoehen(Long terminId);
+
+    /**
      * Erhoeht {@code teilnehmer_version} aller <b>kuenftigen</b> Termine, an denen ein
-     * Spieler zugesagt hat (A15, Nachtrag aus S3, Abschnitt 3.5).
+     * Spieler zugesagt hat - <b>und nur sie</b> (A15, Nachtrag aus S3, Abschnitt 3.5).
+     *
+     * <p>Fuer das Sperren: Es nimmt Zusagen zurueck, verhaelt sich also wie eine Absage. Die
+     * Einteilung veraltet, das Kontingent bleibt, wie es ist. Fuer eine Skillaenderung gilt
+     * {@link #teilnehmerUndKontingentVersionErhoehenFuerSpieler}.
+     *
+     * <p><b>Nur kuenftige Termine.</b> Ein gespieltes Training bleibt unberuehrt.
+     *
+     * @param spielerId Profil, dessen Zusagen zurueckgenommen werden
+     * @param jetzt     Vergleichszeitpunkt aus der {@code Clock}-Bean
+     * @return Anzahl betroffener Termine
+     */
+    int teilnehmerVersionErhoehenFuerSpieler(Long spielerId, LocalDateTime jetzt);
+
+    /**
+     * Erhoeht {@code teilnehmer_version} <b>und</b> {@code kontingent_version} aller
+     * <b>kuenftigen</b> Termine, an denen ein Spieler zugesagt hat (A15, Nachtrag aus S3,
+     * Abschnitt 3.5; Ergaenzung vom 22.10.2026).
      *
      * <p>Eine Skillaenderung ist eine Teilnehmeraenderung: Sie aendert nicht, <i>wer</i>
-     * mitspielt, wohl aber die Grundlage jeder Teameinteilung. In S3 war der Vorgang mangels
-     * {@code spieltag}-Dienst nicht umsetzbar und stand dort als vorbereiteter Kommentar.
+     * mitspielt, wohl aber die Grundlage jeder Teameinteilung - dieselben Namen ergeben eine
+     * andere Aufteilung. Deshalb darf danach auch wieder generiert werden. <b>Betroffen sind
+     * nur Termine mit Zusage des Spielers</b>: Wer abgesagt hat, steht in keiner Einteilung.
      *
      * <p><b>Nur kuenftige Termine.</b> Eine Skillaenderung macht die Einteilung eines
      * vergangenen Spiels nicht ungueltig - es ist gespielt worden.
@@ -105,7 +136,7 @@ public interface TerminRepositoryCustom {
      * @param jetzt     Vergleichszeitpunkt aus der {@code Clock}-Bean
      * @return Anzahl betroffener Termine
      */
-    int teilnehmerVersionErhoehenFuerSpieler(Long spielerId, LocalDateTime jetzt);
+    int teilnehmerUndKontingentVersionErhoehenFuerSpieler(Long spielerId, LocalDateTime jetzt);
 
     /**
      * Liest Status, Fixierung und Teilnehmerzaehler eines Termins (S5 Abschnitte 2.4, 6.3, 7.1).

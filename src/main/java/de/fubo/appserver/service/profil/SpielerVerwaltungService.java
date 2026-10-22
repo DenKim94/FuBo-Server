@@ -331,7 +331,8 @@ public class SpielerVerwaltungService {
      * Teilnehmeraenderung. Aendert der Admin einen Skillwert, ist jede bereits erzeugte
      * Teameinteilung fuer einen kuenftigen Termin, an dem dieser Spieler zugesagt hat,
      * veraltet - und der einzige zulaessige Ausloeser dafuer ist das Hochzaehlen von
-     * {@code spieltag.termin.teilnehmer_version}.
+     * {@code spieltag.termin.teilnehmer_version} (und, fuer das Kontingent, von
+     * {@code kontingent_version}; seit dem 22.10.2026 steigen beide).
      *
      * <p><b>Das geschieht hier noch nicht.</b> {@code spieltag} hat in S3 weder Service noch
      * Entity; beides entsteht in S4. Der Aufruf ist dort als Pflichtpunkt aufzunehmen, nicht
@@ -402,7 +403,7 @@ public class SpielerVerwaltungService {
             //
             // Und nur beim Bearbeiten: Ein frisch angelegtes Profil hat noch keine Teilnahme,
             // an der ein Termin haengen koennte - dort liefe die Abfrage ins Leere.
-            int betroffen = terminService.teilnehmerVersionErhoehenFuerSpieler(spielerId);
+            int betroffen = terminService.skillaenderungNachtragen(spielerId);
             if (betroffen > 0) {
                 LOG.info("Skilländerung an Profil {}: {} künftige Termine als veraltet markiert.",
                         spielerId, betroffen);

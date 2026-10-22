@@ -111,6 +111,7 @@ class TerminVerwaltungControllerTests {
         assertThat(zeile.get("ort")).isEqualTo("Sporthalle Nord");
         assertThat(zeile.get("serie_id")).as("Ein Einzeltermin gehoert zu keiner Serie").isNull();
         assertThat(((Number) zeile.get("teilnehmer_version")).intValue()).isZero();
+        assertThat(((Number) zeile.get("kontingent_version")).intValue()).isZero();
     }
 
     /**
@@ -429,13 +430,15 @@ class TerminVerwaltungControllerTests {
      * Der Admin korrigiert die Selbsteinschaetzung eines Gastes - und nur sie.
      *
      * <p>Weder Zusage noch Meldezeit aendern sich; die Position in der Warteschlange bleibt.
-     * Der Vorgang zaehlt aber als Teilnehmeraenderung (A15).
+     * Der Vorgang zaehlt aber als Teilnehmeraenderung (A15): Beide Zaehler steigen - die
+     * Einteilung veraltet, und das Generierungskontingent oeffnet sich (22.10.2026).
      */
     @Test
     void gastStufeAendernSetztNurDieStufe() throws Exception {
         Long terminId = angelegterTermin(tag(36));
         gastTeilnahmeAnlegen(terminId, "Testgast Klara", "SCHWACH");
         int vorher = teilnehmerVersion(terminId);
+        int kontingentVorher = kontingentVersion(terminId);
 
         gastStufe(terminId, "Testgast Klara", "STARK").andExpect(status().isNoContent());
 
@@ -444,6 +447,7 @@ class TerminVerwaltungControllerTests {
         assertThat(zeile.get("gast_stufe")).isEqualTo("STARK");
         assertThat(zeile.get("zusage")).as("Die Zusage bleibt unberuehrt").isEqualTo(true);
         assertThat(teilnehmerVersion(terminId)).isEqualTo(vorher + 1);
+        assertThat(kontingentVersion(terminId)).isEqualTo(kontingentVorher + 1);
     }
 
     /** Das Protokoll haelt alten und neuen Wert fest. */
@@ -873,6 +877,11 @@ class TerminVerwaltungControllerTests {
                 INSERT INTO spieltag.teilnahme (termin_id, gast_name, gast_stufe, zusage)
                 VALUES (?, ?, ?, true)
                 """, terminId, gastName, stufe);
+    }
+
+    private int kontingentVersion(Long terminId) {
+        return jdbc.queryForObject(
+                "SELECT kontingent_version FROM spieltag.termin WHERE id = ?", Integer.class, terminId);
     }
 
     private int teilnehmerVersion(Long terminId) {

@@ -32,6 +32,12 @@ import java.time.OffsetDateTime;
  * Optimistic Locking der Zeile (A5), {@link #teilnehmerVersion} zaehlt die
  * Teilnehmeraenderungen (A15). Die erste steigt bei jedem Schreibvorgang durch Hibernate,
  * die zweite ausschliesslich dann, wenn sich der Teilnehmerkreis aendert.
+ *
+ * <p><b>Dazu {@code kontingent_version} (V016, 22.10.2026):</b> Sie steigt nur bei einer neuen
+ * Zusage, einem Skillwechsel und einer Gast-Stufenaenderung - nicht bei einer Absage - und ist
+ * Teil des Schluessels des Generierungskontingents. Die Spalte ist hier bewusst <b>nicht</b>
+ * abgebildet: Sie wird ausschliesslich per nativer SQL-Anweisung (zusammen mit
+ * {@code teilnehmer_version}) fortgeschrieben und gelesen.
  */
 @Entity
 @Table(name = "termin", schema = "spieltag")
@@ -73,8 +79,9 @@ public class Termin {
      * Zaehler aller Teilnehmeraenderungen dieses Termins (A15).
      *
      * <p>{@code INTEGER}, nicht {@code BIGINT} - anders als {@link #version}. In S4 wird er
-     * nur gefuehrt; ab S5 ist er der <b>einzige</b> Ausloeser fuer das Zuruecksetzen des
-     * Generierungskontingents und das Veraltet-Kennzeichen einer Teameinteilung.
+     * nur gefuehrt; ab S5 bestimmt er das Veraltet-Kennzeichen einer Teameinteilung und die
+     * Pruefung am Ende eines Laufs ({@code TEILNEHMER_GEAENDERT}). Das Generierungskontingent
+     * haengt seit V016 an {@code kontingent_version}, nicht mehr an diesem Zaehler.
      */
     @Column(name = "teilnehmer_version", nullable = false)
     private int teilnehmerVersion;

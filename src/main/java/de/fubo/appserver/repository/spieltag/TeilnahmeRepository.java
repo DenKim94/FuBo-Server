@@ -46,15 +46,39 @@ public class TeilnahmeRepository {
      * <p><b>Eine Absage laesst {@code gemeldet_am} unberuehrt</b> - sie steht ohnehin nicht
      * in der Reihenfolge. Sonst verloere jemand, der versehentlich absagt und sofort
      * korrigiert, seinen Platz an alle, die in der Zwischenzeit nichts getan haben.
+     *
+     * <h2>Die Antwort sagt, ob es eine <i>neue</i> Zusage war</h2>
+     * Ergaenzung vom 22.10.2026 (A15): Nur eine neue Zusage oeffnet das Generierungskontingent
+     * wieder, eine Absage und eine wiederholte Zusage nicht. {@code vorher} liest den Stand
+     * <b>vor</b> der Anweisung - alle Teile einer {@code WITH}-Anweisung sehen denselben
+     * Schnappschuss -, {@code neu} schreibt. So kommen Schreiben und Vorher-Wert aus einem
+     * einzigen Zugriff, ohne Fenster dazwischen; dieselbe Idee wie beim Selbstverbund in
+     * {@link #SQL_GAST_STUFE}. <b>Neu heisst:</b> jetzt zugesagt und vorher nicht - ohne Zeile
+     * oder mit Absage.
+     *
+     * <p><b>Bekannte Grenze:</b> Druecken zwei Aufrufe desselben Spielers gleichzeitig auf
+     * "Zusage", sehen beide den Stand ohne Zeile, und beide melden "neu". Folge ist eine
+     * ueberzaehlige Oeffnung des Kontingents durch genau diesen Spieler - ein Zaehler, der
+     * einmal zu viel steigt, kein Datenverlust.
      */
     private static final String SQL_RUECKMELDUNG_SPIELER = """
-            INSERT INTO spieltag.teilnahme (termin_id, spieler_id, zusage, gemeldet_am)
-            VALUES (:terminId, :spielerId, :zusage, now())
-            ON CONFLICT ON CONSTRAINT uq_teilnahme_spieler DO UPDATE
-               SET zusage      = EXCLUDED.zusage,
-                   gemeldet_am = CASE WHEN EXCLUDED.zusage THEN now()
-                                      ELSE spieltag.teilnahme.gemeldet_am END,
-                   version     = spieltag.teilnahme.version + 1
+            WITH vorher AS (
+                SELECT zusage
+                  FROM spieltag.teilnahme
+                 WHERE termin_id  = :terminId
+                   AND spieler_id = :spielerId
+            ), neu AS (
+                INSERT INTO spieltag.teilnahme (termin_id, spieler_id, zusage, gemeldet_am)
+                VALUES (:terminId, :spielerId, :zusage, now())
+                ON CONFLICT ON CONSTRAINT uq_teilnahme_spieler DO UPDATE
+                   SET zusage      = EXCLUDED.zusage,
+                       gemeldet_am = CASE WHEN EXCLUDED.zusage THEN now()
+                                          ELSE spieltag.teilnahme.gemeldet_am END,
+                       version     = spieltag.teilnahme.version + 1
+                RETURNING zusage
+            )
+            SELECT (SELECT zusage FROM neu)
+                   AND NOT COALESCE((SELECT zusage FROM vorher), false) AS neue_zusage
             """;
 
     /**
@@ -75,16 +99,51 @@ public class TeilnahmeRepository {
      * Spiels. <b>Eine erneute Rueckmeldung ueberschreibt sie</b>: Meldet sich ein Gast neu
      * an und stuft sich anders ein, gilt die neue Stufe ab seiner naechsten Rueckmeldung -
      * und damit auch dann, wenn der Admin sie zwischenzeitlich korrigiert hatte.
+     *
+     * <p><b>Die Antwort sagt wie beim Spieler, ob es eine neue Zusage war</b> - Begruendung
+     * und bekannte Grenze stehen an {@link #SQL_RUECKMELDUNG_SPIELER}.
      */
     private static final String SQL_RUECKMELDUNG_GAST = """
-            INSERT INTO spieltag.teilnahme (termin_id, gast_name, gast_stufe, zusage, gemeldet_am)
-            VALUES (:terminId, :gastName, :gastStufe, :zusage, now())
-            ON CONFLICT (termin_id, gast_name) WHERE gast_name IS NOT NULL DO UPDATE
-               SET zusage      = EXCLUDED.zusage,
-                   gast_stufe  = EXCLUDED.gast_stufe,
-                   gemeldet_am = CASE WHEN EXCLUDED.zusage THEN now()
-                                      ELSE spieltag.teilnahme.gemeldet_am END,
-                   version     = spieltag.teilnahme.version + 1
+            WITH vorher AS (
+                SELECT zusage
+                  FROM spieltag.teilnahme
+                 WHERE termin_id = :terminId
+                   AND gast_name = :gastName
+            ), neu AS (
+                INSERT INTO spieltag.teilnahme (termin_id, gast_name, gast_stufe, zusage, gemeldet_am)
+                VALUES (:terminId, :gastName, :gastStufe, :zusage, now())
+                ON CONFLICT (termin_id, gast_name) WHERE gast_name IS NOT NULL DO UPDATE
+                   SET zusage      = EXCLUDED.zusage,
+                       gast_stufe  = EXCLUDED.gast_stufe,
+                       gemeldet_am = CASE WHEN EXCLUDED.zusage THEN now()
+                                          ELSE spieltag.teilnahme.gemeldet_am END,
+                       version     = spieltag.teilnahme.version + 1
+                RETURNING zusage
+            )
+            SELECT (SELECT zusage FROM neu)
+                   AND NOT COALESCE((SELECT zusage FROM vorher), false) AS neue_zusage
+            """;
+
+    /**
+     * Hat dieser Aufrufer fuer den Termin zugesagt? (A15, Ergaenzung vom 22.10.2026)
+     *
+     * <p><b>Gezaehlt wird die Zusage, nicht die Aufstellung.</b> Wer in der Warteschlange steht,
+     * hat zugesagt und rueckt nach - er steht in der Teilnehmerliste und darf generieren. Eine
+     * Absage zaehlt nicht, eine fehlende Zeile ebenso wenig.
+     *
+     * <p><b>{@code NULL} heisst hier "trifft nie"</b>, wie im Rumpf der Terminabfrage: Bei einer
+     * Spielersitzung ist {@code :gastName} {@code NULL}, bei einer Gastsitzung
+     * {@code :spielerId}, und der jeweils andere Vergleich ergibt {@code UNKNOWN}. Wer
+     * {@code NULL} hier fuer "egal" haelt, gibt jedem Gast die Zusage eines Spielers.
+     */
+    private static final String SQL_HAT_ZUGESAGT = """
+            SELECT EXISTS (
+                SELECT 1
+                  FROM spieltag.teilnahme tn
+                 WHERE tn.termin_id = :terminId
+                   AND tn.zusage
+                   AND (tn.spieler_id = :spielerId OR tn.gast_name = :gastName)
+            )
             """;
 
     /**
@@ -216,14 +275,18 @@ public class TeilnahmeRepository {
      * @param terminId  betroffener Termin
      * @param spielerId Profil des Meldenden
      * @param zusage    {@code true} Zusage, {@code false} Absage
-     * @return Anzahl geschriebener Zeilen; immer 1
+     * @return {@code true}, wenn das eine <b>neue</b> Zusage war: jetzt zugesagt, vorher nicht
+     *         (keine Zeile oder Absage). {@code false} bei einer Absage und bei einer
+     *         wiederholten Zusage
      */
-    public int rueckmeldungSpieler(Long terminId, Long spielerId, boolean zusage) {
-        return jdbc.sql(SQL_RUECKMELDUNG_SPIELER)
+    public boolean rueckmeldungSpieler(Long terminId, Long spielerId, boolean zusage) {
+        Boolean neueZusage = jdbc.sql(SQL_RUECKMELDUNG_SPIELER)
                 .param("terminId", terminId)
                 .param("spielerId", spielerId)
                 .param("zusage", zusage)
-                .update();
+                .query(Boolean.class)
+                .single();
+        return Boolean.TRUE.equals(neueZusage);
     }
 
     /**
@@ -233,15 +296,40 @@ public class TeilnahmeRepository {
      * @param gastName  Name aus der Sitzung, nie aus dem Anfragekoerper
      * @param gastStufe Selbsteinschaetzung aus der Sitzung; wird in die Zeile kopiert
      * @param zusage    {@code true} Zusage, {@code false} Absage
-     * @return Anzahl geschriebener Zeilen; immer 1
+     * @return {@code true}, wenn das eine <b>neue</b> Zusage war - wie bei
+     *         {@link #rueckmeldungSpieler}
      */
-    public int rueckmeldungGast(Long terminId, String gastName, GastStufe gastStufe, boolean zusage) {
-        return jdbc.sql(SQL_RUECKMELDUNG_GAST)
+    public boolean rueckmeldungGast(Long terminId, String gastName, GastStufe gastStufe,
+                                    boolean zusage) {
+        Boolean neueZusage = jdbc.sql(SQL_RUECKMELDUNG_GAST)
                 .param("terminId", terminId)
                 .param("gastName", gastName)
                 .param("gastStufe", gastStufe.name())
                 .param("zusage", zusage)
-                .update();
+                .query(Boolean.class)
+                .single();
+        return Boolean.TRUE.equals(neueZusage);
+    }
+
+    /**
+     * Prueft, ob ein Spieler oder Gast fuer den Termin zugesagt hat.
+     *
+     * <p>Genau eines der beiden Merkmale ist gesetzt - je nach Sitzung; das andere ist
+     * {@code null} und trifft nie (siehe {@link #SQL_HAT_ZUGESAGT}).
+     *
+     * @param terminId  betroffener Termin
+     * @param spielerId Profil-Id aus der Sitzung oder {@code null} bei einem Gast
+     * @param gastName  Gastname aus der Sitzung oder {@code null} bei einem Spieler
+     * @return {@code true}, wenn eine Teilnahme mit {@code zusage = true} existiert
+     */
+    public boolean hatZugesagt(Long terminId, Long spielerId, String gastName) {
+        Boolean zugesagt = jdbc.sql(SQL_HAT_ZUGESAGT)
+                .param("terminId", terminId)
+                .param("spielerId", spielerId)
+                .param("gastName", gastName)
+                .query(Boolean.class)
+                .single();
+        return Boolean.TRUE.equals(zugesagt);
     }
 
     /**

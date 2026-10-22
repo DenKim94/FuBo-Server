@@ -146,7 +146,7 @@ class MigrationTests {
 
         String einfuegen = """
                 INSERT INTO spieltag.generierung_kontingent
-                       (termin_id, akteur_spieler_id, akteur_gast_slot_id, teilnehmer_version, anzahl)
+                       (termin_id, akteur_spieler_id, akteur_gast_slot_id, kontingent_version, anzahl)
                 VALUES (?, NULL, 1, 0, 1)
                 """;
 

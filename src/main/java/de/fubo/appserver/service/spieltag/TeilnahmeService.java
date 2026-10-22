@@ -71,10 +71,17 @@ public class TeilnahmeService {
      * Prinzip, mit dem {@code spielerId} nie aus dem Koerper kommt.
      *
      * <h2>Der Termin wird ueber die native Abfrage geladen, nicht ueber {@code findById}</h2>
-     * Der Zaehler {@code teilnehmer_version} wird gleich per SQL erhoeht, und das schreibt
-     * auch {@code termin.version} fort. Eine daneben verwaltete Entity truege danach eine
+     * Die Zaehler {@code teilnehmer_version} und {@code kontingent_version} werden gleich per
+     * SQL erhoeht, und das schreibt auch {@code termin.version} fort. Eine daneben verwaltete Entity truege danach eine
      * veraltete Version im Speicher, und der naechste Flush scheiterte an einem
      * Sperrkonflikt, den niemand verursacht hat.
+     *
+     * <h2>Zwei Zaehler, zwei Ausloeser (Aenderung vom 22.10.2026)</h2>
+     * {@code teilnehmer_version} steigt bei <b>jeder</b> Rueckmeldung, die etwas aendert: Sie
+     * kennzeichnet eine gespeicherte Einteilung als veraltet. {@code kontingent_version}
+     * steigt nur bei einer <b>neuen Zusage</b> - Zusage ohne vorherige Zusage, auch nach einer
+     * Absage; sie ist Teil des Kontingentschluessels. Eine Absage verschafft also niemandem
+     * einen weiteren Generierungslauf.
      *
      * @param terminId betroffener Termin
      * @param zusage   {@code true} Zusage, {@code false} Absage
@@ -93,20 +100,33 @@ public class TeilnahmeService {
 
         pruefeOffen(termin);
 
+        boolean neueZusage;
         if (sitzung.rolle() == Rolle.GAST) {
             // Die Stufe wird kopiert, nicht verwiesen: Die Sitzung endet, die Teilnahme
             // bleibt - und der Teamgenerator in S5 braucht sie zum Zeitpunkt des Spiels.
             GastStufe stufe = sitzung.gastStufe() != null ? sitzung.gastStufe() : GastStufe.MITTEL;
-            teilnahmeRepository.rueckmeldungGast(terminId, sitzung.gastName(), stufe, zusage);
+            neueZusage = teilnahmeRepository.rueckmeldungGast(
+                    terminId, sitzung.gastName(), stufe, zusage);
         } else {
             pruefeKeinAdminprofil(sitzung);
-            teilnahmeRepository.rueckmeldungSpieler(terminId, sitzung.spielerId(), zusage);
+            neueZusage = teilnahmeRepository.rueckmeldungSpieler(
+                    terminId, sitzung.spielerId(), zusage);
         }
 
         // In derselben Transaktion wie die Rueckmeldung - sonst gaebe es einen Moment, in dem
         // eine Teameinteilung als aktuell gilt, obwohl der Teilnehmerkreis schon ein anderer
-        // ist. Auch eine Absage zaehlt: Sie aendert den Kreis genauso.
-        terminRepository.teilnehmerVersionErhoehen(terminId);
+        // ist. Auch eine Absage zaehlt dafuer: Sie aendert den Kreis genauso.
+        //
+        // Das Generierungskontingent dagegen oeffnet nur eine NEUE Zusage (Aenderung vom
+        // 22.10.2026): Wer absagt, verkleinert den Kreis und liefert keinen Grund fuer einen
+        // weiteren Lauf; eine wiederholte Zusage aendert gar nichts. Ob die Zusage neu ist,
+        // meldet die Rueckmeldung selbst - der Zustand davor ist nur in derselben Anweisung
+        // verlaesslich zu lesen (siehe TeilnahmeRepository).
+        if (neueZusage) {
+            terminRepository.teilnehmerUndKontingentVersionErhoehen(terminId);
+        } else {
+            terminRepository.teilnehmerVersionErhoehen(terminId);
+        }
     }
 
     /**
@@ -141,7 +161,9 @@ public class TeilnahmeService {
      *
      * <h2>Eine Stufenaenderung ist eine Teilnehmeraenderung (A15)</h2>
      * Der Fall ist dem Skillwechsel eines Spielers gleich: Der Teilnehmerkreis bleibt, seine
-     * Zusammensetzung nach Staerke nicht. Der Zaehler steigt deshalb mit - <b>aber nur fuer
+     * Zusammensetzung nach Staerke nicht. Beide Zaehler steigen deshalb mit - die
+     * Einteilung veraltet, und das Generierungskontingent oeffnet sich neu (die Aenderung
+     * ist eine ausdruecklich genannte Ausnahme der Absage-Regel) - <b>aber nur fuer
      * diesen einen Termin</b>: Der Endpunkt spricht eine einzelne Teilnahme an, nicht alle
      * Meldungen dieses Gastnamens. Ein gleicher Name an einem anderen Termin kann eine ganz
      * andere Person sein; Gastnamen sind je Termin eindeutig, nicht darueber hinaus.
@@ -161,7 +183,7 @@ public class TeilnahmeService {
                 .orElseThrow(() -> new FachlicherFehler(Fehlercode.INHALT_NICHT_GEFUNDEN,
                         "Für diesen Termin liegt keine Teilnahme dieses Gastes vor."));
 
-        terminRepository.teilnehmerVersionErhoehen(terminId);
+        terminRepository.teilnehmerUndKontingentVersionErhoehen(terminId);
 
         // Alter und neuer Wert, wie bei der Konfiguration: Es ist ein Wert mit fachlicher
         // Bedeutung, und "worauf stand die Stufe vorher" ist ohne ihn nicht zu beantworten.

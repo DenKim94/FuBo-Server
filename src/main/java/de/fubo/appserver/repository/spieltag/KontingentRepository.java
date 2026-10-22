@@ -15,12 +15,17 @@ import java.util.Optional;
  * Griff wie bei {@code GastSlotRepository} und {@code TeilnahmeRepository}.
  *
  * <h2>Zurueckgesetzt wird nie</h2>
- * {@code teilnehmer_version} steht im Schluessel. Steigt der Zaehler - jemand sagt zu, ab,
- * eine Gast-Stufe oder ein Skillwert aendert sich -, passt keine bestehende Zeile mehr, und
- * der naechste {@code INSERT} legt eine neue mit {@code anzahl = 1} an. <b>Kein Loeschjob,
- * keine Aufraeumlogik, kein Wettlauf.</b> Preis ist bis zu eine Zeile je Nutzer und
- * Teilnehmeraenderung; bei 22 Teilnehmern und 30 Aenderungen sind das 660 Zeilen je Spieltag,
- * und {@code ON DELETE CASCADE} am Termin raeumt sie mit ihm ab.
+ * {@code kontingent_version} steht im Schluessel. Steigt der Zaehler - jemand sagt <b>neu</b>
+ * zu, eine Gast-Stufe oder ein Skillwert aendert sich -, passt keine bestehende Zeile mehr,
+ * und der naechste {@code INSERT} legt eine neue mit {@code anzahl = 1} an. <b>Kein
+ * Loeschjob, keine Aufraeumlogik, kein Wettlauf.</b> Preis ist bis zu eine Zeile je Nutzer
+ * und Oeffnung des Kontingents; bei 22 Teilnehmern und 30 Aenderungen sind das 660 Zeilen je
+ * Spieltag, und {@code ON DELETE CASCADE} am Termin raeumt sie mit ihm ab.
+ *
+ * <p><b>Eine Absage steht nicht im Schluessel</b> (Ergaenzung vom 22.10.2026). Sie steigert
+ * {@code teilnehmer_version}, nicht {@code kontingent_version}: Wer absagt, verkleinert den
+ * Kreis und liefert nichts, das eine weitere Einteilung rechtfertigte. Frueher stand hier
+ * {@code teilnehmer_version}, und jede Absage verschaffte allen anderen einen weiteren Lauf.
  *
  * <h2>Der manuelle Lauf des Admins kommt hier nie an</h2>
  * A24 kostet kein Kontingent (0.6, Punkt 7): A15 zaehlt je <i>Termin</i> und
@@ -56,11 +61,11 @@ public class KontingentRepository {
     private static final String SQL_VERBRAUCHEN = """
             INSERT INTO spieltag.generierung_kontingent
                         (termin_id, akteur_spieler_id, akteur_gast_slot_id,
-                         teilnehmer_version, anzahl)
+                         kontingent_version, anzahl)
                  VALUES (:terminId,
                          CAST(:spielerId AS bigint),
                          CAST(:gastSlotId AS smallint),
-                         :teilnehmerVersion,
+                         :kontingentVersion,
                          1)
             ON CONFLICT ON CONSTRAINT uq_kontingent DO UPDATE
                     SET anzahl = spieltag.generierung_kontingent.anzahl + 1
@@ -83,17 +88,18 @@ public class KontingentRepository {
      * @param terminId          betroffener Termin
      * @param spielerId         Profil-Id des Aufrufers oder {@code null} bei einem Gast
      * @param gastSlotId        belegter Gastplatz oder {@code null} bei einem Spieler
-     * @param teilnehmerVersion Stand des Teilnehmerkreises; Teil des Schluessels
+     * @param kontingentVersion Stand des Kontingents am Termin ({@code kontingent_version});
+     *                          Teil des Schluessels
      * @param grenze            {@code configs.app_config.anz_team_generator}
      * @return die neue Anzahl; {@link Optional#empty()} heisst {@code KONTINGENT_ERSCHOEPFT}
      */
     public Optional<Short> verbrauche(Long terminId, Long spielerId, Short gastSlotId,
-                                      int teilnehmerVersion, short grenze) {
+                                      int kontingentVersion, short grenze) {
         return jdbc.sql(SQL_VERBRAUCHEN)
                 .param("terminId", terminId)
                 .param("spielerId", spielerId)
                 .param("gastSlotId", gastSlotId)
-                .param("teilnehmerVersion", teilnehmerVersion)
+                .param("kontingentVersion", kontingentVersion)
                 .param("grenze", grenze)
                 .query(Short.class)
                 .optional();
