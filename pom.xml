@@ -6,11 +6,11 @@
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
 		<version>4.1.1</version>
-		<relativePath/> <!-- lookup parent from repository -->
+		<relativePath/>
 	</parent>
 	<groupId>de.fubo</groupId>
 	<artifactId>app-server</artifactId>
-	<version>1.0.0</version>
+	<version>1.1.0</version>
 	<name>FuBo-Server</name>
 	<description>
 		Backend für die FuBo-App mit Spring Boot,
