@@ -79,3 +79,11 @@ setzen nichts zurueck - insbesondere wird ein geaendertes Passwort nicht uebersc
 > Eigenschaft der Installation, keine des Schemas: Eine Migration mit Platzhalter erzeugte
 > bei gleicher Pruefsumme je Installation andere Daten, und der Name bliebe unveraenderlich
 > in der Git-Historie stehen.
+
+### Lesen der Audit-Logs
+
+```
+docker exec -it fubo_db_dev psql -U <DB_USER> -d <DB_NAME> -P pager=off \
+  -c "SELECT zeitpunkt, aktion, details FROM profil.audit_log ORDER BY id DESC LIMIT 40;"
+
+```
