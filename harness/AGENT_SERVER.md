@@ -11,7 +11,8 @@
 > der Umsetzung der Abschnitte 5 bis 11 hinzugekommen sind – Tests und Verifikation stehen
 > dort noch aus.** Am 04.10.2026 um die Bestätigung der Namensänderung per E-Mail-PIN (A22)
 > ergänzt, am 18.10.2026 um den automatischen Wechsel auf `ABGESAGT` bei unterschrittener
-> Mindestzahl (A18). Jede Regel steht hier mit dem *einen* Grund, der sie trägt – wer
+> Mindestzahl (A18); am 22.10.2026 um die Teilnahmeprüfung am Team-Generator und die Trennung von
+> Veraltet-Kennzeichen und Kontingent (A15, `V016`) erweitert. Jede Regel steht hier mit dem *einen* Grund, der sie trägt – wer
 > sie ändern will, muss den Grund entkräften, nicht die Zeile löschen. **Vorfälle, Daten und
 > ausführliche Herleitungen stehen nicht mehr hier**, sondern in `CONTEXT_HANDOFF_SERVER.md`
 > (6.2 Festlegungen, 6.3 Fallstricke), in `harness/tmp/S<n>_UMSETZUNG.md` und in
@@ -101,9 +102,18 @@ Ergänzungen des Entwicklers sind als *Ergänzung* gekennzeichnet.
 
 **Teamgenerierung**
 
-- **A15** Kontingent je Nutzer und Spieltag; Rücksetzung ausschliesslich über
-  `teilnehmer_version`; neuer Seed je Lauf; bestehende Einteilungen bei Teilnehmeränderung als
-  veraltet gekennzeichnet.
+- **A15** Kontingent je Nutzer und Spieltag; neuer Seed je Lauf; bestehende Einteilungen bei
+  Teilnehmeränderung als veraltet gekennzeichnet. **Seit dem 22.10.2026 zwei Zähler:** Das
+  *Kontingent* öffnet sich ausschliesslich über `kontingent_version` – **neue Zusage, Änderung
+  eines Skillwerts und Änderung einer Gast-Stufe, nie eine Absage**; das *Veraltet-Kennzeichen*
+  hängt weiter an `teilnehmer_version` (jede Änderung am Kreis).
+  - **Wer generieren darf: der Admin und Teilnehmer mit Zusage an genau diesem Termin** (Spieler
+    wie Gast; Wartende zählen, sie haben zugesagt). Alle anderen: `403 KEINE_ZUSAGE`. Die Regel
+    hängt an Termindaten und steht im Dienst (`TeamGenerierungService#pruefeBerechtigung`), nicht
+    im Pfad – der Pfad `/teams/generieren` bleibt für jede angemeldete Sitzung offen.
+    **Reihenfolge: `404` (Termin unbekannt) → `403 KEINE_ZUSAGE` → Status/Fixierung → Kontingent.**
+    Die Berechtigung steht vor dem Status, damit ein Aussenstehender nichts über den Zustand
+    eines Termins erfährt, an dem er nicht teilnimmt, und vor dem Verbuchen des Kontingents.
 - **A20a** Teamgrössen unterscheiden sich um höchstens eins; Ausgleich über die Teamstärke
   (Optimierung auf **Summen**), das Team in Unterzahl bekommt tendenziell die stärkeren Spieler;
   kein Torwart-Zwang.
@@ -125,7 +135,7 @@ Ergänzungen des Entwicklers sind als *Ergänzung* gekennzeichnet.
     Teilnehmer ohne Teilnahmezeile passt nicht hinein, und ein Phantom-Termin machte aus einer
     Adminrechnung einen Spieltag. Nachrechenbar bleibt er über den Audit-Eintrag mit Teilnehmern,
     Seed und Verfahren.
-  - **Kein Kontingent** – A15 zählt je Termin und Teilnehmerstand, beides fehlt.
+  - **Kein Kontingent** – A15 zählt je Termin und Kontingentstand, beides fehlt.
   - **Eigener Endpunkt unter `/admin/`** (`/api/v1/admin/teams/generieren`) – ein Endpunkt mit
     zwei Zugangsregeln je nach Körperinhalt wäre die verbotene Prüfung im Controller. Er
     unterscheidet sich vom offenen `/api/v1/teams/generieren` **nur im Präfix**; beide stehen
@@ -347,7 +357,8 @@ bleibt trotzdem eine Regel, die beim Lesen auffallen soll. Der Teamgenerator lie
    Opfer. Adminaktionen ja, Nutzerhandlungen nein; die Korrektur einer Gast-Stufe durch den Admin
    ist die einzige Ausnahme.
 8. **Sperren nimmt die Zusagen künftiger, geplanter Termine zurück – erst die Version
-   erhöhen, dann die Zusage.** `teilnehmerVersionErhoehenFuerSpieler` sucht über
+   erhöhen, dann die Zusage.** `teilnehmerVersionErhoehenFuerSpieler` (nur `teilnehmer_version`:
+   ein Weggang ist eine Absage und öffnet das Kontingent nicht) sucht über
    `EXISTS (… AND tn.zusage)`; falsch herum ist der Code lauffähig und **wirkungslos**.
    Beide Schritte mit derselben Uhrzeit, sonst könnte ein Termin dazwischen die Grenze
    „künftig" überschreiten. Die Zahl geht in den bestehenden `PROFIL_BLOCKIERT`-Eintrag –
@@ -355,13 +366,46 @@ bleibt trotzdem eine Regel, die beim Lesen auffallen soll. Der Teamgenerator lie
 9. **Die Teilnehmerliste trägt keine Bewertungen** – sie erreicht jede Rolle, auch `GAST` (A12);
    eine rollenabhängige Liste müsste an jeder Stelle mitgedacht werden.
 
-### Teilnehmer-Version
+### Teilnehmer-Version und Kontingent-Version
 
-Je Termin ein Zähler, der bei jeder Teilnehmeränderung transaktional steigt; **einziger Auslöser**
-für Kontingent-Rücksetzung und Veraltet-Kennzeichen. Vier Auslöser (A15): Zusage, Absage, Änderung
-der Gast-Stufe und **Änderung eines Skillwerts** für alle künftigen Termine mit Zusage – letzterer
-als `TerminService#teilnehmerVersionErhoehenFuerSpieler`, damit die Profilverwaltung weder Tabelle
-noch Bedingung kennen muss.
+Je Termin **zwei** Zähler, die bei Teilnehmeränderungen transaktional steigen (`V016`, 22.10.2026).
+Vorher war es einer, und der erledigte zwei Aufgaben: Er kennzeichnete eine Einteilung als veraltet
+*und* stand im Schlüssel des Kontingents. **Folge war, dass jede Absage allen anderen einen
+weiteren Lauf verschaffte** – obwohl eine Absage den Kreis nur verkleinert und keinen Grund für
+eine erneute Einteilung liefert. Zwei Aufgaben mit verschiedenen Auslösern brauchen zwei Zähler.
+
+| Ereignis | `teilnehmer_version` (veraltet, Endprüfung) | `kontingent_version` (Kontingent) |
+|---|---|---|
+| neue Zusage (auch nach Absage) | +1 | +1 |
+| wiederholte Zusage | +1 | – |
+| Absage (auch wiederholt) | +1 | – |
+| Sperren eines Profils (Zusagen werden zurückgenommen) | +1 | – |
+| Änderung der Gast-Stufe durch den Admin | +1 | +1 |
+| Änderung eines Skillwerts (künftige Termine mit Zusage) | +1 | +1 |
+
+- **„Neue Zusage" ist ein Übergang, kein Zustand:** Zusage ohne vorherige Zusage-Zeile oder mit
+  `zusage = false`. Entschieden wird er in *derselben* SQL-Anweisung, die den Upsert ausführt
+  (Data-modifying CTE: `WITH vorher AS (SELECT …), neu AS (INSERT … ON CONFLICT … RETURNING)`,
+  Ergebnis `neue_zusage`) – ein getrenntes Lesen davor wäre bei gleichzeitigen Meldungen derselben
+  Person nicht verlässlich. Eine wiederholte Zusage darf das Kontingent nicht öffnen, sonst liesse
+  es sich durch Wiederholen aufladen.
+- **Die Methoden tragen den Unterschied im Namen:** `teilnehmerVersionErhoehen` (nur Veraltung –
+  Absage), `teilnehmerUndKontingentVersionErhoehen` (neue Zusage, Gast-Stufe),
+  `teilnehmerVersionErhoehenFuerSpieler` (Sperren) und
+  `teilnehmerUndKontingentVersionErhoehenFuerSpieler` (Skillwert). Wer einen neuen Auslöser
+  ergänzt, entscheidet damit bewusst, ob er das Kontingent öffnet.
+- **Skillwert-Nachtrag:** `TerminService#skillaenderungNachtragen` (früher
+  `teilnehmerVersionErhoehenFuerSpieler`), damit die Profilverwaltung weder Tabelle noch Bedingung
+  kennen muss.
+- **Die Endprüfung eines Laufs bleibt an `teilnehmer_version`:** Auch eine Absage *während* des
+  Laufs macht ihn ungültig (`409 TEILNEHMER_GEAENDERT`); der Lauf rollt vollständig zurück,
+  das verbuchte Kontingent eingeschlossen.
+- **`kontingent_version` ist in `Termin` nicht abgebildet**, wie `halle_abgesagt_am` – sie wird nur
+  per nativem SQL fortgeschrieben und gelesen (`TerminRepository#zustand`).
+- **Migration `V016`:** Spalte hinzufügen, mit `teilnehmer_version` vorbelegen (bestehende
+  Kontingentzeilen behalten ihren Schlüssel, niemand bekommt durch die Migration einen
+  zusätzlichen Lauf), `generierung_kontingent.teilnehmer_version` in `kontingent_version`
+  umbenennen (`uq_kontingent` bleibt bestehen).
 
 - **In derselben Transaktion wie die auslösende Änderung** – sonst gälte eine Einteilung als
   aktuell, während der Teilnehmerkreis schon ein anderer ist.
@@ -420,7 +464,8 @@ noch Bedingung kennen muss.
   erzwingt es aber nicht (Index, kein Constraint); wer das Ablösen vergisst, bekommt keinen
   Fehler, sondern zwei „aktuelle" Einteilungen.
 - **Das Kontingent wird nie zurückgesetzt, sondern durch einen neuen Schlüssel umgangen** – steigt
-  `teilnehmer_version`, passt keine bestehende Zeile mehr. Kein Löschjob, kein Wettlauf.
+  `kontingent_version` (neue Zusage, Skillwert, Gast-Stufe; **nie durch eine Absage**), passt keine
+  bestehende Zeile mehr. Kein Löschjob, kein Wettlauf.
   Verbucht wird in **einer** Anweisung (`INSERT … ON CONFLICT ON CONSTRAINT uq_kontingent DO
   UPDATE … WHERE anzahl < :grenze RETURNING anzahl`); eine leere Ergebnismenge heisst
   „erschöpft". **Über die Spaltenliste statt über den Constraint scheitert die Ableitung** –
@@ -1076,16 +1121,24 @@ ohne eigene Prüfung.
 
 ### Der Generierungslauf
 
+- **Erst die Berechtigung, dann alles andere.** `TeamGenerierungService#generieren` prüft nach der
+  Existenz des Termins, ob die Sitzung Admin ist oder zugesagt hat
+  (`TeilnahmeRepository#hatZugesagt`: Spieler über die Profil-Id, Gast über den Namen);
+  sonst `403 KEINE_ZUSAGE`. **Der Admin braucht keine Zusage** – er liest die Teams vor, auch ohne
+  mitzuspielen – und generiert mit eigenem Kontingent (Weggabelung D). Wer wieder abgesagt hat,
+  verliert das Recht; ein Gast ohne Zusage hat es nie.
 - **Das Kontingent wird vor der Rechnung verbucht.** Wer erst rechnet und dann prüft,
   verschenkt bei `EXHAUSTIV` eine Zehntelsekunde CPU an jeden, der zu oft drückt – und macht
   daraus ein Mittel, den Server zu beschäftigen.
 - **Der Schreibpfad liest den Termin nativ, nie über `findById`.** Status, `teams_fixiert` und
-  `teilnehmer_version` kommen aus *einer* Abfrage (`TerminRepository#zustand`). Eine geladene
+  beide Zähler kommen aus *einer* Abfrage (`TerminRepository#zustand`). Eine geladene
   Entity lieferte den Zähler aus dem Persistence-Context – also veraltet, sobald ein natives
   `UPDATE` ihn zwischendurch erhöht hat; dieselbe Regel wie beim Rückmeldepfad aus S4.
 - **Die `teilnehmer_version` wird am Ende gegengeprüft, statt den Termin zu sperren**
   (`409 TEILNEHMER_GEAENDERT`). Bei einem Vorgang von Millisekunden der bessere Handel, und es
-  geht nichts verloren: Das Kontingent steht unter dem neuen Schlüssel wieder offen.
+  geht nichts verloren: Die Ausnahme rollt die Transaktion zurück, das verbuchte Kontingent
+  eingeschlossen. Das Kontingent selbst läuft über `kontingent_version`; Status, `teams_fixiert`
+  und beide Zähler kommen aus *einer* Abfrage.
 - **Der Termin-Lauf liest sein eigenes Ergebnis zurück, statt die Antwort aus der Rechnung zu
   bauen.** Der Auswechselspieler wird nirgends gespeichert (unten), also zweimal bestimmt –
   weichen Lauf und Ableitung voneinander ab, fällt es sofort auf und nicht erst beim nächsten
@@ -1151,6 +1204,12 @@ Versionen es gibt, entscheidet die Versionskonfiguration, nicht die Autorisierun
 trotzdem namentlich in `SecurityConfigTests`:** Die Platzhalterprüfung bliebe grün, wenn jemand
 für einen echten Endpunkt eine offenere Regel **davor** setzte – die erste passende Matcher-Regel
 gewinnt.
+
+**Was vom Termin abhängt, entscheidet der Dienst, nicht der Pfad** – die Filterchain kennt keine
+Daten. Beispiele: Adminprofil darf nicht zusagen (`PROFIL_GESCHUETZT`) und **generieren darf nur,
+wer am Termin zugesagt hat, oder der Admin (`KEINE_ZUSAGE`, 22.10.2026)**. Der Pfad
+`/teams/generieren` bleibt deshalb für jede angemeldete Sitzung offen; ein Client muss die
+Schaltfläche trotzdem nur denen zeigen, die es dürfen.
 
 **Transport und Auth:** REST/JSON über HTTPS, getrennte Origins (`app.<domain>` / `api.<domain>`),
 CORS-Allowlist mit `allowCredentials=true`, opakes Session-Cookie (HttpOnly). Das Frontend liest

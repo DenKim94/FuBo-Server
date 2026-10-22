@@ -15,7 +15,9 @@
 > - **Herleitung und Schritt für Schritt** → `harness/tmp/S<n>_UMSETZUNG.md`, für den
 >   Algorithmusteil von S5 zusätzlich `harness/tmp/S5_ALGORITHMUS.md`
 > - **Historie** → Git und `harness/archive/`. Vorfassung:
->   `CONTEXT_HANDOFF_SERVER_2026-10-04_v24_S9-Namensbestaetigung.md` (Stand vor dem automatischen
+>   `CONTEXT_HANDOFF_SERVER_2026-10-18_v25_A18-Automatisch-abgesagt.md` (Stand vor der
+>   Teilnahmeprüfung am Team-Generator), davor
+>   `…_2026-10-04_v24_S9-Namensbestaetigung.md` (Stand vor dem automatischen
 >   Wechsel auf `ABGESAGT`), davor `…_v23_S9-Paket1.md` (Stand vor der Namensbestätigung),
 >   davor `…_v22_S8-verdichtet.md` (Stand vor S9); die vollständige
 >   Chronik von S8 samt der sieben Abweichungen von der Anleitung und der fünf Weggabelungen trägt
@@ -29,7 +31,7 @@
 > Was hier steht, steht **nur** hier. Wird eine Festlegung zur Architekturregel, wandert sie
 > nach `AGENT_SERVER.md` und **verschwindet hier** – sonst laufen beide auseinander.
 
-## Stand: 18.10.2026
+## Stand: 22.10.2026
 
 **S0 bis S8 sind abgeschlossen und verifiziert.** Alles bis S8 ist auf `dev` committet (18 Commits
 für S8), **nicht gepusht**.
@@ -66,15 +68,33 @@ gegen PostgreSQL 16 von Hand geprüft – der Testlauf steht aus, nichts ist com
 `TerminVerwaltungControllerTests`). Regeln: `AGENT_SERVER.md`, A18 und „Termine" Punkt 8; für den
 Client 4.1.
 
+**Neu am 22.10.2026 – Team-Generator nur für Teilnehmer, Absagen öffnen das Kontingent nicht (A15,
+Fehlerbericht aus dem Test).** Zwei Befunde: (1) `POST /teams/generieren` prüfte nur die Anmeldung –
+auch Angemeldete ohne Zusage oder nach einer Absage konnten generieren. (2) Eine Absage setzte das
+Kontingent der anderen zurück, weil ein einziger Zähler (`teilnehmer_version`) zugleich das
+Veraltet-Kennzeichen *und* den Kontingentschlüssel trug. **Jetzt:** Generieren dürfen nur der Admin
+und Teilnehmer mit Zusage an diesem Termin (sonst `403 KEINE_ZUSAGE`, neuer Fehlercode); das
+Kontingent öffnet sich ausschliesslich über den neuen Zähler `kontingent_version` (`V016`) – bei
+**neuer Zusage, Skill-Änderung und Gast-Stufen-Änderung**, nie bei Absage oder Sperren.
+Betroffen: `TeamGenerierungService` (`pruefeBerechtigung`), `TeilnahmeRepository`
+(`hatZugesagt`; `rueckmeldungSpieler/-Gast` liefern jetzt `neue_zusage` aus einer CTE),
+`TerminRepository` (vier Methoden statt zwei), `KontingentRepository`, `TeilnahmeService`,
+`TerminService#skillaenderungNachtragen` (umbenannt). **Für den Client brechend** (4.1).
+**Gebaut, SQL gegen PostgreSQL 16 von Hand geprüft (Migration samt Vorbelegung, beide CTE-Upserts,
+`hatZugesagt`); der Testlauf steht aus, nichts ist committet** – in der Umgebung dieser Arbeit liefen
+weder JDK 25 noch Maven noch Docker. Erwartet: **513 Fälle in 35 Klassen**, nachgezählt (+15 in
+`TeamGeneratorTests`, +1 in `SpielerControllerTests`, +1 in `TerminControllerTests`). Regeln:
+`AGENT_SERVER.md`, A15 und „Teilnehmer-Version und Kontingent-Version".
+
 | Gegenstand | Stand |
 |---|---|
 | Vertrag `fubo-api.json` | **45 Endpunkte** (S8 brachte sechs, die Namensbestätigung einen) |
-| Datenmodell | **20 Tabellen**, `V001`–`V015` |
+| Datenmodell | **20 Tabellen**, `V001`–`V016` (`V016`: `termin.kontingent_version`, 22.10.2026) |
 | Konfiguration | **14 Pflichtfelder** im Voll-Update |
-| `Fehlercode` | **37** Werte |
+| `Fehlercode` | **38** Werte (neu: `KEINE_ZUSAGE`) |
 | `AuditAktion` | **31** Werte |
-| Tests | **483 Fälle in 34 Klassen** zuletzt grün dokumentiert; nach Namensbestätigung und A18-Änderung nachgezählt **496 in 35**, der Lauf steht aus; weiterhin **fünf Klassen ohne Spring-Kontext** |
-| Bruno-Collection | alle 45 Endpunkte, acht Ordner (`~/Documents/bruno/fubo_server`, unversioniert) |
+| Tests | **483 Fälle in 34 Klassen** zuletzt grün dokumentiert; nach Namensbestätigung, A18- und A15-Änderung nachgezählt **513 in 35**, der Lauf steht aus; weiterhin **fünf Klassen ohne Spring-Kontext** |
+| Bruno-Collection | alle 45 Endpunkte, acht Ordner, 99 Requests (`~/Documents/bruno/fubo_server`, unversioniert; am 22.10.2026 um „Teams generieren ohne Zusage" ergänzt) |
 | Plattform | **Spring Boot 4.1.1**, Tomcat 11.0.26 und Jackson 3.1.7 per Override (S9, 03.10.2026) |
 
 **Was S8 gebracht hat:** Web Push nach RFC 8030/8291/8292 **ohne Fremdbibliothek**, mit
@@ -94,8 +114,9 @@ erst recht nicht gegen die Antwort des Dienstes.
 
 **Offen sind der Testlauf, Handarbeit und S9:**
 
-1. **Testlauf und Commit der A18-Änderung** – `./mvnw clean verify`, erwartet **496/35**
-   (Namensbestätigung und automatische Absage zusammen). Danach für die Namensbestätigung
+1. **Testlauf und Commit der A18- und A15-Änderung** – `./mvnw clean verify`, erwartet **513/35**
+   (Namensbestätigung, automatische Absage und Teilnahmeprüfung zusammen; die neue Migration
+   `V016` läuft dabei gegen PostgreSQL 17 im Testcontainer – dort ist sie noch nicht gelaufen). Danach für die Namensbestätigung
    eine Handprüfung mit echter Mail (Bruno: „Anmeldenamen aendern" → PIN nach `namePin` →
    „Anmeldenamen bestaetigen"), anschliessend `ADMIN_NAME` in der `.env` nachziehen.
 2. **Fünf Handprüflisten** – `S4_UMSETZUNG.md` 11.1, `S5_UMSETZUNG.md` 13.1, `S6_UMSETZUNG.md` 8.1,
@@ -112,6 +133,10 @@ erst recht nicht gegen die Antwort des Dienstes.
    Änderung am Namenswechsel** – sie trifft C4 (Admin-Zugang), bevor es begonnen ist.
    **Dazu zwei Verhaltensänderungen ohne Schemaänderung** (4.1): Ein Termin kann ohne Zutun des Admins
    `ABGESAGT` werden, und `/termine/lesen` ohne `ab` liefert auch vergangene Termine.
+   **Dazu die brechende Änderung am Team-Generator (22.10.2026):** neuer Fehlercode `KEINE_ZUSAGE`
+   (`403`) an `POST /teams/generieren`; die Schaltfläche nur für Teilnehmer mit Zusage und den
+   Admin zeigen; nach einer Absage steht kein neuer Lauf offen. Auch `Fehlercode` im Client-Enum
+   um `KEINE_ZUSAGE` ergänzen.
 
 **Zwei Dinge vor jedem Lauf:** Docker muss laufen (`docker info`), und es ist `./mvnw clean verify`,
 nicht nur `verify` – `target/classes` vergisst nichts.
@@ -156,8 +181,9 @@ Vollständige Liste in `CONTEXT_HANDOFF.md`, Abschnitt 3. Serverseitig besonders
 - Skill-Skala 0–6; Torwart mit `gewicht = 0.30` und Wertebereich 0–3. `-1`-Ausreisser der
   Referenzdaten wird beim Import zu `0`.
 - Zwei austauschbare Team-Algorithmen (`EXHAUSTIV`, `HEURISTIK`) mit identischer Zielfunktion
-  und Datengrundlage; Kontingent-Rücksetzung ausschliesslich über `teilnehmer_version`; neuer
-  Seed je Lauf.
+  und Datengrundlage; das Kontingent öffnet sich ausschliesslich über `kontingent_version` (neue
+  Zusage, Skill-, Gast-Stufen-Änderung – nie eine Absage), das Veraltet-Kennzeichen hängt an
+  `teilnehmer_version`; neuer Seed je Lauf.
 - Genau ein Admin (partieller Unique-Index); Gast-Obergrenze über feste `gast_slot`-Datensätze.
 - Status ONLINE/OFFLINE wird aus aktiven Sessions abgeleitet.
 - **Web Push ohne Fremdbibliothek** (14.09.2026): `nl.martijndwars:web-push` 5.1.2 zieht Bouncy
@@ -220,8 +246,9 @@ naheliegende Annahme falsch ist. Wann sie dazukam, steht in Git.
 | `X-FuBo-Kein-Refresh: true` | Anfragheader für Hintergrundaufrufe, die die Sitzung nicht verlängern sollen |
 | `Retry-After` und `wartesekunden` | Restwartezeit beim `429` des PIN-Endpunkts; doppelt geführt, weil der Header cross-origin nicht lesbar wäre |
 | `absolutGueltigBis` | zweiter Zeitpunkt in der Sitzungsauskunft. Nähert sich der Countdown ihm, hilft „Verlängern" nicht mehr |
-| `KONTINGENT_ERSCHOEPFT` (`409`) | **kein `Retry-After`** – kein Zeitproblem, sondern ein Zustand, der sich mit dem Teilnehmerkreis ändert |
-| `TEILNEHMER_GEAENDERT` (`409`) | jemand hat während des Laufs zu- oder abgesagt. **Unverändert wiederholbar**; das Kontingent steht unter dem neuen Stand wieder offen |
+| `KONTINGENT_ERSCHOEPFT` (`409`) | **kein `Retry-After`** – kein Zeitproblem, sondern ein Zustand. Er ändert sich, sobald jemand **neu zusagt** oder sich ein Skillwert oder eine Gast-Stufe ändert; **eine Absage ändert ihn nicht** (seit 22.10.2026) |
+| `KEINE_ZUSAGE` (`403`) | **neu seit 22.10.2026:** Der Aufrufer ist weder Admin noch hat er für diesen Termin zugesagt (nie, wieder abgesagt oder nur an einem anderen Termin). Wiederholen hilft nicht. **Die Schaltfläche „Teams generieren" nur zeigen, wenn `eigeneRueckmeldung === true` oder die Rolle `ADMIN` ist.** Ein `403` ohne `code` kommt weiterhin von der Filterchain (`KEINE_BERECHTIGUNG`) – nicht verwechseln, `KEINE_ZUSAGE` ist **kein Sitzungsproblem** |
+| `TEILNEHMER_GEAENDERT` (`409`) | jemand hat während des Laufs zu- oder abgesagt. **Unverändert wiederholbar**; der Lauf ist vollständig zurückgenommen, auch das verbuchte Kontingent |
 | `ERGEBNIS_VORHANDEN` (`409`) | **kein Bedienfehler.** Nach dem Abpfiff tippen mehrere gleichzeitig; der Zweite soll „hat schon jemand erfasst" sehen und danach das vorhandene Ergebnis, nicht eine Fehlermeldung |
 | `TERMIN_NICHT_ABGESCHLOSSEN` (`409`) | **nicht** `TERMIN_GESCHLOSSEN` – dort ist die Polarität umgekehrt. Warten hilft nur bei `GEPLANT` und nur, wenn der Termin die Mindestzahl erreicht hat: Der Abschluss folgt 30 bis 35 Minuten nach Beginn; darunter wird der Termin stattdessen `ABGESAGT`, und die Erfassung bleibt gesperrt |
 | `PUSH_NICHT_KONFIGURIERT` (`503`) | „auf diesem Server nicht eingerichtet", **kein Fehler**. Betrifft `GET /push/schluessel/lesen` und `POST /admin/push/test`; die übrigen vier Push-Endpunkte antworten trotzdem `200`. Wiederholen hilft nie – den Bereich ausblenden |
@@ -268,7 +295,7 @@ naheliegende Annahme falsch ist. Wann sie dazukam, steht in Git.
 |---|---|
 | Termine für Gäste | `/termine/lesen`, `/termine/{terminId}/lesen` und `/termine/rueckmeldung` sind ab `PROFILE_AUTHENTICATED` erreichbar, **auch für `GAST`**. Bewertungen tragen sie nicht |
 | `/termine/rueckmeldung` | **ein Endpunkt für beide Richtungen und beide Rollen.** Ein Gast schickt keinen Namen mit. Antwort ist `204` |
-| `POST /teams/generieren` | **nicht** unter `/admin/` – jeder Angemeldete darf generieren, auch `GAST` (A15) |
+| `POST /teams/generieren` | **nicht** unter `/admin/` – die Filterchain lässt jede Sitzung durch, **generieren dürfen aber nur der Admin und Teilnehmer mit Zusage an diesem Termin**, auch ein `GAST` mit Zusage (A15, seit 22.10.2026; sonst `403 KEINE_ZUSAGE`). Wartende zählen mit |
 | `POST /ergebnis/erfassen` | ebenso offen. „Der erste Eintrag gilt" ergibt nur einen Sinn, wenn mehrere es versuchen dürfen |
 | `GET /bilanz/lesen` | liefert die **eigene** Bilanz, **ohne Id** – mit einer Id wäre es „fremde Bilanz lesen". Ein `GAST` bekommt dreimal `0`, kein Fehler |
 | `POST /admin/teams/generieren` | **nur `ADMIN`** (A24), unterscheidet sich vom offenen Endpunkt **nur im Präfix**. Auswahl aus `/admin/user/lesen`; kein neuer Listenendpunkt |
@@ -375,7 +402,7 @@ server/                        Repo-Wurzel (remote: FuBo-Server, oeffentlich)
   Dockerfile, .dockerignore    Produktionsimage (S9); .dockerignore ist eine Whitelist
   .env / .env.example          DB-Zugang, FUBO_INITIAL_PIN, ADMIN_*, SMTP_*, FUBO_VAPID_*
   scripts/                     seed-lokal.sh + anonymisierter 30er-Datensatz
-  src/main/resources/db/       migration/ V001-V015, demodata/ (nur dev und test)
+  src/main/resources/db/       migration/ V001-V016, demodata/ (nur dev und test)
   src/main/java/de/fubo/appserver/
     common/      config error security
     controller/  auth admin spieltag ergebnis profil push
@@ -417,9 +444,10 @@ server/                        Repo-Wurzel (remote: FuBo-Server, oeffentlich)
   nichts von Abonnements. **Wer diese Richtung umdreht, koppelt den Absagepfad an einen fremden
   Dienst** – und eine gescheiterte Push-Nachricht liesse dann eine gespeicherte Absage scheitern.
 
-**Datenmodell: 20 Tabellen, `V001`–`V015`.** `V014` war die erste seit S3, die eine *Tabelle*
+**Datenmodell: 20 Tabellen, `V001`–`V016`.** `V014` war die erste seit S3, die eine *Tabelle*
 anlegt (`profil.push_abo`), `V015` legt die zweite an (`profil.name_aenderung`, 04.10.2026);
-`V009` bis `V013` ergänzen nur Spalten. **S2b, S3, S5 und S6 kamen
+`V009` bis `V013` und `V016` (`termin.kontingent_version`, Umbenennung der Kontingentspalte,
+22.10.2026) ergänzen nur Spalten. **S2b, S3, S5 und S6 kamen
 ohne Migration aus** – das hängt an Voraussetzungen, die in `S5_UMSETZUNG.md` 0.4/0.6 und
 `S6_UMSETZUNG.md` 0.2/1.3 stehen; fällt eine davon, fällt die Aussage.
 
@@ -487,7 +515,7 @@ und Herleitung steht in `…_v14_S4-abgeschlossen.md`.
 | „Schwächster Auswechselspieler" nach dem **Skill-Snapshot des Laufs**, nicht nach dem aktuellen Profilstand | sonst wechselte der Auswechselspieler einer gespeicherten Einteilung rückwirkend, sobald ein Skillwert korrigiert wird |
 | `TERMIN_GESCHLOSSEN` ist **allgemein** formuliert | der Code deckt drei Fälle ab: abgesagt, abgeschlossen, Beginn vorbei. Für den Aufrufer ist die Wirkung dieselbe; Genaueres steht in `detail` und darf sich ohne Vertragsänderung ändern |
 | **Der manuelle Lauf (A24) wird nicht gespeichert** | `team_generierung.termin_id` ist `NOT NULL` und `team_zuteilung.teilnahme_id` hängt am Fremdschlüssel auf `spieltag.teilnahme`. Ein Phantom-Termin machte aus einer Adminrechnung einen Spieltag; eine Migration müsste `team_zuteilung` polymorph machen, und von da an kennt **jeder** Lesepfad zwei Formen. Die Historie ersetzt der Audit-Eintrag mit Teilnehmern und Seed |
-| **A24 kostet kein Kontingent** | A15 zählt Läufe **je Termin und Teilnehmerstand**; beides gibt es nicht, und die Kontingentzeile trägt `termin_id NOT NULL`. Schutz sind der Zugang (admin-only) und `MAX_EXHAUSTIV` |
+| **A24 kostet kein Kontingent** | A15 zählt Läufe **je Termin und Kontingentstand**; beides gibt es nicht, und die Kontingentzeile trägt `termin_id NOT NULL`. Schutz sind der Zugang (admin-only) und `MAX_EXHAUSTIV` |
 | **A24 bekommt einen eigenen Endpunkt unter `/admin/`**, nicht ein optionales `terminId` am bestehenden | der Ort ist die Autorisierungsentscheidung. Ein Endpunkt mit zwei Zugangsregeln je nach Körperinhalt wäre die Prüfung im Controller, die `AGENT_SERVER.md` verbietet |
 | Im manuellen Lauf **begrenzt** `max_teilnehmer`, es schneidet nicht ab | am Termin ergibt sich die Menge und der Rest wartet; hier hat der Admin jeden Einzelnen benannt. Wer eine genannte Id still fallen lässt, liefert Teams, die niemand angefordert hat – und es fällt erst auf, wenn jemand vor Ort ohne Team dasteht |
 | **`MAX_EXHAUSTIV = 24` heisst „24 ist erlaubt, 25 nicht"** | Die Anleitung lässt sich in beide Richtungen lesen. Maßgeblich ist die Begründung, und die nennt `C(24,12) ≈ 2,7 Mio.` ausdrücklich als noch tragbar |
@@ -498,6 +526,10 @@ und Herleitung steht in `…_v14_S4-abgeschlossen.md`.
 | **Die wirksame Untergrenze der Aufstellung ist `max(min_teilnehmer, 2)`** | `ck_app_config_teilnehmer` verlangt nur `min_teilnehmer > 0`, und das DTO lässt `1` zu. Ohne die zweite Grenze käme eine Aufstellung mit einem Spieler durch und scheiterte erst im Generator mit einem `500` statt einer Meldung |
 | **Die Namensvorgabe `Gast 1`, `Gast 2` steht im `AufstellungService`**, nicht im DTO | Einzige Ausnahme von „Vorgabewerte gehören an die API-Grenze", und sie hängt an der Dopplungsprüfung: Nennt der Admin einen Gast ausdrücklich „Gast 2" und lässt einen zweiten unbenannt, entsteht die Dopplung erst durch die Vorgabe – und sie soll abgelehnt werden |
 | **Ein Gastname darf nicht mit dem Namen eines ausgewählten Profils zusammenfallen** | Zwei gleiche Namen in der Teamausgabe sind genau die Verwechslung, die der Gastname verhindern soll. Die Prüfung läuft **nach** dem Laden der Profile |
+| **Zwei Zähler statt einem: `teilnehmer_version` und `kontingent_version`** (22.10.2026) | Ein Zähler für zwei Aufgaben (veraltet, Kontingentschlüssel) ließ jede Absage allen anderen einen weiteren Lauf geben. Alternativen: Absagen beim Verbuchen herausrechnen (Kontingent an einer Abfrage statt am Schlüssel – verliert „kein Löschjob, kein Wettlauf") oder das Kontingent zählen statt schlüsseln. Der zweite Zähler kostet eine Spalte und hält den Schlüsselmechanismus |
+| **Die Berechtigung zum Generieren steht im Dienst, nicht im Pfad** (22.10.2026) | Sie hängt an Termindaten (`hatZugesagt`), die die Filterchain nicht kennt; dieselbe Aufteilung wie bei `PROFIL_GESCHUETZT`. Reihenfolge `404` → `403 KEINE_ZUSAGE` → Status → Kontingent: Ein Aussenstehender erfährt nichts über den Terminstatus |
+| **Wartende mit Zusage dürfen generieren; der Admin ohne Zusage ebenfalls** (22.10.2026) | Wer zugesagt hat, ist Teilnehmer, ob er nachrückt, ergibt sich erst aus der Aufstellung. Der Admin steht vor Ort und liest die Teams vor (Weggabelung D bleibt: eigenes Kontingent) |
+| **Die Teams lesen bleibt für alle möglich** (22.10.2026) | Die Einteilung erscheint weiter in `GET /termine/{terminId}/lesen` für jede angemeldete Sitzung. Die Anforderung betrifft die *Nutzung des Generators*, nicht die Sichtbarkeit – ein Nicht-Teilnehmer sieht nur, was andere erzeugt haben |
 | **Der Schreibpfad liest den Termin nativ** (`TerminRepository#zustand`), nie über `findById` | Der Lauf merkt sich `teilnehmer_version` und prüft sie am Ende gegen. Eine geladene Entity lieferte den Zähler aus dem Persistence-Context – also genau den Wert, gegen den geprüft werden soll. **Ohne diese Umstellung fiele der Fall „nach einer Absage erneut generieren" durch** |
 | **Der Termin-Lauf liest sein eigenes Ergebnis zurück** | Der Auswechselspieler wird nicht gespeichert, sondern beim Lesen erneut bestimmt. Weichen Lauf und Ableitung voneinander ab, fällt es sofort auf – sonst erst, wenn jemand den Termin das nächste Mal öffnet. Preis: zwei zusätzliche Leseabfragen je Lauf |
 | **Die Bankwahl zieht mit einem frischen `new Random(seed)`** | Der Generator des Verfahrens hat bis dahin unterschiedlich viele Zahlen verbraucht; sein Zustand ist ohne Wiederholung des ganzen Laufs nicht rekonstruierbar, der Seed dagegen steht in der Tabelle. **Das ist die Bedingung, unter der die Ableitung beim Lesen dasselbe liefert wie der Lauf** |
@@ -657,6 +689,32 @@ Jeder Punkt hat schon mindestens einmal Zeit gekostet.
   **Umgekehrt gilt dasselbe:** `termin.push_erinnerung_am` ist gemappt, weil `TerminService`
   es beim Verschieben über die Entity zurücksetzt – der Erinnerungsauftrag markiert dagegen
   nativ und lädt dabei keine Entity.
+
+**Kontingent und Teilnehmeränderung (22.10.2026)**
+
+- **Neuer Auslöser, neue Frage: öffnet er das Kontingent?** `teilnehmer_version` und
+  `kontingent_version` sind getrennt, und die vier Methoden in `TerminRepositoryCustom` tragen den
+  Unterschied im Namen. Wer eine Änderung am Teilnehmerkreis ergänzt, ruft die Variante *mit*
+  Kontingent nur bei **neuer Zusage, Skill- oder Gast-Stufen-Änderung** auf. Die falsche
+  Variante ist lauffähig und wirkt still: entweder bekommt jeder nach einer Absage einen weiteren
+  Lauf, oder eine neue Zusage lässt das Kontingent zu.
+- **`neue_zusage` entsteht in derselben Anweisung wie der Upsert** (CTE `vorher` liest, `INSERT …
+  ON CONFLICT` schreibt, beides im selben Snapshot). Wer das in „erst lesen, dann schreiben"
+  zerlegt, öffnet ein Fenster, in dem zwei gleichzeitige Meldungen beide „neu" sehen.
+- **`hatZugesagt` vergleicht Spieler über die Profil-Id und Gäste über den Namen**; ein `NULL`
+  steht für „trifft nie". Ein Gast, der an einem Termin unter demselben Namen schon zugesagt hat,
+  ist an dieser Stelle derselbe Teilnehmer – `gast_name` ist je Termin eindeutig, mehr
+  Identität kennt die Teilnahme nicht.
+- **Ein Lauf, der an `TEILNEHMER_GEAENDERT` scheitert, kostet kein Kontingent** – die Ausnahme
+  rollt die Transaktion zurück. Vorher stand die Zeile unter dem alten Schlüssel „verbraucht",
+  und der Wiederholungsversuch fand sie unter dem neuen Schlüssel frei; jetzt ist sie gar nicht erst
+  geschrieben.
+- **Migration `V016` ist hier nicht gegen PostgreSQL 17 gelaufen**, nur gegen 16: Vorbelegung
+  (`kontingent_version = teilnehmer_version`), Umbenennung (`uq_kontingent` bleibt) und das
+  Verhalten bestehender Zeilen sind von Hand geprüft. Der erste Testlauf prüft die Anwendung
+  der Migration auf der Testdatenbank.
+- **Die Bruno-Collection kennt den neuen Fall noch nicht**, wenn Ordner `teams` nicht
+  nachgezogen ist – siehe Bruno-Abschnitt.
 
 **Transaktionen an der Commit-Grenze (S7, S8)**
 
@@ -843,6 +901,16 @@ sechs Fälle aus `ZugangsdatenControllerTests` verlegt, 16 in der neuen `AdminNa
 `SecurityConfigTests` bleibt bei 26; der neue Pfad steht als Zusicherung im Bündelfall.
 Committet; ein grüner Lauf ist nicht festgehalten.
 
+**Erwartet nach der A15-Änderung (22.10.2026): 513 Fälle in 35 Klassen** – nachgezählt:
+`TeamGeneratorTests` ein Fall ersetzt durch 16 (+15: Absage öffnet das Kontingent nicht; neue
+Zusage, Zusage nach Absage, Skill- und Gast-Stufen-Änderung öffnen es; wiederholte Zusage nicht;
+`KEINE_ZUSAGE` für Nicht-Teilnehmer, Abgesagte, Zusage an anderem Termin, Gast ohne Zusage und Gast
+nach Absage; Wartende, Admin und Gast mit Zusage dürfen; `404` vor `403`; `403` vor `409`;
+Absage lässt die Einteilung veralten), `SpielerControllerTests` +1 (Sperren öffnet das Kontingent
+nicht), `TerminControllerTests` +1 (Übergangslogik der Zusage). Bestehende Fälle erweitert um
+`kontingent_version`-Prüfungen. **Der Lauf mit Testcontainers steht aus; die SQL ist von Hand
+gegen PostgreSQL 16 gelaufen** (Details unten in 6.3).
+
 **Erwartet nach der A18-Änderung (18.10.2026): 496 Fälle in 35 Klassen** – mit
 `grep -c '^\s*@Test\s*$'` über `src/test` nachgezählt. `TerminControllerTests`: zwei Fälle zum
 Stichtag ersetzt durch drei (+1); `TerminVerwaltungControllerTests`: ein Fall angepasst, zwei neue
@@ -903,13 +971,14 @@ Drei Punkte zur Gastverwaltung stehen in keiner Anleitung, die Bruno-Requests un
 
 **Die Bruno-Collection ist die zweite Hälfte der Verifikation.** Sie liegt unversioniert in
 `~/Documents/bruno/fubo_server` und deckt alle 45 Endpunkte in acht Ordnern ab (`auth`, `admin`,
-`termine`, `teams`, `ergebnis`, `halle`, `push`, `system`). Stand 04.10.2026; Format, Konventionen
+`termine`, `teams`, `ergebnis`, `halle`, `push`, `system`). Stand 22.10.2026; Format, Konventionen
 und die Prüfschritte beim Nachziehen stehen in ihrer `README.md`.
 
 ## 7. Nächste Schritte
 
-0. **Testlauf abschliessen** (18.10.2026): `./mvnw clean verify` (erwartet 496/35), die A18-Änderung
-   committen und für die Namensbestätigung eine Handprüfung mit echter Mail über Bruno – Umlaute und Name in der Nachricht,
+0. **Testlauf abschliessen** (22.10.2026): `./mvnw clean verify` (erwartet 513/35), die A18- und
+   A15-Änderung committen (**Reihenfolge nach `AGENT_SERVER.md`: Vertrag, Code, Anleitungen – alles
+   ungepusht; `V016` läuft erstmals gegen PostgreSQL 17**) und für die Namensbestätigung eine Handprüfung mit echter Mail über Bruno – Umlaute und Name in der Nachricht,
    `202`/`204`, danach `ADMIN_NAME` in der `.env` und `adminName` in den Bruno-Umgebungen nachziehen.
 1. **Die fünf Handprüflisten in einem Zug abarbeiten** – `S4_UMSETZUNG.md` 11.1,
    `S5_UMSETZUNG.md` 13.1, `S6_UMSETZUNG.md` 8.1, `S7_UMSETZUNG.md` 8.1,
