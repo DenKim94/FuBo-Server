@@ -81,10 +81,24 @@ Betroffen: `TeamGenerierungService` (`pruefeBerechtigung`), `TeilnahmeRepository
 `TerminRepository` (vier Methoden statt zwei), `KontingentRepository`, `TeilnahmeService`,
 `TerminService#skillaenderungNachtragen` (umbenannt). **Für den Client brechend** (4.1).
 **Gebaut, SQL gegen PostgreSQL 16 von Hand geprüft (Migration samt Vorbelegung, beide CTE-Upserts,
-`hatZugesagt`); der Testlauf steht aus, nichts ist committet** – in der Umgebung dieser Arbeit liefen
+`hatZugesagt`); der Testlauf steht aus; auf `dev` committet, nicht gepusht** – in der Umgebung dieser Arbeit liefen
 weder JDK 25 noch Maven noch Docker. Erwartet: **513 Fälle in 35 Klassen**, nachgezählt (+15 in
 `TeamGeneratorTests`, +1 in `SpielerControllerTests`, +1 in `TerminControllerTests`). Regeln:
 `AGENT_SERVER.md`, A15 und „Teilnehmer-Version und Kontingent-Version".
+
+**Neu am 22.10.2026 (zweiter Auftrag) – Restkontingent in der Termin-Einzelansicht (A15).** Der
+Client muss die Schaltfläche „Teams generieren" sperren können, bevor der Lauf in
+`409 KONTINGENT_ERSCHOEPFT` endet. `GET /termine/{terminId}/lesen` liefert dafür das Feld
+`kontingentGenerierung { erlaubt, uebrig }` oder `null` (Pflichtfeld mit nullbarem Wert, **additiv**;
+nur in `TerminDetails`, nicht in `TerminUebersicht`). `null` heisst: Die Sitzung darf nicht
+generieren (weder Admin noch Zusage) oder der Termin ist nicht `GEPLANT`. Gebaut:
+`Restkontingent` (domain), `KontingentGenerierung` (dto), `KontingentRepository#verbraucht`,
+`TeamGenerierungService#restkontingentLesen` (teilt sich `darfGenerieren` und `akteur` mit
+`generieren()`), `TerminMitTeilnehmern`/`TerminDetails` je ein Feld mehr, `TerminService#einzelnLesen`.
+**Nicht gebaut, nicht geprüft:** Testlauf, Build – in der Umgebung dieser Arbeit fehlen JDK 25, Maven
+und Docker; die Fälle sind gelesen und gegen die Hilfsmethoden der Klasse abgeglichen, nicht
+ausgeführt. Erwartet: **528 Fälle in 35 Klassen** (+15 in `TeamGeneratorTests`). Nicht committet.
+Regeln: `AGENT_SERVER.md`, A15, Unterpunkt „Restkontingent in der Einzelansicht"; für den Client 4.1.
 
 | Gegenstand | Stand |
 |---|---|
@@ -93,7 +107,7 @@ weder JDK 25 noch Maven noch Docker. Erwartet: **513 Fälle in 35 Klassen**, nac
 | Konfiguration | **14 Pflichtfelder** im Voll-Update |
 | `Fehlercode` | **38** Werte (neu: `KEINE_ZUSAGE`) |
 | `AuditAktion` | **31** Werte |
-| Tests | **483 Fälle in 34 Klassen** zuletzt grün dokumentiert; nach Namensbestätigung, A18- und A15-Änderung nachgezählt **513 in 35**, der Lauf steht aus; weiterhin **fünf Klassen ohne Spring-Kontext** |
+| Tests | **483 Fälle in 34 Klassen** zuletzt grün dokumentiert; nach Namensbestätigung, A18- und A15-Änderung nachgezählt **513 in 35**, mit dem Restkontingent **528 in 35**, der Lauf steht aus; weiterhin **fünf Klassen ohne Spring-Kontext** |
 | Bruno-Collection | alle 45 Endpunkte, acht Ordner, 99 Requests (`~/Documents/bruno/fubo_server`, unversioniert; am 22.10.2026 um „Teams generieren ohne Zusage" ergänzt) |
 | Plattform | **Spring Boot 4.1.1**, Tomcat 11.0.26 und Jackson 3.1.7 per Override (S9, 03.10.2026) |
 
@@ -114,7 +128,7 @@ erst recht nicht gegen die Antwort des Dienstes.
 
 **Offen sind der Testlauf, Handarbeit und S9:**
 
-1. **Testlauf und Commit der A18- und A15-Änderung** – `./mvnw clean verify`, erwartet **513/35**
+1. **Testlauf und Commit der A18- und A15-Änderung** – `./mvnw clean verify`, erwartet **528/35** (513 davon vor dem Restkontingent)
    (Namensbestätigung, automatische Absage und Teilnahmeprüfung zusammen; die neue Migration
    `V016` läuft dabei gegen PostgreSQL 17 im Testcontainer – dort ist sie noch nicht gelaufen). Danach für die Namensbestätigung
    eine Handprüfung mit echter Mail (Bruno: „Anmeldenamen aendern" → PIN nach `namePin` →
@@ -238,6 +252,7 @@ naheliegende Annahme falsch ist. Wann sie dazukam, steht in Git.
 | `ergebnis` in `TerminDetails` | `null` heisst „noch nicht erfasst" – der Normalzustand jedes Termins bis zum Abpfiff. **Unabhängig von `teams`:** Eine Einteilung ohne Ergebnis ist der Regelfall, ein Ergebnis ohne Einteilung kann es nicht geben |
 | `korrigiertAm` im `Ergebnis` | `null` heisst „nie korrigiert". Es führt **keine Historie** – jede weitere Korrektur überschreibt den Wert |
 | `halleAbgesagtAm` in `TerminDetails` | `null` heisst „noch keine Absage an den Hallenbetreiber" – der Normalzustand. Gesetzt heisst: **Knopf ausblenden**, Zeitpunkt anzeigen. Der Wert belegt den Versand, nicht die Zustellung |
+| `kontingentGenerierung` in `TerminDetails` | **Neu seit 22.10.2026.** `{ erlaubt, uebrig }` oder `null`; ein Pflichtfeld, der Schlüssel fehlt nie. **`null` ist nicht `uebrig = 0`:** `null` heisst „diese Sitzung darf hier nicht generieren" (weder Admin noch Zusage) oder „Termin nicht `GEPLANT`" – Schaltfläche ausblenden. `uebrig = 0` heisst „Kontingent verbraucht" – **Schaltfläche sperren**; eine neue Zusage, Skill-Änderung oder Gast-Stufen-Änderung öffnet es wieder, eine Absage nicht. „Noch x von y Generierungen" ist `uebrig` von `erlaubt`. **Eine Anzeige, keine Sicherung:** Der Stand kann sich bis zum Klick ändern, der Server antwortet dann weiter mit `409 KONTINGENT_ERSCHOEPFT`. Nur in der Einzelansicht, **nicht** in der Termin-Liste. **Das Feld heisst im Vertrag `kontingentGenerierung`** – ein Client-Name wie `generierung.uebrig` ist dessen eigene Benennung |
 
 **Sitzung und Fehlerbehandlung**
 
@@ -530,6 +545,8 @@ und Herleitung steht in `…_v14_S4-abgeschlossen.md`.
 | **Die Berechtigung zum Generieren steht im Dienst, nicht im Pfad** (22.10.2026) | Sie hängt an Termindaten (`hatZugesagt`), die die Filterchain nicht kennt; dieselbe Aufteilung wie bei `PROFIL_GESCHUETZT`. Reihenfolge `404` → `403 KEINE_ZUSAGE` → Status → Kontingent: Ein Aussenstehender erfährt nichts über den Terminstatus |
 | **Wartende mit Zusage dürfen generieren; der Admin ohne Zusage ebenfalls** (22.10.2026) | Wer zugesagt hat, ist Teilnehmer, ob er nachrückt, ergibt sich erst aus der Aufstellung. Der Admin steht vor Ort und liest die Teams vor (Weggabelung D bleibt: eigenes Kontingent) |
 | **Die Teams lesen bleibt für alle möglich** (22.10.2026) | Die Einteilung erscheint weiter in `GET /termine/{terminId}/lesen` für jede angemeldete Sitzung. Die Anforderung betrifft die *Nutzung des Generators*, nicht die Sichtbarkeit – ein Nicht-Teilnehmer sieht nur, was andere erzeugt haben |
+| **Restkontingent nur in der Einzelansicht, `null` statt `0`** (22.10.2026) | In der Liste wäre es eine Abfrage je Eintrag; ein eigener Endpunkt wären zwei Aufrufe für eine Ansicht. `null` und `0` sind verschieden zu behandeln: Bei `0` hilft eine neue Zusage, bei `null` (keine Berechtigung, Termin nicht `GEPLANT`) nicht – `0` zeigte einem Nicht-Teilnehmer einen falschen Weg. Alternative „immer eine Zahl": verworfen aus demselben Grund |
+| **Das Restkontingent ist eine Anzeige** (22.10.2026) | Durchgesetzt wird allein vom bedingten `UPDATE` in `KontingentRepository#verbrauche`. Wer die Anzeige zur Sicherung machte, öffnete ein Fenster zwischen Lesen und Verbuchen. `teams_fixiert` fliesst bewusst nicht ein – der Lauf meldet `409 TEAMS_FIXIERT` selbst |
 | **Der Schreibpfad liest den Termin nativ** (`TerminRepository#zustand`), nie über `findById` | Der Lauf merkt sich `teilnehmer_version` und prüft sie am Ende gegen. Eine geladene Entity lieferte den Zähler aus dem Persistence-Context – also genau den Wert, gegen den geprüft werden soll. **Ohne diese Umstellung fiele der Fall „nach einer Absage erneut generieren" durch** |
 | **Der Termin-Lauf liest sein eigenes Ergebnis zurück** | Der Auswechselspieler wird nicht gespeichert, sondern beim Lesen erneut bestimmt. Weichen Lauf und Ableitung voneinander ab, fällt es sofort auf – sonst erst, wenn jemand den Termin das nächste Mal öffnet. Preis: zwei zusätzliche Leseabfragen je Lauf |
 | **Die Bankwahl zieht mit einem frischen `new Random(seed)`** | Der Generator des Verfahrens hat bis dahin unterschiedlich viele Zahlen verbraucht; sein Zustand ist ohne Wiederholung des ganzen Laufs nicht rekonstruierbar, der Seed dagegen steht in der Tabelle. **Das ist die Bedingung, unter der die Ableitung beim Lesen dasselbe liefert wie der Lauf** |
@@ -713,6 +730,21 @@ Jeder Punkt hat schon mindestens einmal Zeit gekostet.
   (`kontingent_version = teilnehmer_version`), Umbenennung (`uq_kontingent` bleibt) und das
   Verhalten bestehender Zeilen sind von Hand geprüft. Der erste Testlauf prüft die Anwendung
   der Migration auf der Testdatenbank.
+- **Das Restkontingent liest unter demselben Schlüssel wie das Verbuchen (22.10.2026).**
+  `KontingentRepository#verbraucht` vergleicht mit `IS NOT DISTINCT FROM`, nicht mit `=`: Bei
+  einem Gast ist `akteur_spieler_id` `NULL`, und `NULL = NULL` trifft nie – er sähe nach jedem Lauf
+  die volle Zahl, und kein Spielerfall fiele auf. Akteur und Berechtigung kommen aus
+  `TeamGenerierungService#akteur` und `#darfGenerieren`, **dieselben Methoden wie in
+  `generieren()`**; wer dort eine Regel ändert, ändert beide Pfade zugleich – eine zweite Kopie
+  würde abweichen. Die Fälle „Gast zählt über seinen Platz" und „Lauf und Anzeige stimmen
+  überein" in `TeamGeneratorTests` sichern das.
+- **Neue Felder in `TerminMitTeilnehmern` und `TerminDetails` zählen mit.** `kontingentGenerierung`
+  ist das sechste Zusatzfeld; die Einzelansicht liest jetzt bis zu drei Zeilen zusätzlich
+  (`zustand`, `hatZugesagt` – beim Admin übersprungen –, `verbraucht`), alle über Indizes
+  (`uq_kontingent`). Das Feld gehört **nicht** in `TerminUebersicht`.
+- **Tests, die `anz_team_generator` per SQL ändern, tun das vor dem ersten HTTP-Aufruf** – wie bei
+  `max_teilnehmer`: `AppConfig` steckt danach im Persistence-Context. Der Fall „Grenze gesenkt"
+  schreibt deshalb die Kontingentzeile direkt in die Tabelle, statt Läufe zu fahren.
 - **Die Bruno-Collection kennt den neuen Fall noch nicht**, wenn Ordner `teams` nicht
   nachgezogen ist – siehe Bruno-Abschnitt.
 
@@ -901,6 +933,17 @@ sechs Fälle aus `ZugangsdatenControllerTests` verlegt, 16 in der neuen `AdminNa
 `SecurityConfigTests` bleibt bei 26; der neue Pfad steht als Zusicherung im Bündelfall.
 Committet; ein grüner Lauf ist nicht festgehalten.
 
+**Erwartet nach dem Restkontingent (22.10.2026): 528 Fälle in 35 Klassen** – mit
+`grep -c '^\s*@Test\s*$'` über `src/test` nachgezählt (513 + 15 in `TeamGeneratorTests`): Restkontingent
+vor dem ersten Lauf (mit `anzTeamGenerator = 2`, damit `erlaubt` und `uebrig` nicht zufällig
+zusammenfallen); sinkt je Lauf bis `0` und der nächste Lauf liefert `409 KONTINGENT_ERSCHOEPFT`;
+Lesen verbraucht nichts; Absage ändert nichts; neue Zusage, Skill- und Gast-Stufen-Änderung setzen
+auf `erlaubt` zurück; Gast zählt über seinen Platz; Admin hat ein eigenes Kontingent; zwei Akteure
+unabhängig; `null` ohne Berechtigung (nie zugesagt, Gast ohne Zusage, abgesagt); Wartende haben ein
+Kontingent; `null` bei `ABGESAGT`/`ABGESCHLOSSEN`; gesenkte Grenze ergibt `0`, nie negativ; die
+Termin-Liste trägt das Feld nicht. **Nicht ausgeführt** (kein JDK 25, Maven, Docker in der
+Umgebung).
+
 **Erwartet nach der A15-Änderung (22.10.2026): 513 Fälle in 35 Klassen** – nachgezählt:
 `TeamGeneratorTests` ein Fall ersetzt durch 16 (+15: Absage öffnet das Kontingent nicht; neue
 Zusage, Zusage nach Absage, Skill- und Gast-Stufen-Änderung öffnen es; wiederholte Zusage nicht;
@@ -976,7 +1019,7 @@ und die Prüfschritte beim Nachziehen stehen in ihrer `README.md`.
 
 ## 7. Nächste Schritte
 
-0. **Testlauf abschliessen** (22.10.2026): `./mvnw clean verify` (erwartet 513/35), die A18- und
+0. **Testlauf abschliessen** (22.10.2026): `./mvnw clean verify` (erwartet 528/35), die A18- und
    A15-Änderung committen (**Reihenfolge nach `AGENT_SERVER.md`: Vertrag, Code, Anleitungen – alles
    ungepusht; `V016` läuft erstmals gegen PostgreSQL 17**) und für die Namensbestätigung eine Handprüfung mit echter Mail über Bruno – Umlaute und Name in der Nachricht,
    `202`/`204`, danach `ADMIN_NAME` in der `.env` und `adminName` in den Bruno-Umgebungen nachziehen.

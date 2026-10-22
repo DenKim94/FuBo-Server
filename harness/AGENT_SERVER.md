@@ -12,7 +12,7 @@
 > dort noch aus.** Am 04.10.2026 um die Bestätigung der Namensänderung per E-Mail-PIN (A22)
 > ergänzt, am 18.10.2026 um den automatischen Wechsel auf `ABGESAGT` bei unterschrittener
 > Mindestzahl (A18); am 22.10.2026 um die Teilnahmeprüfung am Team-Generator und die Trennung von
-> Veraltet-Kennzeichen und Kontingent (A15, `V016`) erweitert. Jede Regel steht hier mit dem *einen* Grund, der sie trägt – wer
+> Veraltet-Kennzeichen und Kontingent (A15, `V016`) sowie um das Restkontingent in der Termin-Einzelansicht erweitert. Jede Regel steht hier mit dem *einen* Grund, der sie trägt – wer
 > sie ändern will, muss den Grund entkräften, nicht die Zeile löschen. **Vorfälle, Daten und
 > ausführliche Herleitungen stehen nicht mehr hier**, sondern in `CONTEXT_HANDOFF_SERVER.md`
 > (6.2 Festlegungen, 6.3 Fallstricke), in `harness/tmp/S<n>_UMSETZUNG.md` und in
@@ -114,6 +114,27 @@ Ergänzungen des Entwicklers sind als *Ergänzung* gekennzeichnet.
     **Reihenfolge: `404` (Termin unbekannt) → `403 KEINE_ZUSAGE` → Status/Fixierung → Kontingent.**
     Die Berechtigung steht vor dem Status, damit ein Aussenstehender nichts über den Zustand
     eines Termins erfährt, an dem er nicht teilnimmt, und vor dem Verbuchen des Kontingents.
+  - **Restkontingent in der Einzelansicht (22.10.2026):** `GET /termine/{terminId}/lesen` trägt
+    `kontingentGenerierung { erlaubt, uebrig }` oder `null` – **nur dort, nie in
+    `TerminUebersicht`** (eine Abfrage je Listeneintrag). `erlaubt` ist `anzTeamGenerator`,
+    `uebrig = max(0, erlaubt − verbraucht)`; nie negativ, auch wenn der Admin die Grenze nachträglich
+    unter den Verbrauch senkt. Jede Zeile hat ihren Grund:
+    - **Ein Schlüssel, ein Code.** Berechtigung (`TeamGenerierungService#darfGenerieren`) und Akteur
+      (`#akteur`) sind dieselben privaten Methoden wie in `generieren()`;
+      `KontingentRepository#verbraucht` liest unter dem Schlüssel von `verbrauche`, mit
+      `IS NOT DISTINCT FROM` – dieselbe Gleichheit wie `NULLS NOT DISTINCT` in `uq_kontingent`. Ein
+      zweiter Schlüsselbau liesse die Anzeige abweichen; ein `=` träfe die Zeile eines Gastes nie
+      (Profil-Id `NULL`) und zeigte ihm stets die volle Zahl. `uebrig = 0` heisst damit genau: Der
+      Lauf endete jetzt in `409 KONTINGENT_ERSCHOEPFT`.
+    - **Anzeige, keine Sicherung.** Durchgesetzt wird allein vom bedingten `UPDATE` in
+      `verbrauche()`; der Lesepfad schreibt nie (`@Transactional(readOnly = true)`).
+    - **`null` statt `uebrig = 0`**, wenn die Sitzung nicht generieren darf (kein Admin, keine Zusage)
+      oder der Termin nicht `GEPLANT` ist: Bei `0` hilft eine neue Zusage, bei `null` nicht – `0`
+      würde dem Client einen falschen Weg zeigen.
+    - **`teams_fixiert` bleibt unberücksichtigt.** Die Vorgabe nennt nur den Status; ein fixierter
+      Termin antwortet beim Lauf mit `409 TEAMS_FIXIERT`, und die Anzeige sperrte sonst eine
+      Schaltfläche aus einem Grund, den der Lauf selbst erklärt.
+    - **Nur eigene Zahlen:** keine Skillwerte, keine anderen Akteure, kein Kontingentstand.
 - **A20a** Teamgrössen unterscheiden sich um höchstens eins; Ausgleich über die Teamstärke
   (Optimierung auf **Summen**), das Team in Unterzahl bekommt tendenziell die stärkeren Spieler;
   kein Torwart-Zwang.
