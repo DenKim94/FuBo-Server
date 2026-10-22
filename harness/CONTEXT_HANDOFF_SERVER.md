@@ -97,8 +97,35 @@ generieren (weder Admin noch Zusage) oder der Termin ist nicht `GEPLANT`. Gebaut
 `generieren()`), `TerminMitTeilnehmern`/`TerminDetails` je ein Feld mehr, `TerminService#einzelnLesen`.
 **Nicht gebaut, nicht geprüft:** Testlauf, Build – in der Umgebung dieser Arbeit fehlen JDK 25, Maven
 und Docker; die Fälle sind gelesen und gegen die Hilfsmethoden der Klasse abgeglichen, nicht
-ausgeführt. Erwartet: **528 Fälle in 35 Klassen** (+15 in `TeamGeneratorTests`). Nicht committet.
+ausgeführt. Erwartet: **528 Fälle in 35 Klassen** (+15 in `TeamGeneratorTests`). Auf `dev`
+committet (`6ba3e3c`, `a834be0`, `1d3d095`), nicht gepusht.
 Regeln: `AGENT_SERVER.md`, A15, Unterpunkt „Restkontingent in der Einzelansicht"; für den Client 4.1.
+
+**Neu am 22.10.2026 (dritter Auftrag) – Neue Läufe mischen die Teams durch (A15, Teamgenerator).**
+Auftrag: Ein neuer Durchlauf soll die Teams neu durchmischen und die Einteilung trotzdem möglichst
+ausgeglichen halten. Vorher wählte der Seed nur unter den *exakt* gleich guten Aufteilungen; bei
+einem eindeutigen Optimum lieferte jeder Lauf dieselben Teams. **Jetzt zieht der Seed unter allen
+Aufteilungen mit `Kosten ≤ Optimum + 1 Punkt der höchstgewichteten Kategorie`, und die aktuelle
+Einteilung des Termins ist ausgeschlossen** (A/B vertauscht zählt als gleich; Fallback beste
+Alternative; bei n = 2 entfällt der Ausschluss). Auch der erste Lauf und der manuelle Lauf (A24, dort
+ohne Ausschluss) ziehen aus dem Band. **Keine Feldänderung im Vertrag, nur andere Ergebnisse**; der
+gespeicherte `differenz_teamstaerke` ist nicht mehr zwingend das Minimum. Gebaut:
+`BisherigeAufteilung` (domain), `Teamverfahren#berechne(…, BisherigeAufteilung)` (die alte
+Signatur bleibt als `default`), `Zielfunktion#durchmischungsband` (`BAND_PUNKTE = 1`),
+zweistufiges `ExhaustivVerfahren` (Optimum, dann Reservoir-Auswahl), `HeuristikVerfahren` mit
+Kandidaten aus Restart-Bestwerten und Einzeltausch-Nachbarn, `Teamrechner`-Überladung,
+`TeamGenerierungRepository#findeAktuelleTeams`, `TeamGenerierungService#bisherigeAufteilung`.
+Regeln: `AGENT_SERVER.md`, „Durchmischung". **Das Band ist klein, und das ist bekannt:** Gemessen
+(Python-Nachbau) liegen bei `+1` in zehn Läufen im Mittel nur 2,5 bis 2,9 verschiedene
+Einteilungen vor; `+3` brächte 3,7 bis 5,9, aber 1,3 bis 1,6 Punkte Mehrkosten im Mittel. Der
+Entwickler hat `+1` gewählt; `BAND_PUNKTE` ist der einzige Regler.
+**Verifiziert:** Die reinen Algorithmusfälle (`TeamverfahrenTests`, 16 Fälle) sind **wirklich
+ausgeführt** worden – JDK 21 mit Hilfsklassen statt JUnit/AssertJ, 16 von 16 grün; eine
+Mutationsprobe (Ausschluss entfernt) liess die Fälle erwartungsgemäss scheitern. **Nicht kompiliert
+und nicht ausgeführt:** `TeamGeneratorTests` (+3 Integrationsfälle), `TeamGenerierungService` und
+`TeamGenerierungRepository` – es fehlen Spring, Testcontainers und Docker; geprüft sind
+Klammerbilanz und Durchsicht. Erwartet: **538 Fälle in 35 Klassen** (528 + 7 in `TeamverfahrenTests`
++ 3 in `TeamGeneratorTests`, nachgezählt). Nicht committet.
 
 | Gegenstand | Stand |
 |---|---|
@@ -107,7 +134,7 @@ Regeln: `AGENT_SERVER.md`, A15, Unterpunkt „Restkontingent in der Einzelansich
 | Konfiguration | **14 Pflichtfelder** im Voll-Update |
 | `Fehlercode` | **38** Werte (neu: `KEINE_ZUSAGE`) |
 | `AuditAktion` | **31** Werte |
-| Tests | **483 Fälle in 34 Klassen** zuletzt grün dokumentiert; nach Namensbestätigung, A18- und A15-Änderung nachgezählt **513 in 35**, mit dem Restkontingent **528 in 35**, der Lauf steht aus; weiterhin **fünf Klassen ohne Spring-Kontext** |
+| Tests | **483 Fälle in 34 Klassen** zuletzt grün dokumentiert; nach Namensbestätigung, A18- und A15-Änderung nachgezählt **513 in 35**, mit dem Restkontingent **528 in 35**, mit der Durchmischung **538 in 35**, der Lauf steht aus; weiterhin **fünf Klassen ohne Spring-Kontext** |
 | Bruno-Collection | alle 45 Endpunkte, acht Ordner, 99 Requests (`~/Documents/bruno/fubo_server`, unversioniert; am 22.10.2026 um „Teams generieren ohne Zusage" ergänzt) |
 | Plattform | **Spring Boot 4.1.1**, Tomcat 11.0.26 und Jackson 3.1.7 per Override (S9, 03.10.2026) |
 
@@ -128,7 +155,7 @@ erst recht nicht gegen die Antwort des Dienstes.
 
 **Offen sind der Testlauf, Handarbeit und S9:**
 
-1. **Testlauf und Commit der A18- und A15-Änderung** – `./mvnw clean verify`, erwartet **528/35** (513 davon vor dem Restkontingent)
+1. **Testlauf und Commit der A18- und A15-Änderung** – `./mvnw clean verify`, erwartet **538/35** (528 davon vor der Durchmischung, 513 vor dem Restkontingent; **die Integrationsfälle der Durchmischung sind nie gelaufen**)
    (Namensbestätigung, automatische Absage und Teilnahmeprüfung zusammen; die neue Migration
    `V016` läuft dabei gegen PostgreSQL 17 im Testcontainer – dort ist sie noch nicht gelaufen). Danach für die Namensbestätigung
    eine Handprüfung mit echter Mail (Bruno: „Anmeldenamen aendern" → PIN nach `namePin` →
@@ -253,6 +280,7 @@ naheliegende Annahme falsch ist. Wann sie dazukam, steht in Git.
 | `korrigiertAm` im `Ergebnis` | `null` heisst „nie korrigiert". Es führt **keine Historie** – jede weitere Korrektur überschreibt den Wert |
 | `halleAbgesagtAm` in `TerminDetails` | `null` heisst „noch keine Absage an den Hallenbetreiber" – der Normalzustand. Gesetzt heisst: **Knopf ausblenden**, Zeitpunkt anzeigen. Der Wert belegt den Versand, nicht die Zustellung |
 | `kontingentGenerierung` in `TerminDetails` | **Neu seit 22.10.2026.** `{ erlaubt, uebrig }` oder `null`; ein Pflichtfeld, der Schlüssel fehlt nie. **`null` ist nicht `uebrig = 0`:** `null` heisst „diese Sitzung darf hier nicht generieren" (weder Admin noch Zusage) oder „Termin nicht `GEPLANT`" – Schaltfläche ausblenden. `uebrig = 0` heisst „Kontingent verbraucht" – **Schaltfläche sperren**; eine neue Zusage, Skill-Änderung oder Gast-Stufen-Änderung öffnet es wieder, eine Absage nicht. „Noch x von y Generierungen" ist `uebrig` von `erlaubt`. **Eine Anzeige, keine Sicherung:** Der Stand kann sich bis zum Klick ändern, der Server antwortet dann weiter mit `409 KONTINGENT_ERSCHOEPFT`. Nur in der Einzelansicht, **nicht** in der Termin-Liste. **Das Feld heisst im Vertrag `kontingentGenerierung`** – ein Client-Name wie `generierung.uebrig` ist dessen eigene Benennung |
+| Wiederholtes Generieren | **Seit 22.10.2026 keine Feldänderung, aber anderes Verhalten:** Ein neuer Lauf mischt die Teams durch und liefert nie die bisherige Einteilung des Termins (A/B vertauscht zählt als gleich), solange der Teilnehmerkreis gleich bleibt. Die Auswahl ist klein – bei wenigen Spielern wechseln sich oft nur zwei bis drei Einteilungen ab. `differenzTeamstaerke` (Admin) ist nicht mehr zwingend das Minimum |
 
 **Sitzung und Fehlerbehandlung**
 
@@ -550,6 +578,10 @@ und Herleitung steht in `…_v14_S4-abgeschlossen.md`.
 | **Der Schreibpfad liest den Termin nativ** (`TerminRepository#zustand`), nie über `findById` | Der Lauf merkt sich `teilnehmer_version` und prüft sie am Ende gegen. Eine geladene Entity lieferte den Zähler aus dem Persistence-Context – also genau den Wert, gegen den geprüft werden soll. **Ohne diese Umstellung fiele der Fall „nach einer Absage erneut generieren" durch** |
 | **Der Termin-Lauf liest sein eigenes Ergebnis zurück** | Der Auswechselspieler wird nicht gespeichert, sondern beim Lesen erneut bestimmt. Weichen Lauf und Ableitung voneinander ab, fällt es sofort auf – sonst erst, wenn jemand den Termin das nächste Mal öffnet. Preis: zwei zusätzliche Leseabfragen je Lauf |
 | **Die Bankwahl zieht mit einem frischen `new Random(seed)`** | Der Generator des Verfahrens hat bis dahin unterschiedlich viele Zahlen verbraucht; sein Zustand ist ohne Wiederholung des ganzen Laufs nicht rekonstruierbar, der Seed dagegen steht in der Tabelle. **Das ist die Bedingung, unter der die Ableitung beim Lesen dasselbe liefert wie der Lauf** |
+| **Auswahl aus einem Band um das Optimum, nicht nur aus den Optima** (22.10.2026) | Bei eindeutigem Optimum wählte der Seed unter *einer* Aufteilung, jeder Lauf gab dieselben Teams – `anz_team_generator > 1` war wirkungslos. Alternativen: festes Band in Prozent (verworfen: ohne Bezug zu den Gewichten), Auswahl nach Rang (verworfen: ein Rang sagt nichts über den Abstand). Das Band ist ein Punkt der höchstgewichteten Kategorie |
+| **Ausgeschlossen ist nur die aktuelle Einteilung** (22.10.2026) | Eine Historie über alle Läufe leerte bei kleinen Kreisen die Auswahl. A/B vertauscht zählt als gleich, weil es dieselben Menschen sind. Fehlt eine Alternative im Band, gilt die beste ausserhalb; bei n = 2 entfällt der Ausschluss |
+| **Der erste und der manuelle Lauf ziehen ebenfalls aus dem Band** (22.10.2026) | Sonst wäre die erste Einteilung stets das Optimum, und erst der zweite Lauf wiche ab. Der manuelle Lauf (A24) speichert nichts und meidet deshalb nichts |
+| **Terminfreie Verfahren, Abbildung im Dienst** (22.10.2026) | `Teamverfahren` kennt nur Indizes der Aufstellung (`BisherigeAufteilung`); der Dienst bildet über `teilnahme_id` aus `team_zuteilung` der aktuellen Generation ab. Ein anderer Kreis (Grösse, unbekannte Id) ergibt `null` – eine fremde Aufteilung ist nicht vergleichbar |
 | **Der Auswechselspieler wird nach dem *heute* eingestellten Modus abgeleitet** | Der Modus wird nirgends gespeichert, und A20b führt ihn als Anzeigeregel. **Folge:** Stellt der Admin um, kann ein bestehender Lauf einen anderen Auswechselspieler zeigen |
 | **Die eigene Bilanz liest ein Endpunkt ohne Id im Pfad** (`GET /bilanz/lesen`) | Die Identität kommt aus der Sitzung. Mit einer Id wäre es „fremde Bilanz lesen", über das niemand entschieden hat. Ein `GAST` bekommt die leere Bilanz statt eines Fehlers – ununterscheidbar von einem Spieler ohne gewertete Termine, und das ist Absicht |
 | **Die Bilanz ist ein geschachteltes Schema, nicht drei flache Zähler** | `SpielerDetails.bilanz` und `GET /bilanz/lesen` liefern dieselbe Form. Zwei Darstellungen derselben drei Zahlen liefen auseinander, sobald eine ein Feld bekommt |
@@ -738,6 +770,17 @@ Jeder Punkt hat schon mindestens einmal Zeit gekostet.
   `generieren()`**; wer dort eine Regel ändert, ändert beide Pfade zugleich – eine zweite Kopie
   würde abweichen. Die Fälle „Gast zählt über seinen Platz" und „Lauf und Anzeige stimmen
   überein" in `TeamGeneratorTests` sichern das.
+- **Ein Lauf ist aus dem Seed allein nicht mehr nachrechenbar (22.10.2026).** Er hängt an der
+  bisherigen Aufteilung, und die steht als abgelöste Generation in der Datenbank. Wer einen Lauf
+  nachrechnet, nimmt Seed, Aufstellung *und* die vorherige Generation. Beim Löschen alter
+  Generationen geht die Nachrechenbarkeit verloren.
+- **Der Tie-Break entscheidet in `EXHAUSTIV` nichts mehr.** Alle Aufteilungen im Band sind
+  gleichberechtigt; er wirkt nur noch beim Merken des Bestwerts in `HEURISTIK`. Wer ihn in
+  `EXHAUSTIV` vermisst, hat die Auswahl gemeint, nicht die Zielfunktion.
+- **Ein Test auf „liefert das Optimum" prüft das Optimum, nicht den Lauf.** Die Verfahren liefern
+  jetzt *aus dem Band*; ein Fall, der das exakte Minimum erwartet, scheitert zufällig – je nach
+  Seed. Geprüft wird `Kosten ≤ Optimum + Band` (Vorbild: `TeamverfahrenTests`). Das Optimum selbst
+  liefern `ExhaustivVerfahren#optimum` und `HeuristikVerfahren#suchoptimum` (paketsichtbar).
 - **Neue Felder in `TerminMitTeilnehmern` und `TerminDetails` zählen mit.** `kontingentGenerierung`
   ist das sechste Zusatzfeld; die Einzelansicht liest jetzt bis zu drei Zeilen zusätzlich
   (`zustand`, `hatZugesagt` – beim Admin übersprungen –, `verbraucht`), alle über Indizes
@@ -933,6 +976,15 @@ sechs Fälle aus `ZugangsdatenControllerTests` verlegt, 16 in der neuen `AdminNa
 `SecurityConfigTests` bleibt bei 26; der neue Pfad steht als Zusicherung im Bündelfall.
 Committet; ein grüner Lauf ist nicht festgehalten.
 
+**Erwartet nach der Durchmischung (22.10.2026): 538 Fälle in 35 Klassen** – mit
+`grep -c '^\s*@Test\s*$'` über `src/test` nachgezählt (528 + 7 in `TeamverfahrenTests`, jetzt 16, +
+3 in `TeamGeneratorTests`, jetzt 53). **Teilweise ausgeführt:** `TeamverfahrenTests` lief mit
+JDK 21 und Hilfsklassen für JUnit/AssertJ, 16 von 16 grün, plus Mutationsprobe. Die drei
+Integrationsfälle (neuer Lauf liefert nie die bisherige Einteilung, auch nach Skill-Änderung nicht;
+anderer Kreis hebt den Ausschluss auf; erster Lauf zieht aus dem Band), der Dienst und das
+Repository sind **nicht kompiliert und nicht ausgeführt**. Der Lauf von `./mvnw clean verify` mit
+Docker steht aus.
+
 **Erwartet nach dem Restkontingent (22.10.2026): 528 Fälle in 35 Klassen** – mit
 `grep -c '^\s*@Test\s*$'` über `src/test` nachgezählt (513 + 15 in `TeamGeneratorTests`): Restkontingent
 vor dem ersten Lauf (mit `anzTeamGenerator = 2`, damit `erlaubt` und `uebrig` nicht zufällig
@@ -1019,7 +1071,7 @@ und die Prüfschritte beim Nachziehen stehen in ihrer `README.md`.
 
 ## 7. Nächste Schritte
 
-0. **Testlauf abschliessen** (22.10.2026): `./mvnw clean verify` (erwartet 528/35), die A18- und
+0. **Testlauf abschliessen** (22.10.2026): `./mvnw clean verify` (erwartet 538/35), die A18- und
    A15-Änderung committen (**Reihenfolge nach `AGENT_SERVER.md`: Vertrag, Code, Anleitungen – alles
    ungepusht; `V016` läuft erstmals gegen PostgreSQL 17**) und für die Namensbestätigung eine Handprüfung mit echter Mail über Bruno – Umlaute und Name in der Nachricht,
    `202`/`204`, danach `ADMIN_NAME` in der `.env` und `adminName` in den Bruno-Umgebungen nachziehen.

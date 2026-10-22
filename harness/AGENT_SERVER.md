@@ -12,7 +12,7 @@
 > dort noch aus.** Am 04.10.2026 um die Bestätigung der Namensänderung per E-Mail-PIN (A22)
 > ergänzt, am 18.10.2026 um den automatischen Wechsel auf `ABGESAGT` bei unterschrittener
 > Mindestzahl (A18); am 22.10.2026 um die Teilnahmeprüfung am Team-Generator und die Trennung von
-> Veraltet-Kennzeichen und Kontingent (A15, `V016`) sowie um das Restkontingent in der Termin-Einzelansicht erweitert. Jede Regel steht hier mit dem *einen* Grund, der sie trägt – wer
+> Veraltet-Kennzeichen und Kontingent (A15, `V016`) sowie um das Restkontingent in der Termin-Einzelansicht und um die Durchmischung neuer Läufe (Band um das Optimum, A15) erweitert. Jede Regel steht hier mit dem *einen* Grund, der sie trägt – wer
 > sie ändern will, muss den Grund entkräften, nicht die Zeile löschen. **Vorfälle, Daten und
 > ausführliche Herleitungen stehen nicht mehr hier**, sondern in `CONTEXT_HANDOFF_SERVER.md`
 > (6.2 Festlegungen, 6.3 Fallstricke), in `harness/tmp/S<n>_UMSETZUNG.md` und in
@@ -135,6 +135,11 @@ Ergänzungen des Entwicklers sind als *Ergänzung* gekennzeichnet.
       Termin antwortet beim Lauf mit `409 TEAMS_FIXIERT`, und die Anzeige sperrte sonst eine
       Schaltfläche aus einem Grund, den der Lauf selbst erklärt.
     - **Nur eigene Zahlen:** keine Skillwerte, keine anderen Akteure, kein Kontingentstand.
+  - **Neue Läufe mischen durch (22.10.2026):** Der Seed wählt zufällig unter allen Aufteilungen mit
+    `Kosten ≤ Optimum + Band`, **die aktuelle Einteilung des Termins ist ausgeschlossen** (Einzelheiten
+    unter „Teamgenerator", Abschnitt „Durchmischung"). Vorher wählte er nur unter den *exakt* gleich
+    guten, und bei einem eindeutigen Optimum lieferte jeder Lauf dieselben Teams – der Zweck von
+    `anz_team_generator > 1` war damit leer.
 - **A20a** Teamgrössen unterscheiden sich um höchstens eins; Ausgleich über die Teamstärke
   (Optimierung auf **Summen**), das Team in Unterzahl bekommt tendenziell die stärkeren Spieler;
   kein Torwart-Zwang.
@@ -1093,25 +1098,28 @@ Zielfunktion für beide Verfahren identisch:
 
 - Primär: `cost = Σ_kat gewicht_kat · |Summe_A(kat) − Summe_B(kat)|` über alle aktiven Kategorien;
   vier Feldkategorien mit `gewicht = 1.00`, **Torwart mit `0.30`** (Wertebereich 0–3).
-- Sekundär (Tie-Break): minimiere `|Gesamtstärke_A − Gesamtstärke_B|`.
+- Sekundär (Tie-Break): minimiere `|Gesamtstärke_A − Gesamtstärke_B|`. **Er entscheidet nur noch in
+  der `HEURISTIK`, was als bestes Ergebnis gemerkt wird; die Auswahl in `EXHAUSTIV` kennt ihn nicht mehr**
+  (alle Aufteilungen im Band sind gleichberechtigt).
 - Optimierung auf **Summen**, nicht Durchschnitte; Teamgrössen-Differenz höchstens 1.
 - **Gewichte aus `skill_kategorie.gewicht` lesen, nie als Konstante führen** – eine `0.30` im Code
   wäre eine zweite Wahrheit.
 - **Ganzzahlig rechnen**, Gewichte in Hundertsteln (`1.00` → `100`, `0.30` → `30`) – `0.30` ist in
   `double` nicht exakt darstellbar, zwei gleich teure Aufteilungen unterschieden sich im letzten
-  Bit, und eine fiele aus der Menge der Optima, aus der der Seed wählt.
+  Bit, und eine fiele aus der Menge der Aufteilungen, aus der der Seed wählt (Optimum und Band).
 - **`team_generierung.differenz_teamstaerke` trägt die Primärkosten, nicht den Tie-Break.** Also
   `Σ_kat gewicht_kat · |Summe_A(kat) − Summe_B(kat)|`, in `NUMERIC(6,2)` (intern Hundertstel,
-  beim Schreiben durch 100 geteilt); `0` heisst perfekt ausgeglichen. **Der Spaltenname legt das
+  beim Schreiben durch 100 geteilt); `0` heisst perfekt ausgeglichen. **Seit der Durchmischung ist
+  der Wert die Kosten der *gewählten* Einteilung, nicht zwingend das Minimum.** **Der Spaltenname legt das
   Gegenteil nahe und bleibt trotzdem:** `|Gesamtstärke_A − Gesamtstärke_B|` kann `0` sein,
   während die Teams kategorieweise weit auseinanderliegen – gespeichert würde die Zahl, die den
   Fehler verdeckt. Und nur die Primärkosten erlauben den Vergleich zweier Läufe derselben
   Aufstellung, wofür es `anz_team_generator > 1` gibt.
 
-`EXHAUSTIV` (Default, exakt): vollständige Enumeration aller Splits der Grösse `⌊n/2⌋`, globales
-Optimum, bei bis zu 22 Teilnehmern beherrschbar (`C(22,11) ≈ 705.000`), skaliert nicht darüber. Da
-deterministisch, wählt der `seed` die A/B-Zuordnung und – bei Gleichstand – die konkrete
-Einteilung. **Oberhalb von `MAX_EXHAUSTIV = 24` weicht der Lauf auf `HEURISTIK` aus und
+`EXHAUSTIV` (Default, exakt): vollständige Enumeration aller Splits der Grösse `⌊n/2⌋`, bestimmt
+das globale Optimum, bei bis zu 22 Teilnehmern beherrschbar (`C(22,11) ≈ 705.000`), skaliert nicht
+darüber. Da deterministisch, wählt der `seed` die A/B-Zuordnung und die konkrete Einteilung **aus dem
+Band um das Optimum** (siehe „Durchmischung"). **Oberhalb von `MAX_EXHAUSTIV = 24` weicht der Lauf auf `HEURISTIK` aus und
 protokolliert das**, statt zu scheitern: Wer generiert, hat `max_teilnehmer` nicht gesetzt und
 kann es nicht ändern. Die Grenze gehört in den Code und nicht in die Konfiguration – ein
 administrierbarer Wert von 30 ergäbe `C(30,15) ≈ 155 Mio.` und einen Serverstillstand. **Im
@@ -1120,7 +1128,8 @@ Kontingent zählt. Das Ergebnis nennt das tatsächlich verwendete Verfahren; sti
 wäre das Schlimmste von beidem.
 
 `HEURISTIK` (skalierbar): Snake-Draft als Start, dann Simulated Annealing mit Paar-Tausch,
-`O(Iterationen · n²)`, je Seed eine andere nah-optimale Lösung (erfüllt A15 direkt). **Nur
+`O(Iterationen · n²)`, je Seed eine andere nah-optimale Lösung (erfüllt A15 direkt); gewählt wird
+nach derselben Bandregel unter den besten Ergebnissen der Läufe und ihren Einzeltausch-Nachbarn. **Nur
 Tausch, nie Verschiebung** – ein Tausch lässt beide Teamgrössen unverändert, damit hält A20a
 ohne eigene Prüfung.
 
@@ -1139,6 +1148,47 @@ ohne eigene Prüfung.
 - **Der Seed wird mit `SecureRandom` gezogen, aber mit `java.util.Random` verbraucht:** Dessen
   Algorithmus ist in der Javadoc spezifiziert, `RandomGenerator.getDefault()` darf sich zwischen
   Java-Versionen ändern – dann liesse sich ein gespeicherter Lauf nicht mehr nachrechnen.
+
+### Durchmischung (22.10.2026)
+
+Ein neuer Lauf soll die Teams neu mischen und trotzdem ausgeglichen bleiben. Die Regel, mit je einem
+Grund:
+
+- **Auswahl:** Der Seed zieht gleichverteilt unter allen Aufteilungen mit
+  `Kosten ≤ Optimum + Zielfunktion#durchmischungsband()`. Das Band ist **ein Punkt der am höchsten
+  gewichteten Kategorie** (`BAND_PUNKTE = 1`, Konstante im Code, **ein Regler**). Es folgt aus den
+  Gewichten und ist keine zweite Zahl neben ihnen. Wer es ändert, misst nach: Bei `+1` liegen in
+  zehn Läufen im Mittel nur 2,5 bis 2,9 verschiedene Einteilungen vor, bei `+3` 3,7 bis 5,9, dann
+  aber mit im Mittel 1,3 bis 1,6 Punkten Mehrkosten. Entschieden hat der Entwickler `+1`
+  (22.10.2026), die geringe Auswahl ist bekannt.
+- **Ausgeschlossen ist nur die aktuelle Einteilung des Termins** (`abgeloest_am IS NULL`).
+  **A/B vertauscht zählt als dieselbe Einteilung** – die Teams sind dieselben Menschen, nur anders
+  benannt. Ein Verlauf über mehrere Läufe würde bei kleinen Kreisen die Auswahl leeren.
+- **Gibt es im Band nur die bisherige Aufteilung, gilt die beste Alternative**, auch über dem Band:
+  Eine erneute Wiederholung wäre das Ärgerlichere. **Gibt es keine Alternative (n = 2), entfällt
+  der Ausschluss.**
+- **Der erste Lauf eines Termins zieht ebenfalls aus dem Band**, sonst wäre die erste Einteilung
+  immer das Optimum und der zweite Lauf der erste, der abweicht.
+- **Der manuelle Lauf (A24) zieht aus dem Band, meidet aber nichts** – er speichert nichts, es
+  gibt keine bisherige Einteilung.
+- **Die bisherige Einteilung kommt als `BisherigeAufteilung` (Indizes in die neue Aufstellung)
+  in `Teamverfahren#berechne`.** Die Verfahren bleiben terminfrei; abgebildet wird im Dienst über
+  die `teilnahme_id` aus `team_zuteilung` der aktuellen Generation
+  (`TeamGenerierungRepository#findeAktuelleTeams`). **Anderer Kreis (andere Grösse oder unbekannte
+  `teilnahme_id`) heisst `null`:** Eine Aufteilung eines anderen Kreises lässt sich nicht
+  vergleichen. Eine Skill-Änderung ändert den Kreis nicht, die Regel gilt dann weiter.
+- **`EXHAUSTIV` rechnet zweistufig:** erst Optimum und beste Alternative, dann die Auswahl unter
+  der Obergrenze `max(Optimum + Band, beste Alternative)`. Gezogen wird per Reservoir-Sampling der
+  Grösse eins mit `new Random(seed)` – ohne die Kandidaten zu speichern, bei `C(24,12) ≈ 2,7 Mio.`
+  Aufteilungen. **Kanonisch gezählt wird die Hälfte mit Index 0** (bei ungerader Zahl die kleinere
+  Hälfte), damit A/B-Spiegelungen nicht doppelt zählen.
+- **`HEURISTIK` kennt kein sicheres Optimum.** Als Optimum gilt das beste gefundene; Kandidaten
+  sind die besten Ergebnisse der acht Läufe und alle Einzeltausch-Nachbarn davon. Damit ist die
+  Auswahl kleiner als in `EXHAUSTIV`; über dem Band liegt sie nur, wenn dort allein die bisherige Einteilung steht.
+- **Reproduzierbar ist ein Lauf aus Seed *und* bisheriger Aufteilung.** Letztere steht als
+  abgelöste Generation in der Datenbank; der Seed allein genügt nicht mehr.
+- **`differenz_teamstaerke` ist nicht mehr das Minimum** (siehe oben). Wer den Vergleich zweier
+  Läufe auswertet, rechnet damit, dass der spätere schlechter sein kann.
 
 ### Der Generierungslauf
 
