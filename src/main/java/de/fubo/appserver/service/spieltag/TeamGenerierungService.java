@@ -8,6 +8,7 @@ import de.fubo.appserver.domain.auth.Rolle;
 import de.fubo.appserver.domain.config.AppConfig;
 import de.fubo.appserver.domain.spieltag.Aufstellungsspieler;
 import de.fubo.appserver.domain.spieltag.ManuelleAuswahl;
+import de.fubo.appserver.domain.spieltag.Restkontingent;
 import de.fubo.appserver.domain.spieltag.TerminStatus;
 import de.fubo.appserver.domain.spieltag.Terminzustand;
 import de.fubo.appserver.domain.team.Aufstellung;
@@ -295,15 +296,10 @@ public class TeamGenerierungService {
      */
     private void kontingentVerbrauchen(Long terminId, AktiveSitzung sitzung,
                                        int version, short grenze) {
-        Long spielerId = sitzung.spielerId();
-        Short gastSlotId = spielerId == null ? sitzung.gastSlotId() : null;
+        Akteur akteur = akteur(sitzung);
 
-        if (spielerId == null && gastSlotId == null) {
-            throw new IllegalStateException(
-                    "Die Sitzung trägt weder eine Profil-Id noch einen Gastplatz.");
-        }
-
-        kontingentRepository.verbrauche(terminId, spielerId, gastSlotId, version, grenze)
+        kontingentRepository.verbrauche(terminId, akteur.spielerId(), akteur.gastSlotId(),
+                        version, grenze)
                 .orElseThrow(() -> new FachlicherFehler(Fehlercode.KONTINGENT_ERSCHOEPFT,
                         "Für diesen Teilnehmerstand wurden bereits " + grenze
                                 + " Läufe verbraucht. Sobald jemand neu zusagt oder sich "
@@ -330,12 +326,97 @@ public class TeamGenerierungService {
      * Teilnahme nutzen, die A7 ihm ohnehin zuweist.
      */
     private void pruefeBerechtigung(Long terminId, AktiveSitzung sitzung) {
-        if (sitzung.rolle() == Rolle.ADMIN) {
-            return;
-        }
-        if (!teilnahmeRepository.hatZugesagt(terminId, sitzung.spielerId(), sitzung.gastName())) {
+        if (!darfGenerieren(terminId, sitzung)) {
             throw new FachlicherFehler(Fehlercode.KEINE_ZUSAGE);
         }
+    }
+
+    /**
+     * Die Regel hinter {@link #pruefeBerechtigung} als Frage: Admin oder Zusage am Termin.
+     *
+     * <p><b>Eine Stelle fuer beide Wege.</b> Der Lauf und die Auskunft in der Einzelansicht
+     * ({@link #restkontingentLesen}) beantworten dieselbe Frage; zwei Nachbauten liessen die
+     * Anzeige eines Tages etwas anderes sagen als der Lauf.
+     */
+    private boolean darfGenerieren(Long terminId, AktiveSitzung sitzung) {
+        return sitzung.rolle() == Rolle.ADMIN
+                || teilnahmeRepository.hatZugesagt(terminId, sitzung.spielerId(), sitzung.gastName());
+    }
+
+    // ------------------------------------------------------------------ Restkontingent
+
+    /**
+     * Das Restkontingent der Sitzung an einem Termin, fuer die Einzelansicht (A15,
+     * Ergaenzung vom 22.10.2026).
+     *
+     * <h2>Dieselbe Frage wie {@link #generieren}, nur ohne Verbuchen</h2>
+     * Berechtigung ({@link #darfGenerieren}), Akteur ({@link #akteur}), Schluessel
+     * ({@code kontingent_version} aus {@code TerminRepository#zustand}) und Grenze
+     * ({@code anz_team_generator}) stammen aus denselben Quellen wie im Lauf. Der Schluessel
+     * wird nicht nachgebaut: Gelesen wird die Zeile, die {@code KontingentRepository#verbrauche}
+     * per {@code ON CONFLICT} trifft.
+     *
+     * <h2>{@code null} (leeres Optional) statt {@code 0}</h2>
+     * Wer nicht generieren darf (weder Admin noch Zusage an diesem Termin) oder an einem Termin,
+     * der nicht {@code GEPLANT} ist, hat kein Kontingent, das sich aufbrauchen liesse.
+     * {@code uebrig = 0} bedeutete etwas anderes - "erschoepft, eine neue Zusage hilft" - und
+     * verleitete den Client zu einem Hinweis, der hier falsch ist. <b>{@code teams_fixiert}
+     * bleibt unberuecksichtigt:</b> Die Auskunft betrifft das Kontingent, nicht die Fixierung;
+     * die liefert der Lauf selbst als {@code 409 TEAMS_FIXIERT}.
+     *
+     * <h2>Eine Anzeige, keine Zusicherung</h2>
+     * Die Zahl ist eine Momentaufnahme. Durchgesetzt wird das Kontingent weiterhin von dem
+     * bedingten {@code UPDATE} in {@code verbrauche}.
+     *
+     * <h2>Kosten</h2>
+     * Drei indizierte Einzelabfragen (Zustand, Zusage - beim Admin entfaellt sie -, Kontingent),
+     * kein Schreibzugriff: Der Endpunkt wird vom Client gepollt. Bei einem unbekannten Termin
+     * oder einem fremden Status endet die Auskunft nach der ersten Abfrage.
+     *
+     * @param terminId betroffener Termin
+     * @param sitzung  aufrufende Sitzung; liefert Rolle, Identitaet und Gastplatz
+     * @return das Restkontingent; leer, wenn die Sitzung nicht generieren darf oder der Termin
+     *         nicht {@code GEPLANT} ist
+     */
+    @Transactional(readOnly = true)
+    public Optional<Restkontingent> restkontingentLesen(Long terminId, AktiveSitzung sitzung) {
+
+        Optional<Terminzustand> gelesen = terminRepository.zustand(terminId);
+        if (gelesen.isEmpty() || gelesen.get().status() != TerminStatus.GEPLANT) {
+            return Optional.empty();
+        }
+        if (!darfGenerieren(terminId, sitzung)) {
+            return Optional.empty();
+        }
+
+        Akteur akteur = akteur(sitzung);
+        int erlaubt = configService.lesen().getAnzTeamGenerator();
+        int verbraucht = kontingentRepository.verbraucht(terminId, akteur.spielerId(),
+                akteur.gastSlotId(), gelesen.get().kontingentVersion());
+
+        return Optional.of(new Restkontingent(erlaubt, Math.max(0, erlaubt - verbraucht)));
+    }
+
+    /**
+     * Der Akteur des Kontingents: ein Spieler ueber seine Profil-Id, ein Gast ueber den
+     * belegten Platz. Genau eines von beiden ist gesetzt.
+     *
+     * <p>Fehlen beide Kennungen, ist die Sitzung in einem Zustand, den die Filterchain nicht
+     * durchlaesst - das ist ein Programmierfehler und kein Eingabefall.
+     */
+    private static Akteur akteur(AktiveSitzung sitzung) {
+        Long spielerId = sitzung.spielerId();
+        Short gastSlotId = spielerId == null ? sitzung.gastSlotId() : null;
+
+        if (spielerId == null && gastSlotId == null) {
+            throw new IllegalStateException(
+                    "Die Sitzung trägt weder eine Profil-Id noch einen Gastplatz.");
+        }
+        return new Akteur(spielerId, gastSlotId);
+    }
+
+    /** Schluesselteil des Kontingents; eines der beiden Felder ist {@code null}. */
+    private record Akteur(Long spielerId, Short gastSlotId) {
     }
 
     /**

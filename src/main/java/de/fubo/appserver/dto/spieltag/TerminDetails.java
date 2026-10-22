@@ -47,6 +47,12 @@ import java.time.OffsetDateTime;
  * Gelegenheiten fuer einen inkonsistenten Stand. Der Zusatz war additiv und damit nicht
  * brechend - der Client-Track musste nichts zuruecknehmen.
  *
+ * <h2>Das Restkontingent kam am 22.10.2026 dazu</h2>
+ * Als sechstes additives Feld. Es steht <b>nur hier</b> und nicht in {@link TerminUebersicht}:
+ * In der Liste kostete es eine zusaetzliche Abfrage je Eintrag. Das Feld ist ein Pflichtfeld
+ * des Schemas mit dem Wert {@code null}, damit der Client "keine Berechtigung" nicht von
+ * "fehlt" unterscheiden muss.
+ *
  * @param terminId           technischer Schluessel
  * @param serieId            Serie oder {@code null} bei einem Einzeltermin
  * @param datum              Datum in Ortszeit
@@ -80,6 +86,13 @@ import java.time.OffsetDateTime;
  *                           <b>Immer gefuellt</b>, auch fuer vergangene und abgesagte Termine
  *                           und auch ohne hinterlegte Hallenadresse; liegt er in der
  *                           Vergangenheit, ist das Fenster zu. Ortszeit ohne Zone
+ * @param kontingentGenerierung das eigene Restkontingent der Teamgenerierung (A15) oder
+ *                           {@code null}, wenn der Aufrufer nicht generieren darf (weder Admin
+ *                           noch Zusage an diesem Termin) oder der Termin nicht {@code GEPLANT}
+ *                           ist. <b>{@code null} ist kein Fehler</b>, sondern "hier gibt es
+ *                           nichts zu sperren". {@code uebrig = 0}: Ein Lauf endete jetzt mit
+ *                           {@code 409 KONTINGENT_ERSCHOEPFT}. Eine Anzeige, keine Zusicherung -
+ *                           durchgesetzt wird sie von der Datenbank
  */
 public record TerminDetails(Long terminId,
                             Long serieId,
@@ -95,7 +108,8 @@ public record TerminDetails(Long terminId,
                             Teameinteilung teams,
                             Ergebnis ergebnis,
                             OffsetDateTime halleAbgesagtAm,
-                            LocalDateTime halleAbsageMoeglichBis) {
+                            LocalDateTime halleAbsageMoeglichBis,
+                            KontingentGenerierung kontingentGenerierung) {
 
     /** Bildet Termin und Teilnehmer auf den Vertrag ab. */
     public static TerminDetails von(TerminMitTeilnehmern gelesen) {
@@ -117,6 +131,8 @@ public record TerminDetails(Long terminId,
                 // gleichnamige Entity aus domain.spieltag - die Zuordnung macht das Paket.
                 gelesen.ergebnis() == null ? null : Ergebnis.von(gelesen.ergebnis()),
                 eintrag.halleAbgesagtAm(),
-                gelesen.halleAbsageMoeglichBis());
+                gelesen.halleAbsageMoeglichBis(),
+                gelesen.kontingentGenerierung() == null
+                        ? null : KontingentGenerierung.von(gelesen.kontingentGenerierung()));
     }
 }

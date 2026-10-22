@@ -33,6 +33,12 @@ import java.time.LocalDateTime;
  * zweiter Aufruf fuer eine Zahl. <b>Der naechste Zusatz gehoert wirklich geprueft</b>, nicht
  * angehaengt.
  *
+ * <p><b>Mit dem 22.10.2026 kam das Restkontingent der Teamgenerierung dazu</b> (A15) - und
+ * der Satz oben wurde ernst genommen: <b>Der Zusatz wurde geprueft.</b> Ein eigener Endpunkt
+ * waere ein zweiter Aufruf fuer zwei Zahlen, die der Client in derselben Ansicht braucht wie
+ * die Teams; sie entstehen aus Daten, die diese Abfrage ohnehin in der Hand hat (Termin,
+ * Sitzung, Konfiguration). Es sind ausschliesslich Zahlen der aufrufenden Sitzung.
+ *
  * @param termin      Stammdaten, Zaehler und die eigene Rueckmeldung des Aufrufers
  * @param teilnehmer  die Zusagen in Warteschlangenreihenfolge samt der geltenden Grenzen
  * @param einteilung  die aktuelle Teameinteilung oder {@code null}, wenn es noch keine gibt
@@ -47,10 +53,14 @@ import java.time.LocalDateTime;
  *                    es ist eine Tatsache ueber den Termin und keine Aussage darueber, wer was
  *                    darf. Ortszeit ohne Zone, wie {@code datum} und {@code uhrzeit}, aus denen
  *                    er entsteht
+ * @param kontingentGenerierung das Restkontingent des Aufrufers fuer die Teamgenerierung oder
+ *                    {@code null}, wenn er nicht generieren darf (weder Admin noch Zusage an
+ *                    diesem Termin) oder der Termin nicht {@code GEPLANT} ist
  */
 public record TerminMitTeilnehmern(TerminEintrag termin,
                                    Teilnehmeruebersicht teilnehmer,
                                    Einteilung einteilung,
                                    Ergebnis ergebnis,
-                                   LocalDateTime halleAbsageMoeglichBis) {
+                                   LocalDateTime halleAbsageMoeglichBis,
+                                   Restkontingent kontingentGenerierung) {
 }

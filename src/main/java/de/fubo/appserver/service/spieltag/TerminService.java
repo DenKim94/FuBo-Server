@@ -184,13 +184,15 @@ public class TerminService {
         // Teilnehmerliste hat die Konfigurationszeile in derselben Transaktion bereits geladen.
         short vorlauf = configService.lesen().getHalleVorlaufStunden();
 
-        // Fuenf Abfragen, eine Transaktion und damit ein Stand. Die Reihenfolge ist
-        // beliebig - keine der vier Ergaenzungen haengt von einer anderen ab.
+        // Sechs Abfragen, eine Transaktion und damit ein Stand. Die Reihenfolge ist
+        // beliebig - keine der fuenf Ergaenzungen haengt von einer anderen ab. Das
+        // Restkontingent (22.10.2026) liest nur und schreibt nichts: Der Endpunkt wird gepollt.
         return new TerminMitTeilnehmern(termin,
                 teilnahmeService.uebersicht(terminId),
                 teamGenerierungService.einteilungLesen(terminId).orElse(null),
                 ergebnisService.lesen(terminId).orElse(null),
-                LocalDateTime.of(termin.datum(), termin.uhrzeit()).minusHours(vorlauf));
+                LocalDateTime.of(termin.datum(), termin.uhrzeit()).minusHours(vorlauf),
+                teamGenerierungService.restkontingentLesen(terminId, sitzung).orElse(null));
     }
 
     // ------------------------------------------------------------------ Anlegen

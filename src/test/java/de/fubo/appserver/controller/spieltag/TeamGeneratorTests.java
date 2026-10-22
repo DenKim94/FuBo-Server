@@ -672,6 +672,251 @@ class TeamGeneratorTests {
         assertThat(teams(einzeln(spielerSitzung(0), terminId))).containsEntry("veraltet", true);
     }
 
+    // --------------------------------------------------------------------- Restkontingent
+
+    /**
+     * Vor dem ersten Lauf steht das volle Kontingent in der Einzelansicht.
+     *
+     * <p>Die Grenze wird ausdruecklich auf 2 gesetzt, damit {@code erlaubt} und
+     * {@code uebrig} nicht zufaellig mit der Vorgabe 1 zusammenfallen und ein Vertauschen
+     * der beiden Werte unbemerkt bliebe.
+     */
+    @Test
+    void restkontingentVorDemErstenLauf() throws Exception {
+        anzTeamGeneratorSetzen(2);
+        Long terminId = terminMitZusagen(8);
+
+        erwarteKontingent(kontingentGenerierung(spielerSitzung(0), terminId), 2, 2);
+    }
+
+    /**
+     * Jeder Lauf kostet einen; nach dem letzten steht {@code 0} da - und der naechste Lauf
+     * endet tatsaechlich mit {@code 409 KONTINGENT_ERSCHOEPFT} (Zusicherung 1).
+     */
+    @Test
+    void restkontingentSinktMitJedemLaufBisNullUndStimmtMitDemLaufUeberein() throws Exception {
+        anzTeamGeneratorSetzen(2);
+        Long terminId = terminMitZusagen(8);
+        String token = spielerSitzung(0);
+
+        generieren(token, terminId).andExpect(status().isCreated());
+        erwarteKontingent(kontingentGenerierung(token, terminId), 2, 1);
+
+        generieren(token, terminId).andExpect(status().isCreated());
+        erwarteKontingent(kontingentGenerierung(token, terminId), 2, 0);
+
+        assertThat(fehlercode(generieren(token, terminId).andExpect(status().isConflict())))
+                .isEqualTo("KONTINGENT_ERSCHOEPFT");
+    }
+
+    /** Die Auskunft ist lesend: Wiederholtes Lesen verbraucht nichts. */
+    @Test
+    void dasLesenDesRestkontingentsVerbrauchtNichts() throws Exception {
+        Long terminId = terminMitZusagen(8);
+        String token = spielerSitzung(0);
+
+        kontingentGenerierung(token, terminId);
+        kontingentGenerierung(token, terminId);
+
+        assertThat(anzahlKontingentzeilen(terminId)).isZero();
+        generieren(token, terminId).andExpect(status().isCreated());
+    }
+
+    /**
+     * Die Absage eines Dritten aendert nichts (Zusicherung 4).
+     *
+     * <p>Der Fall ist das Gegenstueck zu {@code eineAbsageOeffnetDasKontingentNicht}: Dort
+     * prueft der Lauf, hier die Anzeige - beide muessen dasselbe sagen.
+     */
+    @Test
+    void eineAbsageAendertDasRestkontingentNicht() throws Exception {
+        anzTeamGeneratorSetzen(2);
+        Long terminId = terminMitZusagen(8);
+        String token = spielerSitzung(0);
+        generieren(token, terminId).andExpect(status().isCreated());
+
+        rueckmeldung(spielerSitzung(7), terminId, false).andExpect(status().isNoContent());
+
+        erwarteKontingent(kontingentGenerierung(token, terminId), 2, 1);
+    }
+
+    /** Die neue Zusage eines Dritten oeffnet das Kontingent wieder ganz (Zusicherung 4). */
+    @Test
+    void eineNeueZusageSetztDasRestkontingentZurueck() throws Exception {
+        anzTeamGeneratorSetzen(2);
+        Long terminId = terminMitZusagen(8);
+        String token = spielerSitzung(0);
+        generieren(token, terminId).andExpect(status().isCreated());
+        generieren(token, terminId).andExpect(status().isCreated());
+        erwarteKontingent(kontingentGenerierung(token, terminId), 2, 0);
+
+        rueckmeldung(spielerSitzung(8), terminId, true).andExpect(status().isNoContent());
+
+        erwarteKontingent(kontingentGenerierung(token, terminId), 2, 2);
+    }
+
+    /** Eine Skillaenderung durch den Admin oeffnet das Kontingent wieder (Zusicherung 4). */
+    @Test
+    void eineSkillaenderungSetztDasRestkontingentZurueck() throws Exception {
+        Long terminId = terminMitZusagen(8);
+        String token = spielerSitzung(0);
+        generieren(token, terminId).andExpect(status().isCreated());
+        erwarteKontingent(kontingentGenerierung(token, terminId), 1, 0);
+
+        skillAendern(spielerId(2), 1);
+
+        erwarteKontingent(kontingentGenerierung(token, terminId), 1, 1);
+    }
+
+    /** Eine Gast-Stufenaenderung durch den Admin oeffnet das Kontingent wieder. */
+    @Test
+    void eineGastStufenaenderungSetztDasRestkontingentZurueck() throws Exception {
+        Long terminId = terminMitZusagen(7);
+        gastZusageAnlegen(terminId, "Testgast 2", "SCHWACH", 1);
+        String token = spielerSitzung(0);
+        generieren(token, terminId).andExpect(status().isCreated());
+        erwarteKontingent(kontingentGenerierung(token, terminId), 1, 0);
+
+        mockMvc.perform(post("/api/v1/admin/teilnahme/gast-stufe")
+                        .cookie(new Cookie(COOKIE, adminSitzung()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"terminId\":%d,\"gastName\":\"Testgast 2\",\"stufe\":\"STARK\"}"
+                                .formatted(terminId)))
+                .andExpect(status().isNoContent());
+
+        erwarteKontingent(kontingentGenerierung(token, terminId), 1, 1);
+    }
+
+    /**
+     * Ein Gast zaehlt ueber seinen Gastplatz - und ein Spieler am selben Termin davon
+     * unberuehrt.
+     *
+     * <p>Waere der Akteur beim Lesen anders gebildet als beim Verbuchen, stuende hier fuer
+     * den Gast immer die volle Zahl: Der Platz ist {@code akteur_gast_slot_id}, die
+     * Profil-Id ist {@code NULL}, und ein Vergleich mit {@code =} traefe die Zeile nicht.
+     */
+    @Test
+    void einGastZaehltUeberSeinenPlatz() throws Exception {
+        Long terminId = terminMitZusagen(8);
+        String gast = gastSitzung("Testgast 1");
+        rueckmeldung(gast, terminId, true).andExpect(status().isNoContent());
+        erwarteKontingent(kontingentGenerierung(gast, terminId), 1, 1);
+
+        generieren(gast, terminId).andExpect(status().isCreated());
+
+        erwarteKontingent(kontingentGenerierung(gast, terminId), 1, 0);
+        erwarteKontingent(kontingentGenerierung(spielerSitzung(0), terminId), 1, 1);
+    }
+
+    /**
+     * Der Admin ohne Zusage hat ein eigenes Kontingent, das die anderen nicht beruehrt
+     * (Weggabelung D).
+     */
+    @Test
+    void derAdminHatEinEigenesRestkontingent() throws Exception {
+        Long terminId = terminMitZusagen(8);
+        String admin = adminSitzung();
+        erwarteKontingent(kontingentGenerierung(admin, terminId), 1, 1);
+
+        generieren(admin, terminId).andExpect(status().isCreated());
+
+        erwarteKontingent(kontingentGenerierung(admin, terminId), 1, 0);
+        erwarteKontingent(kontingentGenerierung(spielerSitzung(0), terminId), 1, 1);
+    }
+
+    /** Zwei Spieler beeinflussen sich nicht (Zusicherung: je Akteur). */
+    @Test
+    void dieKontingenteZweierAkteureBeeinflussenSichNicht() throws Exception {
+        Long terminId = terminMitZusagen(8);
+        generieren(spielerSitzung(0), terminId).andExpect(status().isCreated());
+
+        erwarteKontingent(kontingentGenerierung(spielerSitzung(0), terminId), 1, 0);
+        erwarteKontingent(kontingentGenerierung(spielerSitzung(1), terminId), 1, 1);
+    }
+
+    /**
+     * Wer nicht generieren darf, bekommt {@code null} - nicht {@code uebrig = 0}.
+     *
+     * <p>Die Ausgabe darf sich vom Fall "erschoepft" unterscheiden: Dort hilft eine neue
+     * Zusage, hier nicht. Die Bedingung ist dieselbe wie bei {@code 403 KEINE_ZUSAGE}.
+     */
+    @Test
+    void ohneBerechtigungIstDasRestkontingentNull() throws Exception {
+        Long terminId = terminMitZusagen(8);
+
+        assertThat(kontingentGenerierung(spielerSitzung(8), terminId))
+                .as("nie zugesagt").isNull();
+        assertThat(kontingentGenerierung(gastSitzung("Testgast 1"), terminId))
+                .as("Gast ohne Zusage").isNull();
+
+        rueckmeldung(spielerSitzung(7), terminId, false).andExpect(status().isNoContent());
+        assertThat(kontingentGenerierung(spielerSitzung(7), terminId))
+                .as("wieder abgesagt").isNull();
+    }
+
+    /** Wartende mit Zusage duerfen generieren und haben deshalb ein Kontingent. */
+    @Test
+    void wartendeHabenEinRestkontingent() throws Exception {
+        maxTeilnehmerSetzen(6);
+        Long terminId = terminMitZusagen(8);
+
+        erwarteKontingent(kontingentGenerierung(spielerSitzung(7), terminId), 1, 1);
+    }
+
+    /** An einem abgesagten oder abgeschlossenen Termin gibt es nichts zu sperren: {@code null}. */
+    @Test
+    void anEinemNichtGeplantenTerminIstDasRestkontingentNull() throws Exception {
+        Long abgesagt = terminMitZusagen(8);
+        jdbc.update("UPDATE spieltag.termin SET status = 'ABGESAGT', version = version + 1 WHERE id = ?",
+                abgesagt);
+        assertThat(kontingentGenerierung(spielerSitzung(0), abgesagt)).isNull();
+
+        Long abgeschlossen = terminAnlegen(LocalDate.now().plusDays(BASIS_TAGE + 1));
+        zusageAnlegen(abgeschlossen, spielerId(0), 1);
+        jdbc.update("UPDATE spieltag.termin SET status = 'ABGESCHLOSSEN', version = version + 1 WHERE id = ?",
+                abgeschlossen);
+        assertThat(kontingentGenerierung(spielerSitzung(0), abgeschlossen)).isNull();
+    }
+
+    /**
+     * Senkt der Admin die Grenze unter die verbrauchte Anzahl, steht {@code 0} da, nie eine
+     * negative Zahl (Zusicherung 3).
+     *
+     * <p>Der Zustand wird ueber die Tabelle hergestellt, nicht ueber Laeufe: Die Grenze
+     * gehoert vor den ersten Aufruf (Klassen-JavaDoc), und drei Laeufe unter einer Grenze von
+     * drei, danach die Senkung, liesse sich ueber den Endpunkt nicht ohne Zwischenspeicher-
+     * Eingriff aufbauen.
+     */
+    @Test
+    void eineGesenkteGrenzeErgibtNullUndNieEinenNegativenWert() throws Exception {
+        anzTeamGeneratorSetzen(1);
+        Long terminId = terminMitZusagen(8);
+        jdbc.update("""
+                INSERT INTO spieltag.generierung_kontingent
+                       (termin_id, akteur_spieler_id, akteur_gast_slot_id, kontingent_version, anzahl)
+                VALUES (?, ?, NULL, 0, 3)
+                """, terminId, spielerId(0));
+
+        erwarteKontingent(kontingentGenerierung(spielerSitzung(0), terminId), 1, 0);
+    }
+
+    /**
+     * Die Uebersicht traegt das Feld nicht: Eine Abfrage je Listeneintrag waere der Preis
+     * (Zusicherung 6). Die Feldliste der Uebersicht ist in
+     * {@code TerminControllerTests#listeTraegtKeineSkillwerte} vollstaendig festgelegt.
+     */
+    @Test
+    void dieUebersichtTraegtKeinRestkontingent() throws Exception {
+        terminMitZusagen(8);
+
+        String antwort = mockMvc.perform(get("/api/v1/termine/lesen")
+                        .cookie(new Cookie(COOKIE, spielerSitzung(0))))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(antwort).doesNotContain("kontingentGenerierung");
+    }
+
     // --------------------------------------------------------------------- Hilfsmittel
 
     /**
@@ -808,6 +1053,28 @@ class TeamGeneratorTests {
                   JOIN profil.skill_kategorie k ON k.schluessel = gv.kategorie
                  WHERE gv.stufe = ? AND k.aktiv
                 """, BigDecimal.class, stufe);
+    }
+
+    /** Muss wie {@link #maxTeilnehmerSetzen} vor dem ersten HTTP-Aufruf laufen. */
+    private void anzTeamGeneratorSetzen(int wert) {
+        jdbc.update("""
+                UPDATE configs.app_config SET anz_team_generator = ?, version = version + 1 WHERE id = 1
+                """, wert);
+    }
+
+    /** Das Feld {@code kontingentGenerierung} der Einzelansicht; ein Pflichtfeld, auch mit {@code null}. */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> kontingentGenerierung(String token, Long terminId) throws Exception {
+        Map<String, Object> termin = einzeln(token, terminId);
+        assertThat(termin).as("Pflichtfeld, auch mit null").containsKey("kontingentGenerierung");
+        return (Map<String, Object>) termin.get("kontingentGenerierung");
+    }
+
+    /** Prueft Werte und, dass das Objekt genau zwei Felder traegt (nur Zahlen der eigenen Sitzung). */
+    private static void erwarteKontingent(Map<String, Object> kontingent, int erlaubt, int uebrig) {
+        assertThat(kontingent).isNotNull().containsOnlyKeys("erlaubt", "uebrig");
+        assertThat(((Number) kontingent.get("erlaubt")).intValue()).as("erlaubt").isEqualTo(erlaubt);
+        assertThat(((Number) kontingent.get("uebrig")).intValue()).as("uebrig").isEqualTo(uebrig);
     }
 
     private int kontingentVersion(Long terminId) {

@@ -73,6 +73,26 @@ public class KontingentRepository {
               RETURNING anzahl
             """;
 
+    /**
+     * Abfrage der bisher verbuchten Laeufe eines Akteurs - lesend, ohne Sperre. Ohne Zeile
+     * liefert {@code COALESCE} {@code 0}.
+     *
+     * <p>{@code IS NOT DISTINCT FROM} ist hier kein Zierrat, sondern <b>dieselbe
+     * Gleichheit wie im Constraint</b>: {@code uq_kontingent} ist {@code NULLS NOT DISTINCT},
+     * und genau diese Zeile trifft {@link #verbrauche} per {@code ON CONFLICT}. Eine Abfrage mit
+     * {@code =} liefe bei einem Gast ({@code akteur_spieler_id IS NULL}) ins Leere und meldete
+     * immer "nichts verbraucht". Der Zugriff laeuft ueber den Praefix {@code termin_id} des
+     * Index; je Termin liegen hoechstens einige Dutzend Zeilen.
+     */
+    private static final String SQL_VERBRAUCHT = """
+            SELECT COALESCE(max(anzahl), 0)
+              FROM spieltag.generierung_kontingent
+             WHERE termin_id          = :terminId
+               AND kontingent_version = :kontingentVersion
+               AND akteur_spieler_id   IS NOT DISTINCT FROM CAST(:spielerId AS bigint)
+               AND akteur_gast_slot_id IS NOT DISTINCT FROM CAST(:gastSlotId AS smallint)
+            """;
+
     private final JdbcClient jdbc;
 
     public KontingentRepository(JdbcClient jdbc) {
@@ -103,5 +123,29 @@ public class KontingentRepository {
                 .param("grenze", grenze)
                 .query(Short.class)
                 .optional();
+    }
+
+    /**
+     * Liest, wie viele Laeufe der Akteur unter diesem Kontingentstand bereits verbucht hat.
+     *
+     * <p><b>Nur fuer die Anzeige.</b> Wer daraus ableitet, ob ein Lauf durchgeht, baut das
+     * "lesen, dann schreiben" nach, das {@link #verbrauche} aus gutem Grund vermeidet. Die
+     * Schluesselteile sind dieselben wie dort; der Aufrufer bildet sie fuer beide Wege aus
+     * derselben Sitzung.
+     *
+     * @param terminId          betroffener Termin
+     * @param spielerId         Profil-Id des Akteurs oder {@code null} bei einem Gast
+     * @param gastSlotId        belegter Gastplatz oder {@code null} bei einem Spieler
+     * @param kontingentVersion Stand des Kontingents am Termin
+     * @return verbuchte Laeufe; {@code 0}, wenn noch keine Zeile besteht
+     */
+    public int verbraucht(Long terminId, Long spielerId, Short gastSlotId, int kontingentVersion) {
+        return jdbc.sql(SQL_VERBRAUCHT)
+                .param("terminId", terminId)
+                .param("spielerId", spielerId)
+                .param("gastSlotId", gastSlotId)
+                .param("kontingentVersion", kontingentVersion)
+                .query(Integer.class)
+                .single();
     }
 }
