@@ -12,7 +12,7 @@
 > dort noch aus.** Am 04.10.2026 um die Bestätigung der Namensänderung per E-Mail-PIN (A22)
 > ergänzt, am 18.10.2026 um den automatischen Wechsel auf `ABGESAGT` bei unterschrittener
 > Mindestzahl (A18); am 22.10.2026 um die Teilnahmeprüfung am Team-Generator und die Trennung von
-> Veraltet-Kennzeichen und Kontingent (A15, `V016`) sowie um das Restkontingent in der Termin-Einzelansicht und um die Durchmischung neuer Läufe (Band um das Optimum, A15) erweitert. Jede Regel steht hier mit dem *einen* Grund, der sie trägt – wer
+> Veraltet-Kennzeichen und Kontingent (A15, `V016`) sowie um das Restkontingent in der Termin-Einzelansicht und um die Durchmischung neuer Läufe (Band um das Optimum, A15) sowie um die Berechtigung zum Erfassen eines Ergebnisses (A21) erweitert. Jede Regel steht hier mit dem *einen* Grund, der sie trägt – wer
 > sie ändern will, muss den Grund entkräften, nicht die Zeile löschen. **Vorfälle, Daten und
 > ausführliche Herleitungen stehen nicht mehr hier**, sondern in `CONTEXT_HANDOFF_SERVER.md`
 > (6.2 Festlegungen, 6.3 Fallstricke), in `harness/tmp/S<n>_UMSETZUNG.md` und in
@@ -176,7 +176,8 @@ Ergänzungen des Entwicklers sind als *Ergänzung* gekennzeichnet.
 **Ergebnis, Audit, Hallenmodus**
 
 - **A16** Ergebnisse wirken nicht auf Skills zurück; sie werden nur erfasst.
-- **A21** Der erste Ergebniseintrag gilt (Unique auf `termin_id`), nur der Admin korrigiert; beides
+- **A21** Der erste Ergebniseintrag gilt (Unique auf `termin_id`), **eintragen dürfen nur die
+  Eingeteilten des Termins und der Admin** (seit 22.10.2026), nur der Admin korrigiert; beides
   ins Audit-Log. *Ergänzung:* Siege, Niederlagen und Unentschieden je Spieler in
   `profil.spieler.anz_siege`, `anz_niederlagen`, `anz_unentschieden` (`V011`).
   - **Die Zähler werden neu berechnet, nicht fortgeschrieben** – `+1`/`-1` setzte voraus, dass die
@@ -197,9 +198,41 @@ Ergänzungen des Entwicklers sind als *Ergänzung* gekennzeichnet.
     mit `ZU_WENIG_TEILNEHMER` ablehnt. **Randfall:** Hat ein Termin bei erreichter Mindestzahl eine
     Einteilung bekommen und sinken die Zusagen später unter die Grenze, wird er trotzdem `ABGESAGT`;
     die Einteilung bleibt stehen, ein Ergebnis lässt sich nicht erfassen.
-  - **Erfassen darf jeder Angemeldete, auch `GAST`** – der Endpunkt liegt deshalb ausserhalb von
-    `/admin/`. „Der erste Eintrag gilt" ergibt nur einen Sinn, wenn mehrere es versuchen dürfen.
-    Korrigieren darf nur der Admin; das ist der ganze Unterschied der beiden Pfade.
+  - **Erfassen dürfen der Admin und die Eingeteilten der aktuellen Einteilung (22.10.2026)** –
+    Team A, Team B und der Auswechselspieler, `USER` wie `GAST`. Der Endpunkt liegt weiter
+    ausserhalb von `/admin/`: „Der erste Eintrag gilt" ergibt nur einen Sinn, wenn mehrere es
+    versuchen dürfen. Vorher durfte es jede angemeldete Sitzung, auch ein Gast, der nicht
+    mitgespielt hat; weil der erste Eintrag gilt und nur der Admin korrigiert, setzte ein
+    Aussenstehender damit das endgültige Ergebnis und die Bilanz aller Eingeteilten. Jede Zeile
+    hat ihren Grund:
+    - **Nach dem Termin ist die Einteilung der einzige verlässliche Nachweis, wer gespielt hat**,
+      und sie ist die Grundlage der Bilanz. Wer nur zugesagt hat (Warteschlange, Zusage nach dem
+      Lauf), abgesagt oder sich nie gemeldet hat, ist nicht eingeteilt. Verworfen: „hat
+      zugesagt" – die Warteschlange hat zugesagt und nicht gespielt.
+    - **Massgeblich ist die *aktuelle* Einteilung, auch wenn sie `veraltet` ist** – dieselbe,
+      aus der die Bilanz entsteht. Wer nur in einer abgelösten stand, ist nicht eingeteilt.
+    - **Die Prüfung steht im Dienst, nicht im Pfad** (`ErgebnisService#erfassen`), weil sie an
+      den Daten des Termins hängt; der Pfad bleibt für jede angemeldete Sitzung offen.
+      **Reihenfolge: `404` → `409 TERMIN_NICHT_ABGESCHLOSSEN` → `409 KEINE_EINTEILUNG` →
+      `403 NICHT_EINGETEILT` → Eintrag (`409 ERGEBNIS_VORHANDEN`).** Ohne Einteilung gibt es
+      niemanden, der eingeteilt war; der Terminstatus ist ohnehin für alle sichtbar. Ein
+      Nicht-Eingeteilter erfährt durch die Reihenfolge nicht, ob schon ein Ergebnis vorliegt.
+    - **Die Identität kommt aus der Sitzung, nie aus dem Körper:** ein Spieler über die
+      Profil-Id, ein Gast über den Namen (`gast_name` ist je Termin eindeutig), wie bei
+      `TeilnahmeRepository#hatZugesagt`. Abgefragt wird `TeamGenerierungRepository#istEingeteilt`
+      über `team_zuteilung` der Generierung mit `abgeloest_am IS NULL`; `NULL` heisst „trifft
+      nie", sonst erbte ein Gast die Zuteilung eines Spielers.
+    - **`403 NICHT_EINGETEILT` und kein `409`, und kein Wiederverwenden von `KEINE_ZUSAGE`:** Es
+      ist eine Berechtigung, kein Zustand, der sich ändert; und anders als bei `KEINE_ZUSAGE`
+      hilft hier keine Zusage – die Oberfläche soll nicht dazu raten.
+    - **Kein neues Feld in `TerminDetails`.** Der Client leitet die Berechtigung aus `teams` ab:
+      Eingeteilt ist, wer in `teams.teamA`/`teams.teamB` steht (der Auswechselspieler ist dort
+      markiert, nicht daneben). Das ist im Vertrag zugesichert; die Kombination aus `anzeigeName`
+      und `gast` ist je Termin eindeutig, weil Profilnamen und Gastnamen je für sich eindeutig
+      sind und ein Gast sich nicht unter einem Profilnamen anmelden kann (`GastService`). Fiele
+      die Zusicherung, wäre `darfErgebnisErfassen` in `TerminDetails` der Ersatz.
+    - Audit und Bilanz bleiben unverändert; die Korrektur beim Admin ebenso.
+    Korrigieren darf nur der Admin.
   - **Die Korrektur ist ein Voll-Update mit `version`, nicht feldweise** – Grund ist
     `deutlich`: Bei einem `boolean` wäre `false` nicht von „nicht angegeben" zu unterscheiden, und
     ein gesetzter Haken liesse sich nie wieder entfernen. **Eine Korrektur, die nichts ändert, wird

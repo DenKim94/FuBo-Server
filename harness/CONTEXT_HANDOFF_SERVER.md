@@ -125,16 +125,36 @@ Mutationsprobe (Ausschluss entfernt) liess die Fälle erwartungsgemäss scheiter
 und nicht ausgeführt:** `TeamGeneratorTests` (+3 Integrationsfälle), `TeamGenerierungService` und
 `TeamGenerierungRepository` – es fehlen Spring, Testcontainers und Docker; geprüft sind
 Klammerbilanz und Durchsicht. Erwartet: **538 Fälle in 35 Klassen** (528 + 7 in `TeamverfahrenTests`
-+ 3 in `TeamGeneratorTests`, nachgezählt). Nicht committet.
++ 3 in `TeamGeneratorTests`, nachgezählt). Auf `dev` committet (`903d81b`, `31da302`, `6981a74`), nicht gepusht.
+
+**Neu am 22.10.2026 (vierter Auftrag) – Ergebnis erfassen nur durch Eingeteilte und Admin (A21).**
+Anlass: `POST /ergebnis/erfassen` nahm den Eintrag jeder angemeldeten Sitzung an, auch eines Gastes,
+der nicht mitgespielt hat. Weil der erste Eintrag gilt, nur der Admin korrigiert und die Bilanz aller
+Eingeteilten daraus neu entsteht, setzte ein Aussenstehender das endgültige Ergebnis. **Jetzt dürfen
+nur der Admin und die Eingeteilten der aktuellen Einteilung** (Team A, Team B, Auswechselspieler;
+`USER` wie `GAST`) eintragen, alle anderen bekommen **`403 NICHT_EINGETEILT`** (neuer Fehlercode,
+damit **39**). Reihenfolge: `404` → `409 TERMIN_NICHT_ABGESCHLOSSEN` → `409 KEINE_EINTEILUNG` →
+`403 NICHT_EINGETEILT` → `409 ERGEBNIS_VORHANDEN`. **Brechend für den Client**, aber ohne neues Feld:
+Der Client leitet die Berechtigung aus `teams.teamA`/`teams.teamB` der Einzelansicht und der Rolle ab
+(Eintrag mit eigenem Namen und passendem `gast`-Wert; im Vertrag zugesichert). Gebaut:
+`Fehlercode#NICHT_EINGETEILT`, `TeamGenerierungRepository#istEingeteilt`, die Prüfung in
+`ErgebnisService#erfassen`. Korrektur, Audit und Bilanz unverändert. Maßgeblich ist die **aktuelle**
+Einteilung, auch wenn sie `veraltet` ist; wer nur in einer abgelösten stand, ist nicht eingeteilt.
+Regeln: `AGENT_SERVER.md`, A21, „Erfassen dürfen …".
+**Nicht gebaut, nicht geprüft:** Testlauf, Build – kein JDK 25, Maven, Docker und keine Spring-Jars in
+der Umgebung; geprüft sind Klammerbilanz, JSON und Durchsicht gegen die Hilfsmethoden der Klasse.
+**Neue Tests** in `ErgebnisControllerTests` (+10, ein Fall ersetzt: `gastDarfErfassen` erfasste mit
+einem nicht eingeteilten Gast und ist jetzt `eingeteilterGastDarfErfassen`). Erwartet: **548 Fälle in
+35 Klassen** (538 + 10). Nicht committet.
 
 | Gegenstand | Stand |
 |---|---|
 | Vertrag `fubo-api.json` | **45 Endpunkte** (S8 brachte sechs, die Namensbestätigung einen) |
 | Datenmodell | **20 Tabellen**, `V001`–`V016` (`V016`: `termin.kontingent_version`, 22.10.2026) |
 | Konfiguration | **14 Pflichtfelder** im Voll-Update |
-| `Fehlercode` | **38** Werte (neu: `KEINE_ZUSAGE`) |
+| `Fehlercode` | **39** Werte (neu: `NICHT_EINGETEILT`, davor `KEINE_ZUSAGE`) |
 | `AuditAktion` | **31** Werte |
-| Tests | **483 Fälle in 34 Klassen** zuletzt grün dokumentiert; nach Namensbestätigung, A18- und A15-Änderung nachgezählt **513 in 35**, mit dem Restkontingent **528 in 35**, mit der Durchmischung **538 in 35**, der Lauf steht aus; weiterhin **fünf Klassen ohne Spring-Kontext** |
+| Tests | **483 Fälle in 34 Klassen** zuletzt grün dokumentiert; nach Namensbestätigung, A18- und A15-Änderung nachgezählt **513 in 35**, mit dem Restkontingent **528 in 35**, mit der Durchmischung **538 in 35**, mit der Erfassungsberechtigung **548 in 35**, der Lauf steht aus; weiterhin **fünf Klassen ohne Spring-Kontext** |
 | Bruno-Collection | alle 45 Endpunkte, acht Ordner, 99 Requests (`~/Documents/bruno/fubo_server`, unversioniert; am 22.10.2026 um „Teams generieren ohne Zusage" ergänzt) |
 | Plattform | **Spring Boot 4.1.1**, Tomcat 11.0.26 und Jackson 3.1.7 per Override (S9, 03.10.2026) |
 
@@ -155,7 +175,7 @@ erst recht nicht gegen die Antwort des Dienstes.
 
 **Offen sind der Testlauf, Handarbeit und S9:**
 
-1. **Testlauf und Commit der A18- und A15-Änderung** – `./mvnw clean verify`, erwartet **538/35** (528 davon vor der Durchmischung, 513 vor dem Restkontingent; **die Integrationsfälle der Durchmischung sind nie gelaufen**)
+1. **Testlauf und Commit der A18- und A15-Änderung** – `./mvnw clean verify`, erwartet **548/35** (538 davon vor der Erfassungsberechtigung, 528 vor der Durchmischung, 513 vor dem Restkontingent; **die Integrationsfälle der Durchmischung sind nie gelaufen**)
    (Namensbestätigung, automatische Absage und Teilnahmeprüfung zusammen; die neue Migration
    `V016` läuft dabei gegen PostgreSQL 17 im Testcontainer – dort ist sie noch nicht gelaufen). Danach für die Namensbestätigung
    eine Handprüfung mit echter Mail (Bruno: „Anmeldenamen aendern" → PIN nach `namePin` →
@@ -280,6 +300,7 @@ naheliegende Annahme falsch ist. Wann sie dazukam, steht in Git.
 | `korrigiertAm` im `Ergebnis` | `null` heisst „nie korrigiert". Es führt **keine Historie** – jede weitere Korrektur überschreibt den Wert |
 | `halleAbgesagtAm` in `TerminDetails` | `null` heisst „noch keine Absage an den Hallenbetreiber" – der Normalzustand. Gesetzt heisst: **Knopf ausblenden**, Zeitpunkt anzeigen. Der Wert belegt den Versand, nicht die Zustellung |
 | `kontingentGenerierung` in `TerminDetails` | **Neu seit 22.10.2026.** `{ erlaubt, uebrig }` oder `null`; ein Pflichtfeld, der Schlüssel fehlt nie. **`null` ist nicht `uebrig = 0`:** `null` heisst „diese Sitzung darf hier nicht generieren" (weder Admin noch Zusage) oder „Termin nicht `GEPLANT`" – Schaltfläche ausblenden. `uebrig = 0` heisst „Kontingent verbraucht" – **Schaltfläche sperren**; eine neue Zusage, Skill-Änderung oder Gast-Stufen-Änderung öffnet es wieder, eine Absage nicht. „Noch x von y Generierungen" ist `uebrig` von `erlaubt`. **Eine Anzeige, keine Sicherung:** Der Stand kann sich bis zum Klick ändern, der Server antwortet dann weiter mit `409 KONTINGENT_ERSCHOEPFT`. Nur in der Einzelansicht, **nicht** in der Termin-Liste. **Das Feld heisst im Vertrag `kontingentGenerierung`** – ein Client-Name wie `generierung.uebrig` ist dessen eigene Benennung |
+| Ergebnisformular nur für Eingeteilte und Admin | **Seit 22.10.2026, ohne neues Feld.** Eingeteilt ist genau, wer in `teams.teamA` oder `teams.teamB` der Einzelansicht steht; der Auswechselspieler ist dort Teil einer der beiden Listen (`auswechselspieler: true`). Der Client sucht den Eintrag mit **eigenem Namen und passendem `gast`-Wert** – die Kombination ist je Termin eindeutig. Der Admin braucht keinen Eintrag. Alle anderen sehen statt des Formulars einen Hinweis. Eine Anzeige, keine Sicherung: Durchgesetzt wird beim Eintrag. Fiele die Zusicherung (etwa durch Namenskollisionen), wäre ein boolesches `darfErgebnisErfassen` in `TerminDetails` der vorgesehene Ersatz |
 | Wiederholtes Generieren | **Seit 22.10.2026 keine Feldänderung, aber anderes Verhalten:** Ein neuer Lauf mischt die Teams durch und liefert nie die bisherige Einteilung des Termins (A/B vertauscht zählt als gleich), solange der Teilnehmerkreis gleich bleibt. Die Auswahl ist klein – bei wenigen Spielern wechseln sich oft nur zwei bis drei Einteilungen ab. `differenzTeamstaerke` (Admin) ist nicht mehr zwingend das Minimum |
 
 **Sitzung und Fehlerbehandlung**
@@ -290,6 +311,7 @@ naheliegende Annahme falsch ist. Wann sie dazukam, steht in Git.
 | `Retry-After` und `wartesekunden` | Restwartezeit beim `429` des PIN-Endpunkts; doppelt geführt, weil der Header cross-origin nicht lesbar wäre |
 | `absolutGueltigBis` | zweiter Zeitpunkt in der Sitzungsauskunft. Nähert sich der Countdown ihm, hilft „Verlängern" nicht mehr |
 | `KONTINGENT_ERSCHOEPFT` (`409`) | **kein `Retry-After`** – kein Zeitproblem, sondern ein Zustand. Er ändert sich, sobald jemand **neu zusagt** oder sich ein Skillwert oder eine Gast-Stufe ändert; **eine Absage ändert ihn nicht** (seit 22.10.2026) |
+| `NICHT_EINGETEILT` (`403`) | **Neu seit 22.10.2026**, nur bei `POST /ergebnis/erfassen`. Die Sitzung ist weder Admin noch in der aktuellen Einteilung des Termins eingeteilt (nur zugesagt – Warteschlange, Zusage nach dem Lauf –, abgesagt, nie gemeldet oder nur in einer abgelösten Einteilung). **Wiederholen hilft nicht, eine Zusage auch nicht** – Hinweis zeigen („Ein Ergebnis eintragen darf nur, wer in diesem Termin eingeteilt war.") und den Termin neu lesen. Kommt **vor** `ERGEBNIS_VORHANDEN`: Ein Nicht-Eingeteilter erfährt nicht, ob schon ein Ergebnis vorliegt. Kein Sitzungsproblem |
 | `KEINE_ZUSAGE` (`403`) | **neu seit 22.10.2026:** Der Aufrufer ist weder Admin noch hat er für diesen Termin zugesagt (nie, wieder abgesagt oder nur an einem anderen Termin). Wiederholen hilft nicht. **Die Schaltfläche „Teams generieren" nur zeigen, wenn `eigeneRueckmeldung === true` oder die Rolle `ADMIN` ist.** Ein `403` ohne `code` kommt weiterhin von der Filterchain (`KEINE_BERECHTIGUNG`) – nicht verwechseln, `KEINE_ZUSAGE` ist **kein Sitzungsproblem** |
 | `TEILNEHMER_GEAENDERT` (`409`) | jemand hat während des Laufs zu- oder abgesagt. **Unverändert wiederholbar**; der Lauf ist vollständig zurückgenommen, auch das verbuchte Kontingent |
 | `ERGEBNIS_VORHANDEN` (`409`) | **kein Bedienfehler.** Nach dem Abpfiff tippen mehrere gleichzeitig; der Zweite soll „hat schon jemand erfasst" sehen und danach das vorhandene Ergebnis, nicht eine Fehlermeldung |
@@ -582,6 +604,10 @@ und Herleitung steht in `…_v14_S4-abgeschlossen.md`.
 | **Ausgeschlossen ist nur die aktuelle Einteilung** (22.10.2026) | Eine Historie über alle Läufe leerte bei kleinen Kreisen die Auswahl. A/B vertauscht zählt als gleich, weil es dieselben Menschen sind. Fehlt eine Alternative im Band, gilt die beste ausserhalb; bei n = 2 entfällt der Ausschluss |
 | **Der erste und der manuelle Lauf ziehen ebenfalls aus dem Band** (22.10.2026) | Sonst wäre die erste Einteilung stets das Optimum, und erst der zweite Lauf wiche ab. Der manuelle Lauf (A24) speichert nichts und meidet deshalb nichts |
 | **Terminfreie Verfahren, Abbildung im Dienst** (22.10.2026) | `Teamverfahren` kennt nur Indizes der Aufstellung (`BisherigeAufteilung`); der Dienst bildet über `teilnahme_id` aus `team_zuteilung` der aktuellen Generation ab. Ein anderer Kreis (Grösse, unbekannte Id) ergibt `null` – eine fremde Aufteilung ist nicht vergleichbar |
+| **Erfassen nur durch Eingeteilte und Admin, nicht durch „hat zugesagt"** (22.10.2026) | Nach dem Termin ist die Einteilung der einzige verlässliche Nachweis, wer gespielt hat, und die Grundlage der Bilanz. Wer zugesagt hat, steht evtl. in der Warteschlange und hat nicht gespielt. Maßgeblich ist die **aktuelle** Einteilung, auch `veraltet` – dieselbe, aus der die Bilanz entsteht |
+| **`NICHT_EINGETEILT` ist ein eigener Code, `403`** (22.10.2026) | `KEINE_ZUSAGE` rät zum Zusagen, hier hilft keine Zusage. `409` wäre ein Zustand, der sich ändert; ein abgeschlossener Termin bekommt keine neue Einteilung. `KEINE_BERECHTIGUNG` meint „Rolle fehlt" |
+| **Prüfung nach `KEINE_EINTEILUNG`, vor dem Eintrag** (22.10.2026) | Ohne Einteilung gibt es niemanden, der eingeteilt war; der Status ist für alle sichtbar; ein Nicht-Eingeteilter soll über `ERGEBNIS_VORHANDEN` nichts erfahren |
+| **Kein Feld `darfErgebnisErfassen`, sondern die Zusicherung an `teams`** (22.10.2026) | Entscheidung des Entwicklers: Der Client kennt `teams` und die Rolle. Die Zusicherung trägt, weil `(anzeigeName, gast)` je Termin eindeutig ist (Profilnamen und Gastnamen je für sich eindeutig, `GastService#pruefeNameFrei` lehnt Profilnamen ab). Das Feld ist der Ausweg, falls das einmal nicht mehr gilt |
 | **Der Auswechselspieler wird nach dem *heute* eingestellten Modus abgeleitet** | Der Modus wird nirgends gespeichert, und A20b führt ihn als Anzeigeregel. **Folge:** Stellt der Admin um, kann ein bestehender Lauf einen anderen Auswechselspieler zeigen |
 | **Die eigene Bilanz liest ein Endpunkt ohne Id im Pfad** (`GET /bilanz/lesen`) | Die Identität kommt aus der Sitzung. Mit einer Id wäre es „fremde Bilanz lesen", über das niemand entschieden hat. Ein `GAST` bekommt die leere Bilanz statt eines Fehlers – ununterscheidbar von einem Spieler ohne gewertete Termine, und das ist Absicht |
 | **Die Bilanz ist ein geschachteltes Schema, nicht drei flache Zähler** | `SpielerDetails.bilanz` und `GET /bilanz/lesen` liefern dieselbe Form. Zwei Darstellungen derselben drei Zahlen liefen auseinander, sobald eine ein Feld bekommt |
@@ -781,6 +807,15 @@ Jeder Punkt hat schon mindestens einmal Zeit gekostet.
   jetzt *aus dem Band*; ein Fall, der das exakte Minimum erwartet, scheitert zufällig – je nach
   Seed. Geprüft wird `Kosten ≤ Optimum + Band` (Vorbild: `TeamverfahrenTests`). Das Optimum selbst
   liefern `ExhaustivVerfahren#optimum` und `HeuristikVerfahren#suchoptimum` (paketsichtbar).
+- **Tests, die ein Ergebnis erfassen, brauchen einen Eingeteilten (22.10.2026).** In
+  `ErgebnisControllerTests` sind das bei `terminBereitFuerErgebnis(8)` die Positionen 0 bis 7;
+  **Position 8 und 9 sind bewusst nicht eingeteilt**. Wer einen neuen Fall mit einem Gast oder
+  einem weiteren Profil schreibt, legt dessen Zusage **vor** dem Lauf an, sonst gibt es ein `403`,
+  das der Fall nicht erwartet. `SecurityConfigTests` erfasst mit leerem Körper und bekommt `400`
+  vor dem Dienst – die Berechtigung steht dort nicht zur Prüfung.
+- **`istEingeteilt` fragt nach `NULL` wie `hatZugesagt`.** Bei einer Spielersitzung ist der
+  Gastname `NULL`, bei einer Gastsitzung die Profil-Id; der jeweils andere Vergleich ist
+  `UNKNOWN` und trifft nie. Wer das für „egal" hält, gibt jedem Gast die Zuteilung eines Spielers.
 - **Neue Felder in `TerminMitTeilnehmern` und `TerminDetails` zählen mit.** `kontingentGenerierung`
   ist das sechste Zusatzfeld; die Einzelansicht liest jetzt bis zu drei Zeilen zusätzlich
   (`zustand`, `hatZugesagt` – beim Admin übersprungen –, `verbraucht`), alle über Indizes
@@ -976,6 +1011,16 @@ sechs Fälle aus `ZugangsdatenControllerTests` verlegt, 16 in der neuen `AdminNa
 `SecurityConfigTests` bleibt bei 26; der neue Pfad steht als Zusicherung im Bündelfall.
 Committet; ein grüner Lauf ist nicht festgehalten.
 
+**Erwartet nach der Erfassungsberechtigung (22.10.2026): 548 Fälle in 35 Klassen** – mit
+`grep -c '^\s*@Test\s*$'` über `src/test` nachgezählt (538 + 10 in `ErgebnisControllerTests`, jetzt
+34): Team A und Team B, Auswechselspieler (steht in `teams`), Admin (samt Bilanz und Audit),
+Zusage nach dem Lauf, Wartende, abgesagt/nie gemeldet, nur in abgelöster Einteilung; Reihenfolge
+(ohne Einteilung `409`, geplanter Termin `409`, vorhandenes Ergebnis bei Nicht-Eingeteiltem `403`).
+`gastDarfErfassen` wurde zu `eingeteilterGastDarfErfassen` (der Gast ist zugesagt und eingeteilt).
+**Nicht ausgeführt** – kein JDK 25, Maven, Docker, keine Spring-Jars in der Umgebung. Der Lauf
+von `./mvnw clean verify` mit Docker steht aus, und er ist die erste Ausführung dieser Fälle, der
+Abfrage `SQL_EINGETEILT` und der Durchmischung zusammen.
+
 **Erwartet nach der Durchmischung (22.10.2026): 538 Fälle in 35 Klassen** – mit
 `grep -c '^\s*@Test\s*$'` über `src/test` nachgezählt (528 + 7 in `TeamverfahrenTests`, jetzt 16, +
 3 in `TeamGeneratorTests`, jetzt 53). **Teilweise ausgeführt:** `TeamverfahrenTests` lief mit
@@ -1071,7 +1116,7 @@ und die Prüfschritte beim Nachziehen stehen in ihrer `README.md`.
 
 ## 7. Nächste Schritte
 
-0. **Testlauf abschliessen** (22.10.2026): `./mvnw clean verify` (erwartet 538/35), die A18- und
+0. **Testlauf abschliessen** (22.10.2026): `./mvnw clean verify` (erwartet 548/35), die A18- und
    A15-Änderung committen (**Reihenfolge nach `AGENT_SERVER.md`: Vertrag, Code, Anleitungen – alles
    ungepusht; `V016` läuft erstmals gegen PostgreSQL 17**) und für die Namensbestätigung eine Handprüfung mit echter Mail über Bruno – Umlaute und Name in der Nachricht,
    `202`/`204`, danach `ADMIN_NAME` in der `.env` und `adminName` in den Bruno-Umgebungen nachziehen.
