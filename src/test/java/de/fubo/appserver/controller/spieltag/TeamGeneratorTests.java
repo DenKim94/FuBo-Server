@@ -27,8 +27,10 @@ import tools.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -672,6 +674,74 @@ class TeamGeneratorTests {
         assertThat(teams(einzeln(spielerSitzung(0), terminId))).containsEntry("veraltet", true);
     }
 
+    // --------------------------------------------------------------------- Durchmischung
+
+    /**
+     * Jeder neue Lauf liefert eine andere Einteilung als der vorige (22.10.2026).
+     *
+     * <p>Das Vertauschen von A und B zaehlt nicht: Verglichen werden die beiden Gruppen als
+     * Menge. Der Fall haengt nicht an den Demodaten - gibt es mindestens zwei Aufteilungen, ist
+     * die vorige ausgeschlossen, und bei acht Spielern gibt es 35. Die Grenze steht auf sechs,
+     * damit ein Spieler fuenfmal in Folge neu generieren darf.
+     */
+    @Test
+    void jederNeueLaufDurchmischtDieTeamsNeu() throws Exception {
+        anzTeamGeneratorSetzen(6);
+        Long terminId = terminMitZusagen(8);
+        String token = spielerSitzung(0);
+
+        Set<Set<String>> vorige = aufteilung(alsKarte(
+                generieren(token, terminId).andExpect(status().isCreated())));
+        for (int lauf = 2; lauf <= 6; lauf++) {
+            Set<Set<String>> aktuelle = aufteilung(alsKarte(
+                    generieren(token, terminId).andExpect(status().isCreated())));
+
+            assertThat(aktuelle).as("Lauf %d gegen Lauf %d", lauf, lauf - 1).isNotEqualTo(vorige);
+            vorige = aktuelle;
+        }
+    }
+
+    /**
+     * Auch nach einer Skillaenderung bleibt die bisherige Einteilung ausgeschlossen.
+     *
+     * <p>Die Skillaenderung oeffnet das Kontingent, aendert aber den Teilnehmerkreis nicht -
+     * die Teilnahme-Ids sind dieselben, die Regel gilt weiter. Ohne den Ausschluss kaeme bei
+     * einem eindeutigen Optimum jedes Mal dieselbe Einteilung zurueck.
+     */
+    @Test
+    void eineSkillaenderungHebtDenAusschlussNichtAuf() throws Exception {
+        Long terminId = terminMitZusagen(8);
+        String token = spielerSitzung(0);
+        Set<Set<String>> vorige = aufteilung(alsKarte(
+                generieren(token, terminId).andExpect(status().isCreated())));
+
+        skillAendern(spielerId(2), 1);
+        Set<Set<String>> neue = aufteilung(alsKarte(
+                generieren(token, terminId).andExpect(status().isCreated())));
+
+        assertThat(neue).isNotEqualTo(vorige);
+    }
+
+    /**
+     * Mit einem neuen Teilnehmer ist der Kreis ein anderer - die bisherige Einteilung passt
+     * nicht mehr auf die Aufstellung, und der Lauf rechnet ohne sie.
+     *
+     * <p>Geprueft wird, dass die Umrechnung der gespeicherten Zuteilungen auf die neue
+     * Aufstellung bei verschiedener Teilnehmerzahl nicht scheitert und der Neue eingeteilt ist.
+     */
+    @Test
+    void einAndererTeilnehmerkreisLaeuftOhneBisherigeEinteilung() throws Exception {
+        Long terminId = terminMitZusagen(8);
+        String token = spielerSitzung(0);
+        generieren(token, terminId).andExpect(status().isCreated());
+
+        rueckmeldung(spielerSitzung(8), terminId, true).andExpect(status().isNoContent());
+        Map<String, Object> einteilung = alsKarte(
+                generieren(token, terminId).andExpect(status().isCreated()));
+
+        assertThat(alleNamen(einteilung)).hasSize(9).contains(spielerName(8));
+    }
+
     // --------------------------------------------------------------------- Restkontingent
 
     /**
@@ -1013,6 +1083,15 @@ class TeamGeneratorTests {
         return eintraege(einteilung, team).stream()
                 .map(eintrag -> (String) eintrag.get("anzeigeName"))
                 .toList();
+    }
+
+    /**
+     * Die Einteilung als zwei Gruppen ohne Beschriftung: {@code {A, B}} und {@code {B, A}} sind
+     * dieselbe Aufteilung.
+     */
+    private static Set<Set<String>> aufteilung(Map<String, Object> einteilung) {
+        return Set.of(new HashSet<>(namen(einteilung, "teamA")),
+                new HashSet<>(namen(einteilung, "teamB")));
     }
 
     private static List<String> alleNamen(Map<String, Object> einteilung) {

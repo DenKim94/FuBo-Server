@@ -6,6 +6,7 @@ import de.fubo.appserver.domain.spieltag.Aufstellungsspieler;
 import de.fubo.appserver.domain.team.Aufstellung;
 import de.fubo.appserver.domain.team.Bankentscheid;
 import de.fubo.appserver.domain.team.Bankkandidat;
+import de.fubo.appserver.domain.team.BisherigeAufteilung;
 import de.fubo.appserver.domain.team.Teamaufteilung;
 import de.fubo.appserver.domain.team.Teamergebnis;
 import org.springframework.stereotype.Service;
@@ -58,8 +59,25 @@ public class Teamrechner {
      */
     public Teamergebnis rechne(Aufstellung aufstellung, AlgorithmType verfahren,
                                AuswechselModus modus, long seed) {
+        return rechne(aufstellung, verfahren, modus, seed, null);
+    }
 
-        Teamaufteilung aufteilung = verfahrenAuswahl.fuer(verfahren).berechne(aufstellung, seed);
+    /**
+     * Wie {@link #rechne(Aufstellung, AlgorithmType, AuswechselModus, long)}, nur dass der Lauf
+     * die {@code bisherige} Aufteilung <b>nicht wiederholt</b> (22.10.2026).
+     *
+     * <p>Der Termin-Lauf uebergibt die aktuelle Einteilung des Termins, der manuelle Lauf
+     * (A24) {@code null}: Dort gibt es nichts, was sich wiederholen koennte, weil nichts
+     * gespeichert wird. Der Dienst bleibt derselbe - nur die Eingabe unterscheidet sich.
+     *
+     * @param bisherige die zu meidende Aufteilung in Positionen von {@code aufstellung},
+     *                  oder {@code null}
+     */
+    public Teamergebnis rechne(Aufstellung aufstellung, AlgorithmType verfahren,
+                               AuswechselModus modus, long seed, BisherigeAufteilung bisherige) {
+
+        Teamaufteilung aufteilung = verfahrenAuswahl.fuer(verfahren)
+                .berechne(aufstellung, seed, bisherige);
         List<Long> staerken = staerken(aufstellung);
 
         if (!aufstellung.ungerade()) {

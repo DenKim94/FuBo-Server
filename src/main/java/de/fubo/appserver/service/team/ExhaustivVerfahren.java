@@ -2,12 +2,14 @@ package de.fubo.appserver.service.team;
 
 import de.fubo.appserver.domain.config.AlgorithmType;
 import de.fubo.appserver.domain.team.Aufstellung;
+import de.fubo.appserver.domain.team.BisherigeAufteilung;
 import de.fubo.appserver.domain.team.Teamaufteilung;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 
@@ -29,9 +31,9 @@ import java.util.Random;
  *   <li><b>Der Torwart geht mit {@code 0.30} in die Primaerkosten ein</b>, nicht erst in den
  *       Tie-Break. So steht es in {@code AGENT.md}; die Referenz ist der Sonderfall
  *       {@code gewicht = 0}.</li>
- *   <li><b>Es wird nur das laufende Optimum gehalten</b>, nicht alles gesammelt und sortiert.
- *       705.432 Tupel im Speicher sind unnoetig; die Auswahl unter gleich guten Aufteilungen
- *       leistet das Reservoir-Sampling.</li>
+ *   <li><b>Es wird nichts gesammelt und sortiert.</b> 705.432 Tupel im Speicher
+ *       sind unnoetig; die Auswahl unter den Aufteilungen im Band (seit dem 22.10.2026, vorher
+ *       unter den gleich guten) leistet das Reservoir-Sampling.</li>
  * </ol>
  * <b>Nicht abgewichen wird bei der Groessenwahl {@code n / 2}</b> - die Referenz nimmt
  * ebenfalls die kleinere Haelfte, und daraus folgt A20a.
@@ -77,7 +79,8 @@ public class ExhaustivVerfahren implements Teamverfahren {
     }
 
     /**
-     * Rechnet das globale Optimum aus - oder weicht aus, wenn die Aufstellung zu gross ist.
+     * Waehlt eine Aufteilung aus dem Band um das Optimum - oder weicht aus, wenn die
+     * Aufstellung zu gross ist.
      *
      * <h2>Der Rueckfall scheitert nicht, er weicht aus</h2>
      * Wer auf "Teams generieren" drueckt, hat {@code max_teilnehmer} nicht gesetzt und kann
@@ -86,13 +89,22 @@ public class ExhaustivVerfahren implements Teamverfahren {
      * wird es ueber {@code Teamaufteilung#verwendetesVerfahren} - stillschweigend abzuweichen
      * waere das Schlimmste von beidem.
      *
-     * <h2>Wie der Seed auswaehlt, ohne alles zu speichern</h2>
-     * {@code EXHAUSTIV} ist deterministisch, A15 verlangt aber, dass ein zweiter erlaubter
-     * Lauf bei unveraenderten Teilnehmern ein anderes Ergebnis liefern <i>kann</i> - sonst
-     * waere das Kontingent sinnlos. Der Seed waehlt deshalb unter den gleich guten
-     * Aufteilungen aus, per <b>Reservoir-Sampling der Groesse 1</b>: Die {@code k}-te
-     * gefundene Aufteilung wird mit Wahrscheinlichkeit {@code 1/k} uebernommen, am Ende ist
-     * die Auswahl gleichverteilt ueber alle Optima - in konstantem Speicher.
+     * <h2>Warum nicht mehr nur unter den Optima gewaehlt wird (22.10.2026)</h2>
+     * Bis dahin waehlte der Seed unter den <i>exakt gleich guten</i> Aufteilungen. Bei
+     * ganzzahligen Skills und wenigen Spielern gibt es oft nur eine - jeder Lauf lieferte dieselben
+     * Teams, nur mit vertauschten Namen. Der Seed waehlt jetzt unter allen Aufteilungen mit
+     * {@code kosten <= optimum + band} ({@link Zielfunktion#durchmischungsband()}), und die
+     * <b>aktuelle Einteilung des Termins ist ausgeschlossen</b>. Hat das Band nur diese eine
+     * Aufteilung, gilt die beste Alternative: "neu durchmischt" geht vor "ein Punkt besser".
+     *
+     * <h2>Zwei Durchlaeufe statt eines</h2>
+     * Das Band kennt man erst, wenn das Optimum feststeht. Alle Kandidaten zu merken und zu
+     * sortieren verbietet sich - bei lauter gleich starken Spielern liegen alle 2,7 Millionen
+     * Aufteilungen im Band. Der erste Durchlauf liefert deshalb nur zwei Zahlen (Optimum und
+     * beste Alternative zur bisherigen), der zweite waehlt per <b>Reservoir-Sampling der Groesse
+     * 1</b>: Die {@code k}-te Kandidatin wird mit Wahrscheinlichkeit {@code 1/k} uebernommen, am
+     * Ende ist die Wahl gleichverteilt ueber das Band - in konstantem Speicher. Der Aufwand
+     * verdoppelt sich, bleibt aber im Sekundenbereich ({@link #MAX_EXHAUSTIV}).
      *
      * <p>Der Zufallsgenerator ist {@code java.util.Random} und ausdruecklich weder
      * {@code SecureRandom} noch {@code RandomGenerator.getDefault()}: Sein Algorithmus ist in
@@ -101,15 +113,19 @@ public class ExhaustivVerfahren implements Teamverfahren {
      * gespeicherter Lauf nicht mehr nachrechnen. Kryptographisch muss hier nichts sein; der
      * Seed ist kein Geheimnis. <b>Gezogen</b> wird er dagegen mit {@code SecureRandom} (6.5),
      * damit sich keine Aufteilung durch wiederholtes Generieren ansteuern laesst.
+     *
+     * <p>Der Tie-Break der Zielfunktion ({@code |Gesamtstaerke_A - Gesamtstaerke_B|}) entscheidet
+     * hier nicht mehr: Innerhalb des Bands ist jede Aufteilung gleich willkommen.
      */
     @Override
-    public Teamaufteilung berechne(Aufstellung aufstellung, long seed) {
+    public Teamaufteilung berechne(Aufstellung aufstellung, long seed,
+                                   BisherigeAufteilung bisherige) {
         int n = aufstellung.groesse();
         if (n > MAX_EXHAUSTIV) {
             LOG.info("Teamgenerierung: {} Teilnehmer liegen ueber der Grenze von {} fuer "
                             + "EXHAUSTIV; der Lauf weicht auf HEURISTIK aus.",
                     n, MAX_EXHAUSTIV);
-            return heuristik.berechne(aufstellung, seed);
+            return heuristik.berechne(aufstellung, seed, bisherige);
         }
 
         Zielfunktion zielfunktion = new Zielfunktion(aufstellung);
@@ -124,42 +140,106 @@ public class ExhaustivVerfahren implements Teamverfahren {
         // Position frei; wer dort trotzdem filterte, verwuerfe gueltige Aufteilungen.
         int fest = aufstellung.ungerade() ? 0 : 1;
 
+        int[] bisherigeTeilmenge = teilmengeVon(bisherige, n, k, fest);
+        Eckwerte eckwerte = eckwerte(zielfunktion, n, k, fest, bisherigeTeilmenge);
+
+        // Es gibt eine Alternative, wenn irgendeine Aufteilung ausser der bisherigen existiert -
+        // bei zwei Teilnehmern gibt es keine, dort bleibt die Wiederholung unvermeidlich.
+        boolean ausschliessen = bisherigeTeilmenge != null
+                && eckwerte.besteAlternative() != Long.MAX_VALUE;
+        int[] verboten = ausschliessen ? bisherigeTeilmenge : null;
+
+        long obergrenze = eckwerte.optimum() + zielfunktion.durchmischungsband();
+        if (ausschliessen) {
+            // Liegt im Band nur die bisherige, gilt die beste Alternative - auch ausserhalb.
+            obergrenze = Math.max(obergrenze, eckwerte.besteAlternative());
+        }
+
+        Auswahl auswahl = new Auswahl(zufall);
+        long grenze = obergrenze;
+        aufzaehlen(zielfunktion, n, k, fest, (kombination, kosten) -> {
+            if (kosten <= grenze && !gleich(kombination, verboten)) {
+                auswahl.biete(kombination, kosten);
+            }
+        });
+
+        if (auswahl.teilmenge == null) {
+            throw new IllegalStateException(
+                    "Das Band enthielt keine Aufteilung - das Optimum gehoert immer dazu.");
+        }
+        return zusammenstellen(auswahl.teilmenge, n, zufall, auswahl.kosten);
+    }
+
+    /**
+     * Das Optimum der Zielfunktion ueber alle Aufteilungen - ohne Band, ohne Seed.
+     *
+     * <p>Paketsichtbar, weil die Tests daran messen, ob das Ergebnis im Band liegt und ob
+     * {@code HEURISTIK} das Optimum findet. Der Wert ist die Wahrheit, gegen die
+     * {@link #berechne} nicht selbst gemessen werden kann.
+     */
+    long optimum(Aufstellung aufstellung) {
+        int n = aufstellung.groesse();
+        if (n > MAX_EXHAUSTIV) {
+            throw new IllegalArgumentException(
+                    "Das Optimum zaehlt nur bis " + MAX_EXHAUSTIV + " Teilnehmer, hier " + n + ".");
+        }
+        return eckwerte(new Zielfunktion(aufstellung), n, aufstellung.kleineTeamgroesse(),
+                aufstellung.ungerade() ? 0 : 1, null).optimum();
+    }
+
+    /**
+     * Der Rueckgabewert des ersten Durchlaufs.
+     *
+     * @param optimum         kleinste Kosten ueber alle Aufteilungen
+     * @param besteAlternative kleinste Kosten ueber alle ausser der bisherigen;
+     *                        {@code Long.MAX_VALUE}, wenn es keine andere gibt
+     */
+    private record Eckwerte(long optimum, long besteAlternative) {
+    }
+
+    private static Eckwerte eckwerte(Zielfunktion zielfunktion, int n, int k, int fest,
+                                     int[] bisherige) {
+        long[] optimum = {Long.MAX_VALUE};
+        long[] alternative = {Long.MAX_VALUE};
+        aufzaehlen(zielfunktion, n, k, fest, (kombination, kosten) -> {
+            if (kosten < optimum[0]) {
+                optimum[0] = kosten;
+            }
+            // Der Vergleich mit der bisherigen kostet O(k); er laeuft nur, wenn die Aufteilung
+            // die beste Alternative ueberhaupt verbessern wuerde.
+            if (kosten < alternative[0] && !gleich(kombination, bisherige)) {
+                alternative[0] = kosten;
+            }
+        });
+        return new Eckwerte(optimum[0], alternative[0]);
+    }
+
+    /** Wird fuer jede aufgezaehlte Aufteilung einmal gerufen; {@code kombination} nicht behalten. */
+    @FunctionalInterface
+    private interface Besucher {
+        void besuche(int[] kombination, long kosten);
+    }
+
+    /**
+     * Zaehlt alle Teilmengen der Groesse {@code k} in lexikographischer Ordnung auf.
+     *
+     * <p>Position {@code i} ist ausgereizt, wenn sie ihren groesstmoeglichen Wert
+     * {@code n - k + i} traegt; die Positionen unterhalb von {@code fest} bleiben
+     * unangetastet. Eine Methode fuer beide Durchlaeufe - zwei Kopien der Schleife liessen die
+     * Durchlaeufe auseinanderlaufen, und das Band passte dann nicht zum Optimum.
+     */
+    private static void aufzaehlen(Zielfunktion zielfunktion, int n, int k, int fest,
+                                   Besucher besucher) {
         int[] kombination = new int[k];
         for (int i = 0; i < k; i++) {
             kombination[i] = i;
         }
-
         long[] puffer = zielfunktion.neuerPuffer();
-        long besteKosten = Long.MAX_VALUE;
-        long besteZweitkosten = Long.MAX_VALUE;
-        int anzahlOptima = 0;
-        int[] beste = null;
 
         while (true) {
             zielfunktion.summiere(kombination, k, puffer);
-            long kosten = zielfunktion.kosten(puffer);
-            long zweitkosten = zielfunktion.tieBreak(puffer);
+            besucher.besuche(kombination, zielfunktion.kosten(puffer));
 
-            int vergleich = Long.compare(kosten, besteKosten);
-            if (vergleich == 0) {
-                vergleich = Long.compare(zweitkosten, besteZweitkosten);
-            }
-
-            if (vergleich < 0) {
-                besteKosten = kosten;
-                besteZweitkosten = zweitkosten;
-                anzahlOptima = 1;
-                beste = kombination.clone();
-            } else if (vergleich == 0) {
-                anzahlOptima++;
-                if (zufall.nextInt(anzahlOptima) == 0) {
-                    beste = kombination.clone();
-                }
-            }
-
-            // Naechste Kombination in lexikographischer Ordnung. Position i ist ausgereizt,
-            // wenn sie ihren groesstmoeglichen Wert n - k + i traegt; die Positionen unterhalb
-            // von "fest" bleiben unangetastet.
             int i = k - 1;
             while (i >= fest && kombination[i] == n - k + i) {
                 i--;
@@ -172,8 +252,58 @@ public class ExhaustivVerfahren implements Teamverfahren {
                 kombination[j] = kombination[j - 1] + 1;
             }
         }
+    }
 
-        return zusammenstellen(beste, n, zufall, besteKosten);
+    /**
+     * Rechnet die bisherige Aufteilung in die aufgezaehlte Teilmenge um.
+     *
+     * <p>Aufgezaehlt wird bei gerader Zahl die Haelfte, die Spieler 0 enthaelt, bei ungerader
+     * die kleinere. Nur so trifft der Vergleich die bisherige Aufteilung - gleich, wie sie
+     * beschriftet war. Passen die Groessen nicht zur Aufstellung, ist die Angabe fuer diese
+     * Aufstellung wertlos; {@code null} heisst dann: nichts meiden.
+     */
+    private static int[] teilmengeVon(BisherigeAufteilung bisherige, int n, int k, int fest) {
+        if (bisherige == null || bisherige.teamA().size() + bisherige.teamB().size() != n) {
+            return null;
+        }
+        List<Integer> teilmenge;
+        if (fest == 1) {
+            if (bisherige.teamA().size() != k) {
+                return null;
+            }
+            teilmenge = bisherige.teamA().contains(0) ? bisherige.teamA() : bisherige.teamB();
+        } else {
+            teilmenge = bisherige.teamA().size() == k ? bisherige.teamA() : bisherige.teamB();
+            if (teilmenge.size() != k) {
+                return null;
+            }
+        }
+        return teilmenge.stream().mapToInt(Integer::intValue).sorted().toArray();
+    }
+
+    private static boolean gleich(int[] kombination, int[] verboten) {
+        return verboten != null && Arrays.equals(kombination, verboten);
+    }
+
+    /** Das Reservoir der Groesse 1 des zweiten Durchlaufs. */
+    private static final class Auswahl {
+
+        private final Random zufall;
+        private int anzahl;
+        private int[] teilmenge;
+        private long kosten;
+
+        Auswahl(Random zufall) {
+            this.zufall = zufall;
+        }
+
+        void biete(int[] kombination, long kosten) {
+            anzahl++;
+            if (zufall.nextInt(anzahl) == 0) {
+                this.teilmenge = kombination.clone();
+                this.kosten = kosten;
+            }
+        }
     }
 
     /**

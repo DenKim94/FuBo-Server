@@ -2,13 +2,17 @@ package de.fubo.appserver.service.team;
 
 import de.fubo.appserver.domain.config.AlgorithmType;
 import de.fubo.appserver.domain.team.Aufstellung;
+import de.fubo.appserver.domain.team.BisherigeAufteilung;
 import de.fubo.appserver.domain.team.Teamaufteilung;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 
 /**
@@ -100,29 +104,205 @@ public class HeuristikVerfahren implements Teamverfahren {
         return AlgorithmType.HEURISTIK;
     }
 
+    /**
+     * Sucht und waehlt aus dem Band um das beste Ergebnis (22.10.2026).
+     *
+     * <h2>Woher die Kandidaten kommen</h2>
+     * Anders als {@code EXHAUSTIV} kennt dieses Verfahren das Optimum nicht, nur das beste je
+     * gesehene Ergebnis {@code b}. Kandidaten sind die besten Aufteilungen der
+     * {@link #NEUSTARTE} unabhaengigen Laeufe <b>und alle, die sich von ihnen durch einen
+     * Tausch unterscheiden</b>; gewaehlt wird zufaellig unter allen mit
+     * {@code kosten <= b + band}, <b>ohne die bisherige Aufteilung</b>. Die Laeufe enden in
+     * verschiedenen Becken und liefern die Streuung; die Nachbarn garantieren, dass es ausser der
+     * bisherigen immer eine Alternative gibt. Ist keine im Band, gilt die beste Alternative.
+     *
+     * <p><b>Die Suche selbst ist unveraendert</b> ({@link #suche}): Sie verbraucht dieselben
+     * Zufallszahlen in derselben Reihenfolge wie vor der Aenderung; die Auswahl kommt danach.
+     */
     @Override
-    public Teamaufteilung berechne(Aufstellung aufstellung, long seed) {
+    public Teamaufteilung berechne(Aufstellung aufstellung, long seed,
+                                   BisherigeAufteilung bisherige) {
         Zielfunktion zielfunktion = new Zielfunktion(aufstellung);
         Random zufall = new Random(seed);
         int n = aufstellung.groesse();
 
-        int jeLauf = Math.max(1, (GRUND_ITERATIONEN + ITERATIONEN_JE_QUADRAT * n * n) / NEUSTARTE);
-        double abkuehlfaktor = Math.pow(END_TEMPERATUR / START_TEMPERATUR, 1.0 / jeLauf);
+        Suche suche = suche(zielfunktion, n, zufall);
 
-        Bestwert bestwert = new Bestwert();
-        for (int lauf = 0; lauf < NEUSTARTE; lauf++) {
-            einLauf(zielfunktion, n, zufall, jeLauf, abkuehlfaktor, bestwert);
+        Map<List<Integer>, Kandidat> kandidaten = new LinkedHashMap<>();
+        for (Bestwert lauf : suche.laeufe()) {
+            sammle(zielfunktion, lauf, kandidaten);
         }
+        Kandidat gewaehlt = waehle(zielfunktion, kandidaten, bisherige, n, zufall);
 
         // Der Seed vergibt A und B - sonst stuende bei ungerader Zahl immer dieselbe Haelfte
         // in Ueberzahl. Auf die Kosten wirkt das nicht: Sie sind ein Betrag und damit
         // symmetrisch.
         boolean tauschen = zufall.nextBoolean();
         return new Teamaufteilung(
-                alsListe(tauschen ? bestwert.teamB : bestwert.teamA),
-                alsListe(tauschen ? bestwert.teamA : bestwert.teamB),
-                bestwert.kosten,
+                alsListe(tauschen ? gewaehlt.teamB : gewaehlt.teamA),
+                alsListe(tauschen ? gewaehlt.teamA : gewaehlt.teamB),
+                gewaehlt.kosten,
                 AlgorithmType.HEURISTIK);
+    }
+
+    /**
+     * Die Kosten des besten Ergebnisses der Suche - das, was bis zum 22.10.2026 das Ergebnis
+     * war.
+     *
+     * <p>Paketsichtbar, weil der Vergleichstest daran misst, ob die Suche das Optimum findet:
+     * {@link #berechne} liefert seither eine Aufteilung aus dem Band, und die Kosten einer
+     * Auswahl sagen nichts mehr ueber die Guete der Suche.
+     */
+    long suchoptimum(Aufstellung aufstellung, long seed) {
+        return suche(new Zielfunktion(aufstellung), aufstellung.groesse(), new Random(seed))
+                .gesamt().kosten;
+    }
+
+    /**
+     * Die Neustarts samt Gesamtbestwert.
+     *
+     * <p>Jeder Lauf haelt seinen eigenen Bestwert, der Gesamtbestwert entsteht daraus in
+     * Laufreihenfolge mit demselben "nur bei Verbesserung"-Vergleich wie zuvor - er ist damit
+     * unveraendert derselbe wie bei einem gemeinsamen Bestwert.
+     */
+    private static Suche suche(Zielfunktion zielfunktion, int n, Random zufall) {
+        int jeLauf = Math.max(1, (GRUND_ITERATIONEN + ITERATIONEN_JE_QUADRAT * n * n) / NEUSTARTE);
+        double abkuehlfaktor = Math.pow(END_TEMPERATUR / START_TEMPERATUR, 1.0 / jeLauf);
+
+        Bestwert gesamt = new Bestwert();
+        List<Bestwert> laeufe = new ArrayList<>(NEUSTARTE);
+        for (int lauf = 0; lauf < NEUSTARTE; lauf++) {
+            Bestwert dieserLauf = new Bestwert();
+            einLauf(zielfunktion, n, zufall, jeLauf, abkuehlfaktor, dieserLauf);
+            laeufe.add(dieserLauf);
+            gesamt.merke(dieserLauf.kosten, dieserLauf.zweitkosten, dieserLauf.teamA, dieserLauf.teamB);
+        }
+        return new Suche(gesamt, laeufe);
+    }
+
+    private record Suche(Bestwert gesamt, List<Bestwert> laeufe) {
+    }
+
+    /** Eine Aufteilung der Kandidatenmenge; beide Teams aufsteigend sortiert. */
+    private static final class Kandidat {
+
+        private final int[] teamA;
+        private final int[] teamB;
+        private final long kosten;
+
+        Kandidat(int[] teamA, int[] teamB, long kosten) {
+            this.teamA = teamA;
+            this.teamB = teamB;
+            this.kosten = kosten;
+        }
+    }
+
+    /**
+     * Nimmt den Bestwert eines Laufs und alle seine Einzeltausch-Nachbarn in die
+     * Kandidatenmenge auf.
+     *
+     * <p>Die Menge ist nach der Aufteilung <b>ohne Beschriftung</b> geschluesselt
+     * ({@link #schluessel}): Dieselbe Aufteilung aus zwei Laeufen oder mit vertauschtem A/B
+     * zaehlt einmal. Sonst wuerde sie bei der Auswahl mehrfach gewogen. Es sind hoechstens
+     * {@code NEUSTARTE * (1 + |A| * |B|)} Eintraege, bei 30 Teilnehmern gut 1.800.
+     */
+    private static void sammle(Zielfunktion zielfunktion, Bestwert lauf,
+                               Map<List<Integer>, Kandidat> ziel) {
+        int[] a = lauf.teamA;
+        int[] b = lauf.teamB;
+
+        long[] summeA = zielfunktion.neuerPuffer();
+        zielfunktion.summiere(a, a.length, summeA);
+        aufnehmen(ziel, a, b, zielfunktion.kosten(summeA));
+
+        for (int i = 0; i < a.length; i++) {
+            for (int j = 0; j < b.length; j++) {
+                zielfunktion.verschiebe(summeA, a[i], -1);
+                zielfunktion.verschiebe(summeA, b[j], +1);
+                long kosten = zielfunktion.kosten(summeA);
+
+                int[] neuA = a.clone();
+                int[] neuB = b.clone();
+                neuA[i] = b[j];
+                neuB[j] = a[i];
+                aufnehmen(ziel, neuA, neuB, kosten);
+
+                zielfunktion.verschiebe(summeA, b[j], -1);
+                zielfunktion.verschiebe(summeA, a[i], +1);
+            }
+        }
+    }
+
+    private static void aufnehmen(Map<List<Integer>, Kandidat> ziel, int[] a, int[] b, long kosten) {
+        int[] sortiertA = a.clone();
+        int[] sortiertB = b.clone();
+        Arrays.sort(sortiertA);
+        Arrays.sort(sortiertB);
+        ziel.putIfAbsent(schluessel(sortiertA, sortiertB), new Kandidat(sortiertA, sortiertB, kosten));
+    }
+
+    /**
+     * Der Schluessel einer Aufteilung: das Team, das Spieler 0 enthaelt, aufsteigend.
+     *
+     * <p>Beide Teams sind sortiert, Spieler 0 steht damit an erster Stelle genau eines von
+     * ihnen. Der Schluessel haengt nicht von der Beschriftung ab.
+     */
+    private static List<Integer> schluessel(int[] sortiertA, int[] sortiertB) {
+        int[] mitNull = sortiertA[0] == 0 ? sortiertA : sortiertB;
+        List<Integer> schluessel = new ArrayList<>(mitNull.length);
+        for (int index : mitNull) {
+            schluessel.add(index);
+        }
+        return schluessel;
+    }
+
+    private static List<Integer> schluessel(BisherigeAufteilung bisherige, int n) {
+        if (bisherige == null || bisherige.teamA().size() + bisherige.teamB().size() != n
+                || bisherige.teamA().isEmpty() || bisherige.teamB().isEmpty()) {
+            return null;
+        }
+        List<Integer> mitNull = new ArrayList<>(
+                bisherige.teamA().contains(0) ? bisherige.teamA() : bisherige.teamB());
+        Collections.sort(mitNull);
+        return mitNull;
+    }
+
+    /**
+     * Zieht den Kandidaten: zufaellig unter allen im Band, ohne die bisherige Aufteilung.
+     *
+     * <p>Dieselbe Regel wie in {@code ExhaustivVerfahren#berechne}: Liegt im Band nur die
+     * bisherige, gilt die beste Alternative. Die Kandidatenmenge enthaelt immer mehr als eine
+     * Aufteilung, sobald es zwei Teilnehmer ueberschreitet - die Nachbarn des Bestwerts sind
+     * verschieden von ihm.
+     */
+    private static Kandidat waehle(Zielfunktion zielfunktion, Map<List<Integer>, Kandidat> kandidaten,
+                                   BisherigeAufteilung bisherige, int n, Random zufall) {
+        List<Integer> verboten = schluessel(bisherige, n);
+
+        long bester = Long.MAX_VALUE;
+        long alternative = Long.MAX_VALUE;
+        for (Map.Entry<List<Integer>, Kandidat> eintrag : kandidaten.entrySet()) {
+            long kosten = eintrag.getValue().kosten;
+            bester = Math.min(bester, kosten);
+            if (!eintrag.getKey().equals(verboten)) {
+                alternative = Math.min(alternative, kosten);
+            }
+        }
+
+        boolean ausschliessen = verboten != null && alternative != Long.MAX_VALUE;
+        long grenze = bester + zielfunktion.durchmischungsband();
+        if (ausschliessen) {
+            grenze = Math.max(grenze, alternative);
+        }
+
+        List<Kandidat> infrage = new ArrayList<>();
+        for (Map.Entry<List<Integer>, Kandidat> eintrag : kandidaten.entrySet()) {
+            boolean verbotene = ausschliessen && eintrag.getKey().equals(verboten);
+            if (eintrag.getValue().kosten <= grenze && !verbotene) {
+                infrage.add(eintrag.getValue());
+            }
+        }
+        return infrage.get(zufall.nextInt(infrage.size()));
     }
 
     /**

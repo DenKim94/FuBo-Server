@@ -4,6 +4,7 @@ import de.fubo.appserver.domain.config.AlgorithmType;
 import de.fubo.appserver.domain.profil.SkillKategorie;
 import de.fubo.appserver.domain.spieltag.Aufstellungsspieler;
 import de.fubo.appserver.domain.team.Aufstellung;
+import de.fubo.appserver.domain.team.BisherigeAufteilung;
 import de.fubo.appserver.domain.team.Teamaufteilung;
 import org.junit.jupiter.api.Test;
 
@@ -228,13 +229,18 @@ class TeamverfahrenTests {
     @Test
     void heuristikFindetDasOptimumBeiZehnSpielern() {
         Aufstellung aufstellung = zehnSpieler();
+        long optimum = exhaustiv.optimum(aufstellung);
 
         for (long seed = 1; seed <= 20; seed++) {
-            long optimum = exhaustiv.berechne(aufstellung, seed).kosten();
-            Teamaufteilung genaehert = heuristik.berechne(aufstellung, seed);
+            // Gemessen wird die Suche (suchoptimum), nicht die Auswahl: berechne() liefert seit
+            // dem 22.10.2026 eine Aufteilung aus dem Band, und deren Kosten sagen nichts mehr
+            // darueber, ob die Suche das Optimum gefunden hat.
+            assertThat(heuristik.suchoptimum(aufstellung, seed)).isEqualTo(optimum);
 
+            Teamaufteilung genaehert = heuristik.berechne(aufstellung, seed);
             assertThat(genaehert.verwendetesVerfahren()).isEqualTo(AlgorithmType.HEURISTIK);
-            assertThat(genaehert.kosten()).isEqualTo(optimum);
+            assertThat(genaehert.kosten()).isBetween(optimum,
+                    optimum + new Zielfunktion(aufstellung).durchmischungsband());
         }
     }
 
@@ -259,7 +265,204 @@ class TeamverfahrenTests {
         }
     }
 
+    // ------------------------------------------------------------------ Durchmischung (22.10.2026)
+
+    /**
+     * Bei einem <b>eindeutigen</b> Optimum liefert ohne bisherige Aufteilung jeder Seed das
+     * Optimum - und mit ihr die beste Alternative, nie dieselbe Einteilung.
+     *
+     * <p>Das ist der Fall hinter dem Fehlerbericht: Vier Spieler mit {@code 6, 1, 4, 3} haben
+     * genau eine Aufteilung mit Kosten 0 ({@code {6,1}} gegen {@code {4,3}}); die anderen kosten
+     * 400 und 600 und liegen ausserhalb des Bands von 100. Vorher kam bei jedem Lauf dieselbe
+     * Einteilung zurueck. Jetzt gilt die beste Alternative ({@code {6,3}} gegen {@code {1,4}},
+     * Kosten 400). <b>Beschriftung ist gleichgueltig:</b> Die bisherige Aufteilung wird einmal
+     * als {@code A={0,1}} und einmal vertauscht angegeben.
+     */
+    @Test
+    void einEindeutigesOptimumWirdBeiBisherigerAufteilungVerlassen() {
+        Aufstellung aufstellung = aufstellung(
+                List.of(kategorie("ANGRIFF", FELD, 1)),
+                new int[]{6}, new int[]{1}, new int[]{4}, new int[]{3});
+        BisherigeAufteilung optimum = new BisherigeAufteilung(List.of(0, 1), List.of(2, 3));
+        BisherigeAufteilung vertauscht = new BisherigeAufteilung(List.of(2, 3), List.of(0, 1));
+
+        Random seedQuelle = new Random(20261022L);
+        for (int lauf = 0; lauf < 20; lauf++) {
+            long seed = seedQuelle.nextLong();
+
+            assertThat(exhaustiv.berechne(aufstellung, seed).kosten())
+                    .as("ohne bisherige: das Optimum").isZero();
+
+            for (BisherigeAufteilung bisherige : List.of(optimum, vertauscht)) {
+                Teamaufteilung ergebnis = exhaustiv.berechne(aufstellung, seed, bisherige);
+
+                assertThat(ergebnis.kosten()).as("beste Alternative").isEqualTo(400L);
+                assertThat(gruppen(ergebnis)).isEqualTo(Set.of(Set.of(0, 3), Set.of(1, 2)));
+            }
+        }
+    }
+
+    /**
+     * Mehrere Aufteilungen im Band: Der Seed streut ueber alle, aber nie auf die bisherige.
+     *
+     * <p>Werte 5, 4, 3, 2, 1 in einer Kategorie. Die Summe ist 15 (ungerade), die kleinste
+     * Differenz 1 - also Kosten 100 - und sie erreichen drei Aufteilungen des kleinen Teams:
+     * {@code {0,2}}, {@code {0,3}} und {@code {1,2}}. Alle anderen kosten mindestens 300. Mit
+     * {@code {0,2}} als bisherige bleiben zwei uebrig, und beide muessen vorkommen.
+     */
+    @Test
+    void ausDemBandWirdGestreutUndDieBisherigeAusgelassen() {
+        Aufstellung aufstellung = aufstellung(
+                List.of(kategorie("ANGRIFF", FELD, 1)),
+                new int[]{5}, new int[]{4}, new int[]{3}, new int[]{2}, new int[]{1});
+        BisherigeAufteilung bisherige = new BisherigeAufteilung(List.of(0, 2), List.of(1, 3, 4));
+
+        Random seedQuelle = new Random(20261022L);
+        Set<Set<Integer>> ohneBisherige = new HashSet<>();
+        Set<Set<Integer>> mitBisherige = new HashSet<>();
+        for (int lauf = 0; lauf < 80; lauf++) {
+            long seed = seedQuelle.nextLong();
+
+            Teamaufteilung frei = exhaustiv.berechne(aufstellung, seed);
+            assertThat(frei.kosten()).isEqualTo(100L);
+            ohneBisherige.add(kleinesTeam(frei));
+
+            Teamaufteilung neu = exhaustiv.berechne(aufstellung, seed, bisherige);
+            assertThat(neu.kosten()).isEqualTo(100L);
+            mitBisherige.add(kleinesTeam(neu));
+        }
+
+        assertThat(ohneBisherige).containsExactlyInAnyOrder(Set.of(0, 2), Set.of(0, 3), Set.of(1, 2));
+        assertThat(mitBisherige).containsExactlyInAnyOrder(Set.of(0, 3), Set.of(1, 2));
+    }
+
+    /**
+     * Jede Wahl liegt im Band, und eine Folge von Laeufen wiederholt nie unmittelbar.
+     *
+     * <p>Elf Spieler (ungerade): Das Optimum kostet 500, zwei weitere Aufteilungen 560 - sonst
+     * liegt nichts im Band bis 600. Zwanzig Laeufe hintereinander, jeder mit dem vorigen als
+     * bisherige: Die Kosten bleiben in {@code [500, 600]}, und zwei aufeinanderfolgende Laeufe
+     * sind nie gleich. Gemessen am echten Optimum aus {@link ExhaustivVerfahren#optimum} und
+     * nicht an einer Zahl im Test.
+     */
+    @Test
+    void jedeWahlLiegtImBandUndWiederholtDenVorgaengerNicht() {
+        Aufstellung aufstellung = elfSpieler();
+        long optimum = exhaustiv.optimum(aufstellung);
+        long band = new Zielfunktion(aufstellung).durchmischungsband();
+
+        Random seedQuelle = new Random(20261022L);
+        Teamaufteilung vorige = null;
+        Set<Set<Integer>> gesehen = new HashSet<>();
+        for (int lauf = 0; lauf < 20; lauf++) {
+            BisherigeAufteilung bisherige = vorige == null ? null
+                    : new BisherigeAufteilung(vorige.teamA(), vorige.teamB());
+            Teamaufteilung ergebnis = exhaustiv.berechne(aufstellung, seedQuelle.nextLong(), bisherige);
+
+            assertThat(ergebnis.kosten()).isBetween(optimum, optimum + band);
+            if (vorige != null) {
+                assertThat(gruppen(ergebnis)).isNotEqualTo(gruppen(vorige));
+            }
+            gesehen.add(kleinesTeam(ergebnis));
+            vorige = ergebnis;
+        }
+
+        assertThat(optimum).as("von Hand gerechnet: 11 Spieler, fuenf Kategorien").isEqualTo(500L);
+        assertThat(gesehen).as("alle drei Aufteilungen im Band kommen vor").hasSize(3);
+    }
+
+    /**
+     * Ein eindeutiges Optimum bleibt ohne bisherige Aufteilung das Ergebnis, mit ihr gilt die
+     * beste Alternative - an den zehn Spielern des Vergleichstests.
+     *
+     * <p>Das Optimum kostet 390, die naechstbeste Aufteilung 510 (von Hand durchgezaehlt, siehe
+     * {@code CONTEXT_HANDOFF_SERVER.md}). Das Band von 100 reicht nur bis 490.
+     */
+    @Test
+    void beiZehnSpielernKommtNachDemOptimumDieBesteAlternative() {
+        Aufstellung aufstellung = zehnSpieler();
+        Teamaufteilung optimal = exhaustiv.berechne(aufstellung, 1L);
+        assertThat(optimal.kosten()).isEqualTo(390L);
+
+        BisherigeAufteilung bisherige = new BisherigeAufteilung(optimal.teamA(), optimal.teamB());
+        for (long seed = 1; seed <= 20; seed++) {
+            Teamaufteilung neu = exhaustiv.berechne(aufstellung, seed, bisherige);
+
+            assertThat(neu.kosten()).isEqualTo(510L);
+            assertThat(gruppen(neu)).isNotEqualTo(gruppen(optimal));
+        }
+    }
+
+    /**
+     * Eine bisherige Aufteilung, die nicht zur Aufstellung passt, wird ignoriert.
+     *
+     * <p>Der Dienst gibt sie nur bei gleichem Teilnehmerkreis weiter; fuer den Fall, dass eine
+     * Groesse trotzdem abweicht, darf das Verfahren nicht scheitern und nichts meiden.
+     */
+    @Test
+    void eineUnpassendeBisherigeAufteilungWirdIgnoriert() {
+        Aufstellung aufstellung = aufstellung(
+                List.of(kategorie("ANGRIFF", FELD, 1)),
+                new int[]{6}, new int[]{1}, new int[]{4}, new int[]{3});
+        BisherigeAufteilung zuKlein = new BisherigeAufteilung(List.of(0), List.of(1, 2));
+
+        assertThat(exhaustiv.berechne(aufstellung, 5L, zuKlein).kosten()).isZero();
+        assertThat(heuristik.berechne(aufstellung, 5L, zuKlein).verwendetesVerfahren())
+                .isEqualTo(AlgorithmType.HEURISTIK);
+    }
+
+    /** Bei zwei Teilnehmern gibt es nur eine Aufteilung; sie wird trotz Vermeidung geliefert. */
+    @Test
+    void beiZweiSpielernBleibtNurDieEineAufteilung() {
+        Aufstellung aufstellung = aufstellung(
+                List.of(kategorie("ANGRIFF", FELD, 1)), new int[]{3}, new int[]{5});
+        BisherigeAufteilung bisherige = new BisherigeAufteilung(List.of(0), List.of(1));
+
+        Teamaufteilung ergebnis = exhaustiv.berechne(aufstellung, 9L, bisherige);
+
+        assertThat(gruppen(ergebnis)).isEqualTo(Set.of(Set.of(0), Set.of(1)));
+    }
+
+    /**
+     * {@code HEURISTIK}: nie dieselbe Aufteilung wie die bisherige; ohne sie bleibt die Wahl im
+     * Band um das beste Ergebnis der Suche.
+     *
+     * <p>Zehn Spieler mit eindeutigem Optimum - der Fall, in dem das Verfahren vorher immer
+     * wieder dieselbe Aufteilung fand. <b>Eine Obergrenze fuer die zweite Wahl gibt es nicht:</b>
+     * Liegt im Band nur die bisherige, gilt die beste Alternative, und die kann beliebig weit
+     * darueber liegen. Dort zaehlt nur, dass sie nicht das Optimum unterbietet.
+     */
+    @Test
+    void heuristikWiederholtDieBisherigeNichtUndBleibtImBand() {
+        Aufstellung aufstellung = zehnSpieler();
+        long band = new Zielfunktion(aufstellung).durchmischungsband();
+        long optimum = exhaustiv.optimum(aufstellung);
+
+        for (long seed = 1; seed <= 20; seed++) {
+            Teamaufteilung erste = heuristik.berechne(aufstellung, seed);
+            assertThat(erste.kosten()).isBetween(optimum, heuristik.suchoptimum(aufstellung, seed) + band);
+
+            BisherigeAufteilung bisherige = new BisherigeAufteilung(erste.teamA(), erste.teamB());
+            Teamaufteilung zweite = heuristik.berechne(aufstellung, seed + 1000, bisherige);
+
+            assertThat(gruppen(zweite)).isNotEqualTo(gruppen(erste));
+            assertThat(zweite.kosten()).isGreaterThanOrEqualTo(optimum);
+            assertThat(Math.abs(zweite.teamA().size() - zweite.teamB().size())).isLessThanOrEqualTo(1);
+        }
+    }
+
     // ------------------------------------------------------------------ Hilfsmittel
+
+    /** Die Einteilung als zwei Gruppen ohne Beschriftung. */
+    private static Set<Set<Integer>> gruppen(Teamaufteilung aufteilung) {
+        return Set.of(new HashSet<>(aufteilung.teamA()), new HashSet<>(aufteilung.teamB()));
+    }
+
+    /** Das kleinere Team einer Aufteilung; bei ungerader Zahl unabhaengig von A und B eindeutig. */
+    private static Set<Integer> kleinesTeam(Teamaufteilung aufteilung) {
+        return new HashSet<>(aufteilung.teamA().size() < aufteilung.teamB().size()
+                ? aufteilung.teamA() : aufteilung.teamB());
+    }
 
     /** Kosten einer von Hand angegebenen Aufteilung, in Hundertsteln. */
     private static long kostenVon(Aufstellung aufstellung, int... teamA) {

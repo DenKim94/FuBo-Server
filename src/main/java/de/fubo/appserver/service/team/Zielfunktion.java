@@ -50,6 +50,16 @@ import java.util.List;
  */
 public final class Zielfunktion {
 
+    /**
+     * Breite des Durchmischungsbands in Punkten der am hoechsten gewichteten Kategorie
+     * ({@link #durchmischungsband()}). <b>Der einzige Regler der Durchmischung:</b> Gemessen mit
+     * zufaelligen Aufstellungen (8 bis 12 Spieler, Skills 1 bis 6) liegen bei {@code 1} meist
+     * nur ein bis zwei Aufteilungen im Band; in zehn Laeufen erscheinen im Mittel 2,5 bis 2,9
+     * verschiedene Einteilungen. {@code 3} ergaebe 3,7 bis 5,9, bei Mehrkosten von im Mittel
+     * 1,3 bis 1,6 Punkten gegenueber dem Optimum (Messung in {@code CONTEXT_HANDOFF_SERVER.md}).
+     */
+    private static final int BAND_PUNKTE = 1;
+
     /** {@code werte[spielerIndex][kategorieIndex]}, einmal aufgebaut. */
     private final int[][] werte;
 
@@ -216,6 +226,29 @@ public final class Zielfunktion {
             differenz += (long) gewichte[k] * (2 * summeA[k] - gesamtsumme[k]);
         }
         return Math.abs(differenz);
+    }
+
+    /**
+     * Wie viel schlechter als das Optimum eine Aufteilung sein darf und noch "ausgeglichen"
+     * heisst, in Hundertsteln: <b>ein Punkt Unterschied in der am hoechsten gewichteten
+     * Kategorie</b> (bei den Vorgaben {@code 100}).
+     *
+     * <p>Warum aus den Gewichten abgeleitet und keine Zahl im Code: Die Gewichte stehen in
+     * {@code skill_kategorie.gewicht} und sind administrierbar; eine feste {@code 100} waere
+     * eine zweite Wahrheit, die bei einer Gewichtsaenderung stillschweigend etwas anderes
+     * meinte. Die Kosten sind ganzzahlige Vielfache der Gewichte - ein Punkt in einer
+     * Feldkategorie ist der kleinste Schritt, den eine ungerade Summe ueberhaupt zulaesst; das
+     * Band erlaubt also etwa <i>eine</i> Kategorie, die um einen Punkt schlechter ausgeglichen
+     * ist als im Optimum, nicht mehr.
+     *
+     * <p>Beide Verfahren waehlen aus diesem Band; siehe {@link Teamverfahren}.
+     */
+    public long durchmischungsband() {
+        long hoechstes = 0;
+        for (int gewicht : gewichte) {
+            hoechstes = Math.max(hoechstes, gewicht);
+        }
+        return BAND_PUNKTE * hoechstes;
     }
 
     /**

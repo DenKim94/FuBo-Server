@@ -14,6 +14,7 @@ import de.fubo.appserver.domain.spieltag.Terminzustand;
 import de.fubo.appserver.domain.team.Aufstellung;
 import de.fubo.appserver.domain.team.Bankentscheid;
 import de.fubo.appserver.domain.team.Bankkandidat;
+import de.fubo.appserver.domain.team.BisherigeAufteilung;
 import de.fubo.appserver.domain.team.Einteilung;
 import de.fubo.appserver.domain.team.Einteilungseintrag;
 import de.fubo.appserver.domain.team.Generierungskopf;
@@ -110,7 +111,8 @@ public class TeamGenerierungService {
      *   <li>{@code teilnehmer_version} und {@code kontingent_version} merken</li>
      *   <li>Aufstellung ermitteln - prueft Mindestzahl und Skillwerte</li>
      *   <li><b>Kontingent verbrauchen</b></li>
-     *   <li>Seed ziehen, rechnen, Auswechselspieler bestimmen</li>
+     *   <li>Seed ziehen, aktuelle Einteilung als "nicht wiederholen" lesen, rechnen,
+     *       Auswechselspieler bestimmen</li>
      *   <li>bestehenden Lauf abloesen</li>
      *   <li>Kopf und Zuteilungen schreiben</li>
      *   <li>Version gegenpruefen</li>
@@ -183,8 +185,12 @@ public class TeamGenerierungService {
                 konfiguration.getAnzTeamGenerator());
 
         long seed = seedQuelle.naechster();
+        // Gelesen wird die aktuelle Einteilung, bevor sie abgeloest wird: Der neue Lauf soll
+        // die Teams neu durchmischen und darf sie deshalb nicht wiederholen.
+        BisherigeAufteilung bisherige = bisherigeAufteilung(terminId, aufstellung);
         Teamergebnis ergebnis = teamrechner.rechne(aufstellung,
-                konfiguration.getAlgorithmType(), konfiguration.getAuswechselModus(), seed);
+                konfiguration.getAlgorithmType(), konfiguration.getAuswechselModus(), seed,
+                bisherige);
 
         teamGenerierungRepository.abloesen(terminId);
         Long generierungId = teamGenerierungRepository.einfuegen(
@@ -202,6 +208,41 @@ public class TeamGenerierungService {
         // einer sein. Dieselbe Aufteilung wie in ConfigService.
         return aktuelleEinteilung(terminId).orElseThrow(() -> new IllegalStateException(
                 "Der soeben geschriebene Generierungslauf ist nicht wieder auffindbar."));
+    }
+
+    /**
+     * Die aktuelle Einteilung des Termins als Aufteilung der neuen Aufstellung - oder
+     * {@code null}, wenn es nichts zu meiden gibt.
+     *
+     * <h2>Wann {@code null}</h2>
+     * Wenn noch niemand generiert hat, und wenn die bisherige Einteilung <b>einen anderen
+     * Teilnehmerkreis</b> hatte: Wer neu zugesagt oder abgesagt hat, macht jede Aufteilung der
+     * neuen Aufstellung ohnehin zu einer anderen Einteilung. Gleich ist der Kreis genau dann,
+     * wenn beide gleich gross sind und jede Teilnahme der Aufstellung in der alten Einteilung
+     * vorkommt. Eine <b>Skill-Aenderung</b> aendert den Kreis nicht - dort gilt die Regel
+     * weiter, auch wenn die neuen Werte eine andere Aufteilung nahelegen.
+     *
+     * <p>Verglichen wird ueber die Teilnahme-Id ({@code team_zuteilung.teilnahme_id}), nicht
+     * ueber den Namen: Ein Gast mit demselben Namen an einem anderen Termin ist eine andere
+     * Teilnahme, und wer absagt und wieder zusagt, behaelt seine Zeile.
+     */
+    private BisherigeAufteilung bisherigeAufteilung(Long terminId, Aufstellung aufstellung) {
+        Map<Long, Character> teams = teamGenerierungRepository.findeAktuelleTeams(terminId);
+        if (teams.size() != aufstellung.groesse()) {
+            return null;
+        }
+
+        List<Integer> teamA = new ArrayList<>();
+        List<Integer> teamB = new ArrayList<>();
+        for (int position = 0; position < aufstellung.groesse(); position++) {
+            Long teilnahmeId = aufstellung.spieler().get(position).teilnahmeId();
+            Character team = teilnahmeId == null ? null : teams.get(teilnahmeId);
+            if (team == null) {
+                return null;
+            }
+            (team == 'A' ? teamA : teamB).add(position);
+        }
+        return new BisherigeAufteilung(teamA, teamB);
     }
 
     // ------------------------------------------------------------------ Manueller Lauf (A24)

@@ -9,7 +9,9 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -168,6 +170,15 @@ public class TeamGenerierungRepository {
      * <p><b>{@code EXISTS} statt {@code count(*)}</b>: PostgreSQL bricht beim ersten Treffer
      * ab, und gezaehlt werden soll hier nichts.
      */
+    private static final String SQL_AKTUELLE_TEAMS = """
+            SELECT tz.teilnahme_id, tz.team
+              FROM spieltag.team_zuteilung tz
+              JOIN spieltag.team_generierung tg ON tg.id = tz.generierung_id
+             WHERE tg.termin_id = :terminId
+               AND tg.abgeloest_am IS NULL
+             ORDER BY tz.id
+            """;
+
     private static final String SQL_EINTEILUNG_VORHANDEN = """
             SELECT EXISTS (SELECT 1
                              FROM spieltag.team_generierung tg
@@ -272,6 +283,35 @@ public class TeamGenerierungRepository {
                         rs.getLong("seed"),
                         rs.getBoolean("veraltet")))
                 .optional();
+    }
+
+    /**
+     * Wer in der aktuellen Einteilung eines Termins in welchem Team steht - nach Teilnahme-Id.
+     *
+     * <p>Leer, solange niemand generiert hat. <b>Die Teilnahme-Id und nicht der Name:</b> Sie
+     * ist die Kennung, ueber die die Zuteilung gespeichert wird, und sie bleibt stabil, wenn
+     * jemand absagt und wieder zusagt. Der Dienst rechnet sie auf die Positionen der neuen
+     * Aufstellung um. Die Abfrage laeuft ueber {@code uq_team_zuteilung}
+     * ({@code generierung_id} ist dessen erste Spalte) und {@code ix_team_generierung_aktuell}.
+     *
+     * @param terminId betroffener Termin
+     * @return Teilnahme-Id auf {@code 'A'} oder {@code 'B'}, in Schreibreihenfolge
+     */
+    public Map<Long, Character> findeAktuelleTeams(Long terminId) {
+        List<Teamzeile> zeilen = jdbc.sql(SQL_AKTUELLE_TEAMS)
+                .param("terminId", terminId)
+                .query((rs, zeile) -> new Teamzeile(
+                        rs.getLong("teilnahme_id"), rs.getString("team").charAt(0)))
+                .list();
+
+        Map<Long, Character> teams = new LinkedHashMap<>();
+        for (Teamzeile zeile : zeilen) {
+            teams.put(zeile.teilnahmeId(), zeile.team());
+        }
+        return teams;
+    }
+
+    private record Teamzeile(long teilnahmeId, char team) {
     }
 
     /**
