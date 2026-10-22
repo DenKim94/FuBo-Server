@@ -26,6 +26,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -61,6 +62,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <b>Die Uhrzeit allein traegt hier schon</b> - kein anderer Fall legt einen Termin um 21:30
  * an; deshalb darf diese Klasse mehrere Tage belegen, was sie fuer den Fall mit zwei Terminen
  * auch braucht.
+ *
+ * <h2>Wer erfassen darf (22.10.2026)</h2>
+ * Der Admin und die Eingeteilten der aktuellen Einteilung. Die meisten Faelle erfassen mit
+ * einem Spieler aus den ersten acht Profilen - in {@code terminBereitFuerErgebnis(8)} sind das
+ * alle Eingeteilten. Wer <b>nicht</b> eingeteilt sein soll, ist Position 8 oder 9; zugesagt
+ * wird fuer sie nur, wo der Fall es ausdruecklich braucht.
  *
  * <h2>Warum kein Fall die Profilverwaltung anfasst</h2>
  * Die Bilanzrechnung erhoeht {@code profil.spieler.version} per SQL. In einer
@@ -236,10 +243,18 @@ class ErgebnisControllerTests {
         assertThat(felder(antwort)).containsKey("deutlichNurBeiSieg");
     }
 
-    /** Ein Gast darf erfassen (A21, 2.1) - der Endpunkt liegt nicht unter {@code /admin/}. */
+    /**
+     * Ein eingeteilter Gast darf erfassen (A21) - der Endpunkt liegt nicht unter {@code /admin/}.
+     *
+     * <p>Der Gast hat eine Zusage und steht in der Einteilung. Ohne beides waere er seit dem
+     * 22.10.2026 nicht mehr berechtigt (siehe {@link #zugesagtNachDemLaufWirdAbgelehnt}).
+     */
     @Test
-    void gastDarfErfassen() throws Exception {
-        Long terminId = terminBereitFuerErgebnis(8);
+    void eingeteilterGastDarfErfassen() throws Exception {
+        Long terminId = terminMitZusagen(7);
+        gastZusageAnlegen(terminId, "Testgast 1", "MITTEL", 1);
+        generieren(spielerSitzung(0), terminId).andExpect(status().isCreated());
+        abschliessen(terminId);
 
         Map<String, Object> antwort = alsKarte(
                 erfassen(gastSitzung("Testgast 1"), terminId, "B", false)
@@ -248,6 +263,236 @@ class ErgebnisControllerTests {
         assertThat(antwort.get("erfasstVon"))
                 .as("Der Gastname wird kopiert, nicht verwiesen")
                 .isEqualTo("Testgast 1");
+    }
+
+    // --------------------------------------------------------------------- Wer erfassen darf
+
+    /**
+     * Team A und Team B duerfen erfassen - je ein Termin, weil der erste Eintrag gilt.
+     *
+     * <p>Wer in welchem Team steht, kommt aus {@code team_zuteilung} und nicht aus der
+     * Annahme, dass die ersten Profile in Team A stehen: Die Aufteilung entscheidet der Seed.
+     */
+    @Test
+    void eingeteilteBeiderTeamsDuerfenErfassen() throws Exception {
+        for (String team : List.of("A", "B")) {
+            Long terminId = terminBereitFuerErgebnis(8);
+            Long spielerId = teamzuordnung(terminId).entrySet().stream()
+                    .filter(eintrag -> team.equals(eintrag.getValue()))
+                    .map(Map.Entry::getKey)
+                    .findFirst()
+                    .orElseThrow();
+
+            erfassen(sitzungFuer(spielerId), terminId, "A", false)
+                    .andExpect(status().isCreated());
+        }
+    }
+
+    /**
+     * Der Auswechselspieler darf erfassen - und er steht in {@code teams.teamA} oder
+     * {@code teams.teamB}, nicht daneben.
+     *
+     * <p>Beides haengt zusammen: Der Vertrag sichert dem Client zu, dass "eingeteilt" genau
+     * "steht in einer der beiden Listen der Einzelansicht" heisst. Faellt der
+     * Auswechselspieler aus den Listen, taugt die Zusicherung nicht mehr.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void auswechselspielerDarfErfassen() throws Exception {
+        Long terminId = terminBereitFuerErgebnis(7);
+
+        Map<String, Object> teams = (Map<String, Object>) einzeln(spielerSitzung(0), terminId)
+                .get("teams");
+        String name = (String) teams.get("auswechselspieler");
+        assertThat(name).as("bei sieben Eingeteilten gibt es einen Auswechselspieler").isNotNull();
+
+        List<Map<String, Object>> eintraege = new ArrayList<>();
+        eintraege.addAll((List<Map<String, Object>>) teams.get("teamA"));
+        eintraege.addAll((List<Map<String, Object>>) teams.get("teamB"));
+        assertThat(eintraege)
+                .as("Der Auswechselspieler steht in einer der beiden Listen, markiert")
+                .anySatisfy(eintrag -> {
+                    assertThat(eintrag.get("anzeigeName")).isEqualTo(name);
+                    assertThat(eintrag.get("auswechselspieler")).isEqualTo(true);
+                });
+
+        Long spielerId = jdbc.queryForObject(
+                "SELECT id FROM profil.spieler WHERE name = ?", Long.class, name);
+
+        erfassen(sitzungFuer(spielerId), terminId, "B", true).andExpect(status().isCreated());
+    }
+
+    /**
+     * Der Admin darf erfassen, ohne eingeteilt zu sein - und Bilanz und Audit laufen wie
+     * beim Eintrag eines Spielers.
+     *
+     * <p>Das Adminprofil kann nicht zusagen und steht nie in einer Einteilung. Der Eintrag
+     * des Admins ist der Ausweg, wenn kein Spieler eintraegt.
+     */
+    @Test
+    void adminOhneEinteilungDarfErfassenUndDieBilanzLaeuftWieSonst() throws Exception {
+        Long terminId = terminBereitFuerErgebnis(8);
+        Map<Long, String> teams = teamzuordnung(terminId);
+
+        erfassen(adminSitzung(), terminId, "A", true).andExpect(status().isCreated());
+
+        assertThat(teams).hasSize(8);
+        teams.keySet().forEach(spielerId ->
+                assertThat(gesamt(spielerId))
+                        .as("jeder Eingeteilte hat genau ein gewertetes Spiel")
+                        .isEqualTo(1));
+        assertThat(auditDetail(terminId, "ERGEBNIS_ERFASST", "sieger")).isEqualTo("A");
+        assertThat(auditDetail(terminId, "ERGEBNIS_ERFASST", "betroffeneSpieler")).isEqualTo("8");
+    }
+
+    /**
+     * Wer nach dem Lauf zugesagt hat, ist nicht eingeteilt - auch wenn er in der
+     * Teilnehmerliste steht.
+     *
+     * <p>Die Gegenproben sind der Kern: kein Ergebnis in der Tabelle, keine Bilanz, kein
+     * Eintrag in der Einteilung der Einzelansicht. Ein {@code 403}, der trotzdem schriebe,
+     * waere schlimmer als keiner.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void zugesagtNachDemLaufWirdAbgelehnt() throws Exception {
+        Long terminId = terminMitEinteilung(8);
+        zusageAnlegen(terminId, spielerId(8), 0);
+        abschliessen(terminId);
+
+        ResultActions antwort = erfassen(spielerSitzung(8), terminId, "A", false)
+                .andExpect(status().isForbidden());
+
+        assertThat(fehlercode(antwort)).isEqualTo("NICHT_EINGETEILT");
+        assertThat(detail(antwort)).contains("eingeteilt");
+        assertThat(jdbc.queryForObject(
+                "SELECT count(*) FROM spieltag.ergebnis WHERE termin_id = ?",
+                Integer.class, terminId)).isZero();
+        assertThat(anzahlProfileMitBilanz()).as("keine Bilanz ohne Ergebnis").isZero();
+
+        Map<String, Object> teams = (Map<String, Object>) einzeln(spielerSitzung(0), terminId)
+                .get("teams");
+        assertThat(namenAusEinteilung(teams))
+                .as("Wer nicht in teamA/teamB steht, ist nicht eingeteilt")
+                .doesNotContain(spielerName(8));
+    }
+
+    /** Wer in der Warteschlange steht, hat zugesagt, spielt aber nicht - kein Eintrag. */
+    @Test
+    void wartendeWerdenAbgelehnt() throws Exception {
+        maxTeilnehmerSetzen(6);
+        Long terminId = terminBereitFuerErgebnis(8);
+
+        assertThat(fehlercode(erfassen(spielerSitzung(7), terminId, "A", false)
+                .andExpect(status().isForbidden())))
+                .isEqualTo("NICHT_EINGETEILT");
+        assertThat(fehlercode(erfassen(spielerSitzung(6), terminId, "A", false)
+                .andExpect(status().isForbidden())))
+                .isEqualTo("NICHT_EINGETEILT");
+
+        erfassen(spielerSitzung(0), terminId, "A", false).andExpect(status().isCreated());
+    }
+
+    /**
+     * Abgesagt und nie gemeldet sind gleich weit weg von der Einteilung.
+     *
+     * <p>Beide Faelle: Der eine hat eine Teilnahmezeile mit {@code zusage = false}, der andere
+     * gar keine. Eine Pruefung, die nur nach der Zeile fragt, laesst den ersten durch.
+     */
+    @Test
+    void abgesagtOderNieGemeldetWirdAbgelehnt() throws Exception {
+        Long terminId = terminMitZusagen(8);
+        absageAnlegen(terminId, spielerId(8));
+        generieren(spielerSitzung(0), terminId).andExpect(status().isCreated());
+        abschliessen(terminId);
+
+        assertThat(fehlercode(erfassen(spielerSitzung(8), terminId, "A", false)
+                .andExpect(status().isForbidden())))
+                .as("abgesagt")
+                .isEqualTo("NICHT_EINGETEILT");
+        assertThat(fehlercode(erfassen(spielerSitzung(9), terminId, "A", false)
+                .andExpect(status().isForbidden())))
+                .as("nie gemeldet")
+                .isEqualTo("NICHT_EINGETEILT");
+    }
+
+    /**
+     * Wer nur in einer <b>abgeloesten</b> Einteilung stand, ist nicht eingeteilt.
+     *
+     * <p>Der Aufbau: Alle acht werden eingeteilt, einer sagt ab, ein zweiter Lauf teilt die
+     * verbliebenen sieben neu ein. Der Absager steht noch in {@code team_zuteilung} - aber
+     * nur in der abgeloesten Generierung; das belegt der Fall selbst, bevor er das
+     * {@code 403} prueft.
+     */
+    @Test
+    void nurInAbgeloesterEinteilungWirdAbgelehnt() throws Exception {
+        Long terminId = terminMitZusagen(8);
+        generieren(spielerSitzung(0), terminId).andExpect(status().isCreated());
+        jdbc.update("""
+                UPDATE spieltag.teilnahme SET zusage = false, version = version + 1
+                 WHERE termin_id = ? AND spieler_id = ?
+                """, terminId, spielerId(7));
+        generieren(spielerSitzung(1), terminId).andExpect(status().isCreated());
+        abschliessen(terminId);
+
+        assertThat(jdbc.queryForObject("""
+                SELECT count(*)
+                  FROM spieltag.team_zuteilung tz
+                  JOIN spieltag.team_generierung tg ON tg.id = tz.generierung_id
+                  JOIN spieltag.teilnahme tn        ON tn.id = tz.teilnahme_id
+                 WHERE tg.termin_id = ? AND tn.spieler_id = ?
+                """, Integer.class, terminId, spielerId(7)))
+                .as("Der Absager steht noch in der Historie")
+                .isEqualTo(1);
+        assertThat(teamzuordnung(terminId)).doesNotContainKey(spielerId(7));
+
+        assertThat(fehlercode(erfassen(spielerSitzung(7), terminId, "A", false)
+                .andExpect(status().isForbidden())))
+                .isEqualTo("NICHT_EINGETEILT");
+
+        erfassen(spielerSitzung(0), terminId, "A", false).andExpect(status().isCreated());
+    }
+
+    // --------------------------------------------------------------------- Reihenfolge
+
+    /** Ohne Einteilung gibt es niemanden, der eingeteilt war: {@code 409}, nicht {@code 403}. */
+    @Test
+    void ohneEinteilungHatVorrangVorNichtEingeteilt() throws Exception {
+        Long terminId = terminMitZusagen(8);
+        abschliessen(terminId);
+
+        assertThat(fehlercode(erfassen(spielerSitzung(9), terminId, "A", false)
+                .andExpect(status().isConflict())))
+                .isEqualTo("KEINE_EINTEILUNG");
+    }
+
+    /**
+     * Der Status eines Termins ist fuer alle sichtbar: Ein Nicht-Eingeteilter bekommt bei
+     * einem geplanten Termin {@code 409}, nicht {@code 403}.
+     */
+    @Test
+    void terminStatusHatVorrangVorNichtEingeteilt() throws Exception {
+        Long terminId = terminMitEinteilung(8);
+
+        assertThat(fehlercode(erfassen(spielerSitzung(9), terminId, "A", false)
+                .andExpect(status().isConflict())))
+                .isEqualTo("TERMIN_NICHT_ABGESCHLOSSEN");
+    }
+
+    /**
+     * Ein Nicht-Eingeteilter erfaehrt nicht, ob schon ein Ergebnis vorliegt: {@code 403}, nicht
+     * {@code 409 ERGEBNIS_VORHANDEN}. Das vorhandene Ergebnis bleibt unveraendert.
+     */
+    @Test
+    void vorhandenesErgebnisVerratenBleibtFuerNichtEingeteilteVerborgen() throws Exception {
+        Long terminId = terminBereitFuerErgebnis(8);
+        erfassen(spielerSitzung(0), terminId, "A", true).andExpect(status().isCreated());
+
+        assertThat(fehlercode(erfassen(spielerSitzung(9), terminId, "B", false)
+                .andExpect(status().isForbidden())))
+                .isEqualTo("NICHT_EINGETEILT");
+
+        assertThat(String.valueOf(ergebniszeile(terminId).get("sieger")).trim()).isEqualTo("A");
     }
 
     /** Ohne Cookie greift die Filterchain, nicht der Controller. */
@@ -591,6 +836,24 @@ class ErgebnisControllerTests {
                 """, terminId, name, stufe, vorMinuten);
     }
 
+    /** Eine Teilnahmezeile mit Absage - der Spieler hat sich gemeldet und wieder abgemeldet. */
+    private void absageAnlegen(Long terminId, Long spielerId) {
+        jdbc.update("""
+                INSERT INTO spieltag.teilnahme (termin_id, spieler_id, zusage, gemeldet_am)
+                VALUES (?, ?, false, now())
+                """, terminId, spielerId);
+    }
+
+    /**
+     * Muss vor dem ersten HTTP-Aufruf eines Falls laufen: Die Konfigurationszeile landet beim
+     * ersten Aufruf im Persistence-Context, eine spaetere Aenderung per SQL bliebe unsichtbar.
+     */
+    private void maxTeilnehmerSetzen(int wert) {
+        jdbc.update("""
+                UPDATE configs.app_config SET max_teilnehmer = ?, version = version + 1 WHERE id = 1
+                """, wert);
+    }
+
     private void abschliessen(Long terminId) {
         statusSetzen(terminId, "ABGESCHLOSSEN");
     }
@@ -660,6 +923,18 @@ class ErgebnisControllerTests {
     @SuppressWarnings("unchecked")
     private static Map<String, Object> ergebnisAus(Map<String, Object> einzelansicht) {
         return (Map<String, Object>) einzelansicht.get("ergebnis");
+    }
+
+    /** Alle Anzeigenamen aus {@code teamA} und {@code teamB} der Einzelansicht. */
+    @SuppressWarnings("unchecked")
+    private static List<String> namenAusEinteilung(Map<String, Object> teams) {
+        List<String> namen = new ArrayList<>();
+        for (String schluessel : List.of("teamA", "teamB")) {
+            for (Map<String, Object> eintrag : (List<Map<String, Object>>) teams.get(schluessel)) {
+                namen.add((String) eintrag.get("anzeigeName"));
+            }
+        }
+        return namen;
     }
 
     @SuppressWarnings("unchecked")
@@ -784,7 +1059,11 @@ class ErgebnisControllerTests {
     }
 
     private String spielerSitzung(int position) {
-        return sessionService.anlegen(Stage.PROFILE_AUTHENTICATED, spielerId(position), Rolle.USER);
+        return sitzungFuer(spielerId(position));
+    }
+
+    private String sitzungFuer(Long spielerId) {
+        return sessionService.anlegen(Stage.PROFILE_AUTHENTICATED, spielerId, Rolle.USER);
     }
 
     /**

@@ -26,11 +26,13 @@ import org.springframework.web.bind.annotation.RestController;
  * <p><b>Und bewusst nicht unter {@code /admin/}</b>, wie schon {@code teams/generieren}. Wer
  * das Ergebnis eintraegt, ist der, der mit dem Telefon auf dem Platz steht. Bliebe es beim
  * Admin, kaeme der Eintrag Tage spaeter oder gar nicht - und <b>"der zuerst eingetragene
- * Eintrag gilt" ergibt nur einen Sinn, wenn mehrere es versuchen duerfen</b>. Gaeste spielen
- * mit; sie auszuschliessen waere eine Regel ohne Grund.
+ * Eintrag gilt" ergibt nur einen Sinn, wenn mehrere es versuchen duerfen</b>. <b>Seit dem
+ * 22.10.2026 duerfen es der Admin und die Eingeteilten der aktuellen Einteilung</b>, Gaeste
+ * eingeschlossen; wer nicht mitgespielt hat, bekommt {@code 403 NICHT_EINGETEILT}.
  *
- * <p>Die Entscheidung faellt allein ueber den Pfad; eine Rollenpruefung im Controller waere
- * genau das, was {@code AGENT_SERVER.md} verbietet. Das Gegenstueck
+ * <p>Der Pfad laesst jede angemeldete Sitzung durch; die Berechtigung haengt an den Daten des
+ * Termins und steht deshalb im {@link ErgebnisService}. Eine Rollenpruefung im Controller
+ * waere genau das, was {@code AGENT_SERVER.md} verbietet. Das Gegenstueck
  * {@code /admin/ergebnis/korrigieren} liegt in
  * {@code controller.admin.ErgebnisVerwaltungController} - <b>beide Pfade stehen namentlich in
  * {@code SecurityConfigTests}</b>, weil sie sich nur im Praefix unterscheiden.

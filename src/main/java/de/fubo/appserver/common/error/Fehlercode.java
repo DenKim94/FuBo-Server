@@ -357,6 +357,31 @@ public enum Fehlercode {
             "Für diesen Termin wurde keine Teameinteilung erzeugt."),
 
     /**
+     * Der Aufrufer war in diesem Termin nicht eingeteilt und darf deshalb kein Ergebnis
+     * eintragen (A21, Aenderung vom 22.10.2026).
+     *
+     * <p>Eintragen duerfen der Admin und die Eingeteilten der <b>aktuellen</b> Einteilung:
+     * Team A, Team B und der Auswechselspieler, Spieler wie Gast. Wer nur zugesagt hat (etwa
+     * in der Warteschlange oder nach dem Lauf), abgesagt oder sich nie gemeldet hat, steht
+     * nicht darin. Nach dem Termin ist die Einteilung der einzige verlaessliche Nachweis, wer
+     * gespielt hat - und die Grundlage der Bilanz. Weil der erste Eintrag gilt und nur der
+     * Admin korrigieren kann, duerfte sonst ein Aussenstehender das endgueltige Ergebnis
+     * setzen.
+     *
+     * <p>{@code 403} und kein {@code 409}, anders als {@link #KEINE_EINTEILUNG}: Es ist keine
+     * Frage eines Zustands, der sich noch aendert (ein abgeschlossener Termin bekommt keine
+     * neue Einteilung), sondern der Berechtigung. Und ein eigener Code statt
+     * {@link #KEINE_ZUSAGE}: Dort hilft eine Zusage, hier hilft nichts - die Oberflaeche soll
+     * nicht zum Zusagen raten.
+     *
+     * <p><b>Die Pruefung steht nach {@link #KEINE_EINTEILUNG} und vor
+     * {@link #ERGEBNIS_VORHANDEN}:</b> Ohne Einteilung gibt es niemanden, der eingeteilt war,
+     * und ein Nicht-Eingeteilter erfaehrt nicht, ob schon ein Ergebnis vorliegt.
+     */
+    NICHT_EINGETEILT(HttpStatus.FORBIDDEN,
+            "Ein Ergebnis eintragen darf nur, wer in diesem Termin eingeteilt war."),
+
+    /**
      * Der Hallenmodus ist abgeschaltet (A23, Ergaenzung vom 13.09.2026).
      *
      * <p>{@code configs.app_config.hallen_modus_aktiv} steht auf {@code false}; der Verein

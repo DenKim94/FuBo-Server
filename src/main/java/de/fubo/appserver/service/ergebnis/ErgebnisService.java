@@ -4,6 +4,7 @@ import de.fubo.appserver.common.error.FachlicherFehler;
 import de.fubo.appserver.common.error.Fehlercode;
 import de.fubo.appserver.domain.audit.AuditAktion;
 import de.fubo.appserver.domain.auth.AktiveSitzung;
+import de.fubo.appserver.domain.auth.Rolle;
 import de.fubo.appserver.domain.spieltag.Ergebnis;
 import de.fubo.appserver.domain.spieltag.Sieger;
 import de.fubo.appserver.domain.spieltag.TerminStatus;
@@ -30,7 +31,8 @@ import java.util.Optional;
  * <h2>Zwei Schreibpfade mit verschiedenem Zugang, aber demselben Nachgang</h2>
  * {@link #erfassen} liegt ausserhalb von {@code /admin/} - wer das Ergebnis eintraegt, ist der,
  * der mit dem Telefon auf dem Platz steht, und "der zuerst eingetragene Eintrag gilt" ergibt
- * nur einen Sinn, wenn mehrere es versuchen duerfen. {@link #korrigieren} liegt darunter, denn
+ * nur einen Sinn, wenn mehrere es versuchen duerfen. <b>Mehrere heisst: die Eingeteilten des
+ * Termins</b> (seit 22.10.2026), nicht jeder Angemeldete. {@link #korrigieren} liegt darunter, denn
  * A21 gibt die Korrektur ausdruecklich dem Admin.
  *
  * <p><b>Beide rechnen die Bilanz neu</b>, in derselben Transaktion wie die Aenderung an
@@ -88,15 +90,32 @@ public class ErgebnisService {
      *   <li>Der Termin existiert - sonst {@code 404 INHALT_NICHT_GEFUNDEN}.</li>
      *   <li>Er ist {@code ABGESCHLOSSEN} - sonst {@code 409 TERMIN_NICHT_ABGESCHLOSSEN}.</li>
      *   <li>Es gibt eine unabgeloeste Einteilung - sonst {@code 409 KEINE_EINTEILUNG}.</li>
+     *   <li>Der Aufrufer ist Admin oder in dieser Einteilung eingeteilt - sonst
+     *       {@code 403 NICHT_EINGETEILT}.</li>
      *   <li>Der Eintrag gelingt - sonst {@code 409 ERGEBNIS_VORHANDEN}.</li>
      * </ol>
      * Ein geplanter Termin ohne Einteilung soll "noch nicht gespielt" melden und nicht "keine
      * Einteilung": Das ist der Grund, der zuerst greift, und der andere verschwindet von
      * selbst, sobald jemand generiert hat.
      *
+     * <h2>Wer eintragen darf (A21, 22.10.2026)</h2>
+     * Der Admin und die <b>Eingeteilten der aktuellen Einteilung</b> - Team A, Team B und der
+     * Auswechselspieler, {@code USER} wie {@code GAST}. Nach dem Termin ist die Einteilung der
+     * einzige verlaessliche Nachweis, wer gespielt hat, und sie ist die Grundlage der Bilanz.
+     * Weil der erste Eintrag gilt und nur der Admin korrigiert, duerfte sonst ein Aussenstehender
+     * das endgueltige Ergebnis setzen. Gemeint ist die <b>aktuelle</b> Einteilung, auch wenn sie
+     * {@code veraltet} ist: dieselbe, aus der die Bilanz entsteht. Wer nur zugesagt hat (etwa in
+     * der Warteschlange oder nach dem Lauf), abgesagt oder sich nie gemeldet hat, ist nicht
+     * eingeteilt.
+     *
+     * <p><b>Die Pruefung steht nach {@code KEINE_EINTEILUNG} und vor dem Eintrag.</b> Ohne
+     * Einteilung gibt es niemanden, der eingeteilt war; und ein Nicht-Eingeteilter soll nicht
+     * ueber {@code 409 ERGEBNIS_VORHANDEN} erfahren, ob schon ein Ergebnis vorliegt. Sie steht
+     * im Dienst und nicht im Pfad, weil sie an den Daten des Termins haengt.
+     *
      * <p><b>Die Identitaet kommt aus der Sitzung, nie aus dem Anfragekoerper</b> - sonst waere
-     * {@code erfasstVon} als Auskunft wertlos. Auch ein {@code GAST} darf eintragen; er spielt
-     * mit, und ihn auszuschliessen waere eine Regel ohne Grund.
+     * {@code erfasstVon} als Auskunft wertlos. Ein Spieler wird ueber die Profil-Id erkannt, ein
+     * Gast ueber seinen Namen, so wie die Zuteilungen der Einteilung gespeichert sind.
      *
      * <p><b>Die Antwort traegt einen Koerper</b> ({@code 201}, nicht {@code 204}): Ohne die
      * {@code version} muesste der Client den Termin sofort danach noch einmal lesen, nur um
@@ -108,7 +127,8 @@ public class ErgebnisService {
      * @return das soeben geschriebene Ergebnis, aus der Datenbank zurueckgelesen
      * @throws FachlicherFehler {@code 404 INHALT_NICHT_GEFUNDEN};
      *                          {@code 409 TERMIN_NICHT_ABGESCHLOSSEN};
-     *                          {@code 409 KEINE_EINTEILUNG}; {@code 409 ERGEBNIS_VORHANDEN}
+     *                          {@code 409 KEINE_EINTEILUNG}; {@code 403 NICHT_EINGETEILT};
+     *                          {@code 409 ERGEBNIS_VORHANDEN}
      */
     @Transactional
     public Ergebnis erfassen(ErgebnisErfassenRequest anfrage, AktiveSitzung sitzung,
@@ -127,6 +147,11 @@ public class ErgebnisService {
         }
         if (!teamGenerierungRepository.existiertAktuelle(terminId)) {
             throw new FachlicherFehler(Fehlercode.KEINE_EINTEILUNG);
+        }
+        if (sitzung.rolle() != Rolle.ADMIN
+                && !teamGenerierungRepository.istEingeteilt(
+                        terminId, sitzung.spielerId(), sitzung.gastName())) {
+            throw new FachlicherFehler(Fehlercode.NICHT_EINGETEILT);
         }
 
         // Eine leere Ergebnismenge heisst "liegt schon vor" - die Entscheidung faellt in der

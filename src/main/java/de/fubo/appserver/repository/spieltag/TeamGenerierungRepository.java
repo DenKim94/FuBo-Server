@@ -179,6 +179,37 @@ public class TeamGenerierungRepository {
              ORDER BY tz.id
             """;
 
+    /**
+     * Steht der Aufrufer in der aktuellen Einteilung dieses Termins? (A21, 22.10.2026)
+     *
+     * <p><b>Die aktuelle Einteilung, nicht irgendeine:</b> {@code abgeloest_am IS NULL}. Wer
+     * nur in einer abgeloesten steht, war nach dem letzten Lauf nicht mehr dabei. Ob die
+     * Einteilung {@code veraltet} ist, zaehlt nicht - dieselbe Einteilung liefert die Bilanz.
+     *
+     * <p><b>Jede Zuteilung zaehlt</b> - Team A, Team B und der Auswechselspieler, der keine
+     * eigene Zeile hat, sondern in einem der beiden Teams steht.
+     *
+     * <p><b>Die Identitaet wie bei {@code TeilnahmeRepository#hatZugesagt}:</b> Ein Spieler
+     * ueber die Profil-Id, ein Gast ueber den Namen ({@code gast_name} ist je Termin
+     * eindeutig). {@code NULL} heisst "trifft nie": Bei einer Spielersitzung ist
+     * {@code :gastName} {@code NULL}, bei einer Gastsitzung {@code :spielerId}, und der
+     * jeweils andere Vergleich ergibt {@code UNKNOWN}. Wer {@code NULL} hier fuer "egal"
+     * haelt, gibt jedem Gast die Zuteilung eines Spielers.
+     *
+     * <p><b>{@code EXISTS}</b>, weil nichts gezaehlt werden soll.
+     */
+    private static final String SQL_EINGETEILT = """
+            SELECT EXISTS (
+                SELECT 1
+                  FROM spieltag.team_zuteilung tz
+                  JOIN spieltag.team_generierung tg ON tg.id = tz.generierung_id
+                  JOIN spieltag.teilnahme tn        ON tn.id = tz.teilnahme_id
+                 WHERE tg.termin_id = :terminId
+                   AND tg.abgeloest_am IS NULL
+                   AND (tn.spieler_id = :spielerId OR tn.gast_name = :gastName)
+            )
+            """;
+
     private static final String SQL_EINTEILUNG_VORHANDEN = """
             SELECT EXISTS (SELECT 1
                              FROM spieltag.team_generierung tg
@@ -263,6 +294,27 @@ public class TeamGenerierungRepository {
     public boolean existiertAktuelle(Long terminId) {
         return Boolean.TRUE.equals(jdbc.sql(SQL_EINTEILUNG_VORHANDEN)
                 .param("terminId", terminId)
+                .query(Boolean.class)
+                .single());
+    }
+
+    /**
+     * Meldet, ob der Aufrufer in der aktuellen Einteilung des Termins steht.
+     *
+     * <p>Gebraucht von der Ergebniserfassung (A21): Eintragen duerfen nur die Eingeteilten und
+     * der Admin. Die Frage nach dem Admin stellt der Dienst, nicht diese Abfrage.
+     *
+     * @param terminId  betroffener Termin
+     * @param spielerId Profil-Id der Sitzung oder {@code null} bei einem Gast
+     * @param gastName  Gastname der Sitzung oder {@code null} bei einem Spieler
+     * @return {@code true}, wenn eine Zuteilung der aktuellen Einteilung auf diese Identitaet
+     *         zeigt; {@code false} auch, wenn es keine Einteilung gibt
+     */
+    public boolean istEingeteilt(Long terminId, Long spielerId, String gastName) {
+        return Boolean.TRUE.equals(jdbc.sql(SQL_EINGETEILT)
+                .param("terminId", terminId)
+                .param("spielerId", spielerId)
+                .param("gastName", gastName)
                 .query(Boolean.class)
                 .single());
     }

@@ -530,8 +530,10 @@ class SecurityConfigTests {
                         .cookie(new Cookie(COOKIE, gastSitzung())))
                 .andExpect(status().isBadRequest());
 
-        // S6, A21: Erfassen darf jeder Angemeldete, auch ein GAST - "der erste Eintrag gilt"
-        // ergibt nur einen Sinn, wenn mehrere es versuchen duerfen. Der leere Koerper faellt
+        // S6, A21: Der Pfad steht jeder Rolle offen, auch einem GAST - "der erste Eintrag gilt"
+        // ergibt nur einen Sinn, wenn mehrere es versuchen duerfen. Wer eintragen darf (Admin
+        // und Eingeteilte), entscheidet seit 22.10.2026 der Dienst anhand der Termindaten
+        // (403 NICHT_EINGETEILT; siehe ErgebnisControllerTests). Der leere Koerper faellt
         // danach durch die Eingabepruefung, und genau das ist der Beleg: Ein 400 kommt erst
         // zustande, wenn die Filterchain durchgelassen hat.
         mockMvc.perform(post("/api/v1/ergebnis/erfassen")
