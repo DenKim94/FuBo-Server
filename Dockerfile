@@ -13,7 +13,15 @@
 # vorher mit "./mvnw clean verify"; ins Image gelangt nur ein Stand, der dort gruen war.
 #
 # Zielarchitektur: linux/arm64 (Raspberry Pi 5). Die Basis-Images sind Multi-Arch; ein
-# Probebau auf einem Mac mit Apple Silicon erzeugt dasselbe Format nativ.
+# Probebau auf einem Mac mit Apple Silicon erzeugt dasselbe Format nativ. Geprueft am
+# 24.10.2026 gegen docker-library/official-images: eclipse-temurin:25-jdk-noble und
+# 25-jre-noble fuehren arm64v8. Die Plattform ist bewusst NICHT festgenagelt (kein
+# --platform): Ein zweiter Pi oder ein x86-Rechner baut dasselbe Dockerfile.
+#
+# Voraussetzung auf dem Pi: aktive Memory-Cgroup. Ohne sie verwirft Docker "mem_limit" mit
+# einer blossen Warnung, die JVM sieht den ganzen Speicher (4 GB) und nimmt mit
+# -XX:MaxRAMPercentage=70.0 bis zu 2,8 GB Heap (siehe ENTRYPOINT). Pruefung nach dem Start:
+# "docker stats --no-stream fubo_backend" muss als LIMIT 1GiB zeigen.
 
 # ---------------------------------------------------------------------------------------
 # Stufe 1: Bauen und in Schichten zerlegen
