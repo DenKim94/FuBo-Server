@@ -153,5 +153,8 @@ fubo:
     # dreissig Empfaenger im schlechtesten Fall zweieinhalb Minuten Ladekreis.
     versand-frist-millis: 10000
   cors:
-    # Kein Default. Fehlt die Variable, bricht der Start ab.
+    # Kein Default. Fehlt die Variable, bricht der Start ab - das leistet CorsConfig, nicht
+    # dieser Platzhalter: Spring Boots Binder reicht ihn unaufgeloest WOERTLICH durch, und
+    # "${FUBO_CORS_ALLOWED_ORIGINS}" bestuende die Bean-Validierung (bis 24.10.2026 lief die
+    # Anwendung so ohne Fehler an, und nur der Browser scheiterte an CORS).
     allowed-origins: ${FUBO_CORS_ALLOWED_ORIGINS}
