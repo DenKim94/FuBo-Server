@@ -15,7 +15,8 @@
 > - **Herleitung und Schritt für Schritt** → `harness/tmp/S<n>_UMSETZUNG.md`, für den
 >   Algorithmusteil von S5 zusätzlich `harness/tmp/S5_ALGORITHMUS.md`
 > - **Historie** → Git und `harness/archive/`. Vorfassung:
->   `CONTEXT_HANDOFF_SERVER_2026-10-18_v25_A18-Automatisch-abgesagt.md` (Stand vor der
+>   `CONTEXT_HANDOFF_SERVER_2026-10-24_v26_Teilnahmepruefung.md` (Stand vor den Pi-Dateien
+>   aus S9), davor `…_2026-10-18_v25_A18-Automatisch-abgesagt.md` (Stand vor der
 >   Teilnahmeprüfung am Team-Generator), davor
 >   `…_2026-10-04_v24_S9-Namensbestaetigung.md` (Stand vor dem automatischen
 >   Wechsel auf `ABGESAGT`), davor `…_v23_S9-Paket1.md` (Stand vor der Namensbestätigung),
@@ -31,7 +32,7 @@
 > Was hier steht, steht **nur** hier. Wird eine Festlegung zur Architekturregel, wandert sie
 > nach `AGENT_SERVER.md` und **verschwindet hier** – sonst laufen beide auseinander.
 
-## Stand: 22.10.2026
+## Stand: 24.10.2026
 
 **S0 bis S8 sind abgeschlossen und verifiziert.** Alles bis S8 ist auf `dev` committet (18 Commits
 für S8), **nicht gepusht**.
@@ -44,6 +45,28 @@ Commits, nicht gepusht):** Abhängigkeiten auf
 ohne Fehlschlag. Der Probebau des Images lief durch; das JAR (`app-server-1.0.0.jar`) trägt die
 Zielversionen nachweislich. Denis' Versionsanhebung `0.0.1-SNAPSHOT` → `1.0.0` steht als eigener
 Commit davor. **Nächster Schritt liegt bei Denis:** `dev` nach `main` mergen – der Pi baut `main`.
+
+**Neu am 24.10.2026 – S9: die Pi-Dateien liegen vor (nicht auf dem Pi erprobt).** In
+`PRJ_FuBo/harness/assets/Deployment/` sind `docker-compose.yml` (Dienste `fubo_db`, `fubo_backend`) und
+`nginx.conf` (Server-Block `tunnel-fubo-server.denis-kim.dev`) ergänzt; der Kopfkommentar von
+`server/Dockerfile` trägt die Pi-Voraussetzungen, **funktional ist das Dockerfile unverändert**.
+Compose-Datei und `nginx.conf` liegen ausserhalb des Repositories und sind nicht versioniert
+(Sicherungen der Vorfassungen in `PRJ_FuBo/harness/archive/`); das `Dockerfile` liegt im Repository
+und ist auf `dev` geändert, **nicht committet**. Geprüft wurde `docker compose config`, `nginx -t`
+samt Gegenprobe und ein nginx-Funktionstest (23/23) – **kein Bau des Images, kein Lauf auf dem Pi,
+kein echter Docker-DNS.** Entscheidungen in 6.2; Einzelheiten und Befunde in `S9_DEPLOYMENT.md`
+(4.3, 5, 5.1e, 12).
+
+**Nachgetragen am 24.10.2026 nach einer Prüfung – eine Codeänderung, nicht committet, nicht gelaufen.**
+`CorsConfig#pruefeOrigin` bricht den Start ab, wenn ein Eintrag von `fubo.cors.allowed-origins` einen
+unaufgelösten Platzhalter enthält oder keine Origin ist, und die Allowlist steht im Startlog. Anlass:
+Der Kommentar in `application.yml` versprach einen Startabbruch, den es nicht gab – fehlte
+`FUBO_CORS_ALLOWED_ORIGINS`, lief die Anwendung mit `${FUBO_CORS_ALLOWED_ORIGINS}` als Origin an, und
+nur der Browser scheiterte. Neu ist `CorsConfigTests` (6 Fälle, ohne Spring-Kontext); die Logik ist
+mit JDK 21 nachgebaut und gegen 16 Werte geprüft, die Klassen gegen Platzhalter-Typen übersetzt –
+**ein echter Lauf steht aus.** Erwartet: **554 Fälle in 36 Klassen** (548 + 6, mit
+`grep -c '^\s*@Test\s*$'` nachgezählt). Ausserdem lesen beide FuBo-Dienste die `.env` mit
+`env_file … format: raw`: In der Standardform ersetzte Compose ein `$` im Wert still.
 
 **Neu am 04.10.2026 – Bestätigung der Namensänderung (A22, Ergänzung des Haupt-Entwicklers).** Die
 Änderung des Admin-Anmeldenamens verlangt eine Bestätigungs-PIN per E-Mail: `POST /admin/name/aendern`
@@ -154,7 +177,7 @@ einem nicht eingeteilten Gast und ist jetzt `eingeteilterGastDarfErfassen`). Erw
 | Konfiguration | **14 Pflichtfelder** im Voll-Update |
 | `Fehlercode` | **39** Werte (neu: `NICHT_EINGETEILT`, davor `KEINE_ZUSAGE`) |
 | `AuditAktion` | **31** Werte |
-| Tests | **483 Fälle in 34 Klassen** zuletzt grün dokumentiert; nach Namensbestätigung, A18- und A15-Änderung nachgezählt **513 in 35**, mit dem Restkontingent **528 in 35**, mit der Durchmischung **538 in 35**, mit der Erfassungsberechtigung **548 in 35**, der Lauf steht aus; weiterhin **fünf Klassen ohne Spring-Kontext** |
+| Tests | **483 Fälle in 34 Klassen** zuletzt grün dokumentiert; nach Namensbestätigung, A18- und A15-Änderung nachgezählt **513 in 35**, mit dem Restkontingent **528 in 35**, mit der Durchmischung **538 in 35**, mit der Erfassungsberechtigung **548 in 35**, mit der CORS-Prüfung **554 in 36**, der Lauf steht aus; **sieben Klassen ohne Spring-Kontext** (6.3) |
 | Bruno-Collection | alle 45 Endpunkte, acht Ordner, 99 Requests (`~/Documents/bruno/fubo_server`, unversioniert; am 22.10.2026 um „Teams generieren ohne Zusage" ergänzt) |
 | Plattform | **Spring Boot 4.1.1**, Tomcat 11.0.26 und Jackson 3.1.7 per Override (S9, 03.10.2026) |
 
@@ -175,7 +198,7 @@ erst recht nicht gegen die Antwort des Dienstes.
 
 **Offen sind der Testlauf, Handarbeit und S9:**
 
-1. **Testlauf und Commit der A18- und A15-Änderung** – `./mvnw clean verify`, erwartet **548/35** (538 davon vor der Erfassungsberechtigung, 528 vor der Durchmischung, 513 vor dem Restkontingent; **die Integrationsfälle der Durchmischung sind nie gelaufen**)
+1. **Testlauf und Commit der A18- und A15-Änderung** – `./mvnw clean verify`, erwartet **554/36** (548 davon vor der CORS-Prüfung, 538 vor der Erfassungsberechtigung, 528 vor der Durchmischung, 513 vor dem Restkontingent; **die Integrationsfälle der Durchmischung sind nie gelaufen**)
    (Namensbestätigung, automatische Absage und Teilnahmeprüfung zusammen; die neue Migration
    `V016` läuft dabei gegen PostgreSQL 17 im Testcontainer – dort ist sie noch nicht gelaufen). Danach für die Namensbestätigung
    eine Handprüfung mit echter Mail (Bruno: „Anmeldenamen aendern" → PIN nach `namePin` →
@@ -186,9 +209,10 @@ erst recht nicht gegen die Antwort des Dienstes.
    besonderer Vorsicht:** Dort gehen echte Mails raus – vorher `halle_email` auf eine eigene
    Adresse setzen.
 3. **S9: Härtung und Deployment** (14 h), Anleitung `harness/tmp/S9_DEPLOYMENT.md`. Paket 1
-   (Abhängigkeiten, Dockerfile) steht; Abschnitte 3, 4, 10, 12, 13 sind nachgezogen. Offen sind
-   nginx, die Compose-Ergänzung auf dem Pi, Erstinbetriebnahme, Backup und API-Doku. Gebaut wird
-   auf dem Pi der aktuelle Stand von `main`.
+   (Abhängigkeiten, Dockerfile) steht; seit 24.10.2026 liegen auch Compose-Ergänzung, nginx-Block und
+   Dockerfile-Kommentar für den Pi vor (nicht erprobt). Offen sind der **Client-Hostname**
+   (`S9_DEPLOYMENT.md` 12, Punkt 11), die Prüfung der Memory-Cgroup auf dem Pi, Erstinbetriebnahme,
+   Backup und API-Doku. Gebaut wird auf dem Pi der aktuelle Stand von `main`.
 4. **Client-Track informieren.** Der Vertrag steht bei 45 Endpunkten; die Push-Zeilen in 4.1 sind
    seit dem Commit in `fubo-api.json` **verbindlich** und nicht mehr Vorausschau. **Dazu die brechende
    Änderung am Namenswechsel** – sie trifft C4 (Admin-Zugang), bevor es begonnen ist.
@@ -683,7 +707,7 @@ der zweiten Stufe `PROFILE_AUTHENTICATED`, weil auch Gäste sie erreichen.
 | **Der Pi baut immer den aktuellen Stand von `main`** | `main` ist der freigegebene Stand, Denis merged `dev` dorthin. **Der Merge ist damit die Freigabe fürs Zielsystem** – ohne CI hängt „nichts Ungetestetes auf den Pi" allein daran. Folge: Das Image-Tag folgt der `pom.xml`-Version, sonst überschreibt ein Neubau das Rollback-Image |
 | **`mem_limit: 1g`** für `fubo_backend` | rund 700 MB Heap bei `MaxRAMPercentage=70`; ohne Limit sähe die JVM den ganzen Pi |
 | **Schwachstellenprüfung vorerst manuell** | Preis: Die Overrides in der `pom.xml` fallen nur auf, wenn jemand nachsieht |
-| **Hostnamen vertagt** | Eine Subdomain-Ebene unter `denis-kim.dev` ist Pflicht, sonst greift das kostenlose Cloudflare-Zertifikat nicht (S9 §12, Punkt 8) |
+| **Hostnamen vertagt** (Server am 24.10.2026 entschieden, siehe unten) | Eine Subdomain-Ebene unter `denis-kim.dev` ist Pflicht, sonst greift das kostenlose Cloudflare-Zertifikat nicht (S9 §12, Punkt 8) |
 
 **Sechs Entscheidungen vom 04.10.2026 (Bestätigung der Namensänderung).** Die ersten drei hat der
 Haupt-Entwickler auf Rückfrage getroffen, jeweils entlang der Empfehlung; die übrigen drei sind
@@ -697,6 +721,19 @@ Umsetzungsentscheidungen. Die daraus folgenden Regeln stehen in `AGENT_SERVER.md
 | `/admin/name/aendern` antwortet **`202`**, nicht mehr `204` | `204` hiess „erledigt", und genau das stimmt nicht mehr. Ein Client, der nur `response.ok` prüft, merkt den Unterschied trotzdem nicht – deshalb steht die brechende Wirkung in 4.1 |
 | **Grenzen aus `fubo.reset.*`**, aber eigene Zähler | Dieselbe Art PIN, also ein Satz Grenzen; zwei liefen auseinander. Eigene Felder in `FuboProperties` hätten drei Testklassen gebrochen, ohne dass jemand die Werte getrennt einstellen will |
 | **`NAME_BELEGT` beim Einlösen rollt ganz zurück** – die Anforderung bleibt offen | Der Name kann zwischen beiden Schritten vergeben werden. Danach ist die Anforderung nicht mehr einlösbar, und die nächste entwertet sie. Sie beim Scheitern zu schliessen, bräuchte eine zweite Transaktion für einen Randfall |
+
+**Sieben Entscheidungen vom 24.10.2026 (S9, Pi-Dateien und Nachprüfung).** Die Regeln für den Client
+stehen in `S9_DEPLOYMENT.md` 5.1e.
+
+| Festlegung | Grund |
+|---|---|
+| **Server-Hostname `tunnel-fubo-server.denis-kim.dev`** | Muster der übrigen Hosts (`tunnel-<name>.denis-kim.dev`), eine Subdomain-Ebene, vom Universal-SSL gedeckt. Der **Client-Hostname ist offen** |
+| **Der Client muss unter einer Subdomain von `denis-kim.dev` liegen** (etwa `fubo-app.denis-kim.dev`); `fubo-app.dev` und `montags-kicker-app.dev` gehen nicht | Das Session-Cookie ist `SameSite=Lax`, der Server hat keinen CSRF-Schutz. Eine andere Site bekommt das Cookie nicht: PIN-Prüfung `200`, danach überall `401`. Aus dem Code abgeleitet, nicht im Browser erprobt |
+| **`proxy_pass` mit Variable und `resolver 127.0.0.11`** | Ein fester Upstream bricht nginx beim Start ab, wenn `fubo_backend` fehlt – und legt alle Dienste des Pi lahm. Zudem folgt nginx einem neuen Container ohne Reload. Ausprobiert, nicht auf dem Pi |
+| **Postgres-Datenverzeichnis als Bind-Mount in langer Schreibweise mit `create_host_path: false`** | Die kurze Form legt ein fehlendes Verzeichnis still an: Ohne gemountete SSD läge die Datenbank unbemerkt auf der SD-Karte |
+| **`/actuator` in nginx gesperrt** (`location ^~ /actuator { return 404; }`) | `/actuator/health` ist `permitAll`; der Healthcheck läuft im Container und braucht nginx nicht |
+| **`env_file` mit `format: raw`** (Compose ab 2.30.0, auf dem Pi v5.6.1) | In der Standardform ersetzt Compose `$name` im Wert still (aus `ab$cd${xy}ef` wurde `abef`), schneidet nach ` #` ab und entfernt Anführungszeichen – Passwörter wären still verändert. `raw` liest wie `java.util.Properties` |
+| **Startprüfung der CORS-Allowlist in `CorsConfig`** (Vorbild `MailConfig`) | Der `Binder` reicht `${FUBO_CORS_ALLOWED_ORIGINS}` wörtlich durch, `@NotEmpty`/`@NotBlank` greifen nicht. **Bewusst nicht** abgewiesen: abschliessender Schrägstrich und Grossbuchstaben – `CorsConfiguration` entfernt den Schrägstrich und vergleicht ohne Rücksicht auf die Schreibweise |
 
 ### 6.3 Fallstricke, die weiter gelten
 
@@ -1076,11 +1113,12 @@ die *geschätzten* Zahlen dagegen nie: 377 statt 385 in S5, und für S8 nannte d
 statt der tatsächlichen 483. **Deshalb wird unmittelbar vor dem Lauf gezählt, nicht
 fortgeschrieben.**
 
-**Fünf Klassen laufen ohne Spring-Kontext** – `SessionAuthFilterTests`,
-`SessionCookieFactoryTests`, `BruteForceServiceTests`, `TeamverfahrenTests` und seit S8
-`PushVerschluesselungTests`. Sie brauchen zusammen unter einer Sekunde und machen die Gegenprobe
-belastbar: **Sind alle fünf grün und der Rest rot, liegt ein Kontextfehler vor und kein
-Anwendungsfehler.**
+**Sieben Klassen laufen ohne Spring-Kontext** – `SessionAuthFilterTests`,
+`SessionCookieFactoryTests`, `BruteForceServiceTests`, `TeamverfahrenTests`, seit S8
+`PushVerschluesselungTests`, dazu `MailConfigTests` (seit 29.08.2026, bis zum 24.10.2026 hier nicht
+genannt) und seit dem 24.10.2026 `CorsConfigTests`. Sie brauchen zusammen unter einer Sekunde und
+machen die Gegenprobe belastbar: **Sind alle sieben grün und der Rest rot, liegt ein Kontextfehler
+vor und kein Anwendungsfehler.**
 
 **`SecurityConfigTests` bleibt bei 26 Fällen**, obwohl mit jedem Meilenstein Pfade dazukommen: Sie
 stehen als Zusicherungen *innerhalb* der bestehenden Bündelfälle. **Wer die Fallzahl als Mass für
@@ -1116,7 +1154,7 @@ und die Prüfschritte beim Nachziehen stehen in ihrer `README.md`.
 
 ## 7. Nächste Schritte
 
-0. **Testlauf abschliessen** (22.10.2026): `./mvnw clean verify` (erwartet 548/35), die A18- und
+0. **Testlauf abschliessen** (22.10.2026): `./mvnw clean verify` (erwartet 554/36 seit der CORS-Prüfung vom 24.10.2026), die A18- und
    A15-Änderung committen (**Reihenfolge nach `AGENT_SERVER.md`: Vertrag, Code, Anleitungen – alles
    ungepusht; `V016` läuft erstmals gegen PostgreSQL 17**) und für die Namensbestätigung eine Handprüfung mit echter Mail über Bruno – Umlaute und Name in der Nachricht,
    `202`/`204`, danach `ADMIN_NAME` in der `.env` und `adminName` in den Bruno-Umgebungen nachziehen.
@@ -1150,8 +1188,9 @@ und die Prüfschritte beim Nachziehen stehen in ihrer `README.md`.
      ersten Mal ausserhalb des Projekts, nämlich beim Hallenbetreiber,
    - die **Sicherung des VAPID-Schlüsselpaars**: Geht es verloren, muss jeder Spieler erneut
      zustimmen,
-   - **`TZ=Europe/Berlin` im Compose-Dienst** und ausgehendes HTTPS zu den Push-Diensten – der
-     Entwurf kennt beides noch nicht.
+   - ~~`TZ=Europe/Berlin` im Compose-Dienst und ausgehendes HTTPS zu den Push-Diensten~~ – **erledigt
+     am 24.10.2026:** `TZ` steht in beiden FuBo-Diensten; ausgehendes HTTPS braucht keine Freigabe,
+     weil `my_server_network` ein gewöhnliches Bridge-Netz ohne `internal: true` ist.
 
 **Offene Punkte, die keine Aufgabe für heute sind:**
 
