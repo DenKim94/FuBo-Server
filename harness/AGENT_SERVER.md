@@ -62,7 +62,8 @@ Ergänzungen des Entwicklers sind als *Ergänzung* gekennzeichnet.
 **Profile, Skills, Konfiguration**
 
 - **A12** Teamzuteilung aus den Profildaten; Skills 0–6, Torwart 0–3. **Skillbewertungen dürfen
-  den Server nicht an normale User verlassen.**
+  den Server nicht an normale User verlassen.** *Eine ausdrückliche Ausnahme (24.10.2026):* Die
+  Gast-Stufe steht für die Rolle `ADMIN` in der Teilnehmerliste – Regeln unter „Skill-Geheimhaltung".
 - **A13** Nur der Admin erstellt, bearbeitet und entfernt Profile.
 - **A10/A11** Minimale (Default 6) und maximale (Default 22) Teilnehmerzahl als
   Admin-Konfiguration.
@@ -380,6 +381,33 @@ Skillwerte und abgeleitete Kennzahlen der Teamstärke erscheinen **ausschliessli
 ausserhalb von `/admin/` vor". Der Schutz hängt am Pfad; dass die Skill-DTOs nur dort auftauchen,
 bleibt trotzdem eine Regel, die beim Lesen auffallen soll. Der Teamgenerator liegt serverseitig.
 
+**Die eine Ausnahme: die Gast-Stufe für den Admin (beschlossen am 24.10.2026).**
+`GET /termine/{terminId}/lesen` trägt in `teilnehmerliste.teilnehmer[].gastStufe` die Stufe eines
+Gastes – **ausschliesslich in der Antwort an eine Sitzung mit der Rolle `ADMIN`**. Der Admin
+korrigiert die Selbsteinschätzung eines Gastes über `gast-stufe` und muss die geltende Stufe dafür
+an der Zeile sehen; eine eigene Admin-Ansicht der Liste gäbe es nur doppelt.
+
+*Begründung der Abweichung:* Die Stufe ist die Selbsteinschätzung eines Gastes und kein Skillwert
+eines Spielers; der Endpunkt unterhalb von `/admin/` gehört bereits dem Admin, die Liste liegt
+aber ausserhalb. Der Prüfpunkt lautet seither: *„Erreicht eine Bewertung `USER` oder `GAST`?"* –
+nicht mehr nur „liegt sie unter `/admin/`?".
+
+1. **Die Entscheidung fällt an genau einer Stelle:** `TerminService#einzelnLesen`
+   (`sitzung.rolle() == Rolle.ADMIN`). Sie wird als `boolean mitGastStufe` durch Service und
+   Repository gereicht; wer dort einen zweiten Auslöser einführt, hat die Regel verteilt.
+2. **Für andere Rollen wird die Spalte nicht gelesen.** `SQL_UEBERSICHT` liefert sie nur bei
+   `:mitGastStufe` und nur bei `spieler_id IS NULL`, sonst `NULL`. Gefiltert wird nicht erst im
+   Mapping – was nicht gelesen wird, kann nicht durchrutschen.
+3. **Der Schlüssel fehlt, er ist nicht `null`** (`@JsonInclude(NON_NULL)` am Feld). So bleibt die
+   Antwort für `USER` und `GAST` Byte für Byte die alte; `dieListeTraegtKeineBewertungen` prüft
+   weiter die vier Schlüssel.
+4. **Angezeigt wird die rechnende Stufe:** `COALESCE(gast_stufe, 'MITTEL')`, wie in der
+   Datengrundlage des Generators. Eine mit `gast-stufe` korrigierte Teilnahme zeigt die Korrektur.
+5. **Spieler tragen auch für den Admin nichts.** Ausgenommen ist nur die Stufe eines Gastes,
+   niemals ein Skillwert.
+6. **Tests:** Admin sieht sie (Gast mit, ohne und mit korrigierter Stufe), Spieler und Gast nie
+   (`TeilnehmerlisteTests`). Eine neue Rolle oder ein weiterer Leser der Liste braucht dort einen Fall.
+
 ### Zwischenspeicher
 
 **Verworfen wird beim Schreiben, nie über eine Frist.**
@@ -413,8 +441,11 @@ bleibt trotzdem eine Regel, die beim Lesen auffallen soll. Der Teamgenerator lie
    Teilnahme bleibt. Folge: Eine neue Selbsteinschätzung gilt erst für die nächste Rückmeldung.
 7. **Rückmeldungen werden nicht protokolliert** – sie stehen vollständig in `spieltag.teilnahme`;
    ein zweiter Beleg verdoppelte personenbezogene Daten und fiele nach 90 Tagen der Löschfrist zum
-   Opfer. Adminaktionen ja, Nutzerhandlungen nein; die Korrektur einer Gast-Stufe durch den Admin
-   ist die einzige Ausnahme.
+   Opfer. Adminaktionen ja, Nutzerhandlungen nein; **zwei Adminaktionen an einer Teilnahme sind
+   ausdrücklich protokolliert** – die Korrektur einer Gast-Stufe (`GAST_STUFE_GEAENDERT`) und die
+   Absage für einen Gast (`GAST_ABGESAGT`, seit 24.10.2026, mit `gastName`, Entität Termin). Beide
+   sind Eingriffe des Admins in die Angaben eines anderen und müssen nachvollziehbar bleiben.
+   `AuditAktion` hat damit 32 Werte.
 8. **Sperren nimmt die Zusagen künftiger, geplanter Termine zurück – erst die Version
    erhöhen, dann die Zusage.** `teilnehmerVersionErhoehenFuerSpieler` (nur `teilnehmer_version`:
    ein Weggang ist eine Absage und öffnet das Kontingent nicht) sucht über
@@ -422,8 +453,29 @@ bleibt trotzdem eine Regel, die beim Lesen auffallen soll. Der Teamgenerator lie
    Beide Schritte mit derselben Uhrzeit, sonst könnte ein Termin dazwischen die Grenze
    „künftig" überschreiten. Die Zahl geht in den bestehenden `PROFIL_BLOCKIERT`-Eintrag –
    es ist eine Folge des Sperrens, keine eigene Handlung.
-9. **Die Teilnehmerliste trägt keine Bewertungen** – sie erreicht jede Rolle, auch `GAST` (A12);
-   eine rollenabhängige Liste müsste an jeder Stelle mitgedacht werden.
+9. **Die Teilnehmerliste trägt keine Bewertungen** – sie erreicht jede Rolle, auch `GAST` (A12).
+   **Einzige Ausnahme seit 24.10.2026:** das optionale Feld `gastStufe` in der Antwort an eine
+   Adminsitzung, mit dem Schlüssel fehlend für alle anderen (Regeln unter „Skill-Geheimhaltung").
+   Wer die Liste um ein weiteres Feld erweitert, fragt zuerst, ob es bewertet – und wenn ja, ob es
+   hier hingehört.
+10. **Der Admin sagt nur für Gäste ab, nie für Spieler** (`POST /admin/teilnahme/gast-absagen`,
+    24.10.2026). Die Suche läuft über `gast_name` – bei einem Spieler `NULL`, der Name eines
+    Spielers trifft damit nie. Eine stellvertretende **Zusage** gibt es weiterhin nicht. Der Name
+    wird zeichengenau verglichen. Der Vorgang:
+    - **Prüfreihenfolge:** unbekannter Termin `404` → `pruefeOffen` `409 TERMIN_GESCHLOSSEN` →
+      keine Gast-Teilnahme `404` (Text „Für diesen Termin liegt keine Zusage dieses Gastes vor.").
+    - **Idempotenz entscheidet die SQL-Anweisung** (CTE `ziel`/`geaendert`, `AND tn.zusage` am
+      UPDATE-Ziel): `ABGESAGT`, `BEREITS_ABGESAGT` oder `KEINE_TEILNAHME`. Nur bei `ABGESAGT` steigt
+      der Zähler und entsteht ein Protokolleintrag; unter READ COMMITTED wird die Bedingung nach
+      dem Warten neu geprüft, zwei gleichzeitige Absagen zählen also einmal.
+    - **Nur `teilnehmer_version`**, nie `kontingent_version` (eine Absage öffnet das Kontingent
+      nicht). Der Termin wird nativ gelesen (`findeEintrag`), nicht als verwaltete Entity – die
+      Zähler-UPDATEs erhöhen `termin.version`, eine geladene Entity führte zu einem
+      Optimistic-Lock-Fehler.
+    - **`zusage = false`, Stufe und `gemeldet_am` bleiben;** `SQL_RUECKMELDUNG_GAST` wird nicht
+      wiederverwendet (er überschriebe die Stufe und könnte Zeilen anlegen).
+    - **Gastsitzung und Gastplatz bleiben unberührt.** Keine Push-Nachricht (es gibt nur die zwei
+      Anlässe aus A25).
 
 ### Teilnehmer-Version und Kontingent-Version
 
@@ -438,6 +490,7 @@ eine erneute Einteilung liefert. Zwei Aufgaben mit verschiedenen Auslösern brau
 | neue Zusage (auch nach Absage) | +1 | +1 |
 | wiederholte Zusage | +1 | – |
 | Absage (auch wiederholt) | +1 | – |
+| Absage für einen Gast durch den Admin (nur beim Übergang Zusage → Absage; wiederholt: nichts) | +1 | – |
 | Sperren eines Profils (Zusagen werden zurückgenommen) | +1 | – |
 | Änderung der Gast-Stufe durch den Admin | +1 | +1 |
 | Änderung eines Skillwerts (künftige Termine mit Zusage) | +1 | +1 |
@@ -449,7 +502,7 @@ eine erneute Einteilung liefert. Zwei Aufgaben mit verschiedenen Auslösern brau
   Person nicht verlässlich. Eine wiederholte Zusage darf das Kontingent nicht öffnen, sonst liesse
   es sich durch Wiederholen aufladen.
 - **Die Methoden tragen den Unterschied im Namen:** `teilnehmerVersionErhoehen` (nur Veraltung –
-  Absage), `teilnehmerUndKontingentVersionErhoehen` (neue Zusage, Gast-Stufe),
+  Absage, auch die des Admins für einen Gast), `teilnehmerUndKontingentVersionErhoehen` (neue Zusage, Gast-Stufe),
   `teilnehmerVersionErhoehenFuerSpieler` (Sperren) und
   `teilnehmerUndKontingentVersionErhoehenFuerSpieler` (Skillwert). Wer einen neuen Auslöser
   ergänzt, entscheidet damit bewusst, ob er das Kontingent öffnet.

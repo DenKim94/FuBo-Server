@@ -7,6 +7,7 @@ import de.fubo.appserver.domain.auth.AktiveSitzung;
 import de.fubo.appserver.domain.auth.GastStufe;
 import de.fubo.appserver.domain.auth.Rolle;
 import de.fubo.appserver.domain.config.AppConfig;
+import de.fubo.appserver.domain.spieltag.GastAbsageErgebnis;
 import de.fubo.appserver.domain.spieltag.TerminEintrag;
 import de.fubo.appserver.domain.spieltag.TerminStatus;
 import de.fubo.appserver.domain.spieltag.Teilnehmeruebersicht;
@@ -30,8 +31,8 @@ import java.util.Map;
  * Sie steht bereits vollstaendig in {@code spieltag.teilnahme} samt {@code gemeldet_am}; ein
  * zweiter Beleg im Audit-Log verdoppelte personenbezogene Daten und fiele nach 30 Tagen der
  * Loeschfrist zum Opfer, waehrend die Teilnahme bliebe. <b>Adminaktionen werden
- * protokolliert, Nutzerhandlungen nicht</b> - die Aenderung der Gast-Stufe ist deshalb die
- * einzige Stelle hier mit einem Eintrag.
+ * protokolliert, Nutzerhandlungen nicht</b> - die Aenderung der Gast-Stufe und die Absage fuer
+ * einen Gast sind deshalb die einzigen Stellen hier mit einem Eintrag.
  */
 @Service
 public class TeilnahmeService {
@@ -154,10 +155,12 @@ public class TeilnahmeService {
     /**
      * Aendert die Skill-Stufe eines Gastes an einer bestehenden Teilnahme (A17).
      *
-     * <h2>Die einzige Ausnahme von "der Admin meldet nicht fuer andere"</h2>
-     * Weggabelung E: Eine Rueckmeldung ist eine Aussage ueber die eigene Verfuegbarkeit; sie
+     * <h2>Eine Ausnahme von "der Admin meldet nicht fuer andere"</h2>
+     * Weggabelung E: Eine Zusage ist eine Aussage ueber die eigene Verfuegbarkeit; sie
      * stellvertretend zu setzen erzeugte Zusagen, die niemand gegeben hat. A17 gibt dem Admin
-     * aber ausdruecklich die Stufe - und nur sie. Weder Zusage noch Name aendern sich hier.
+     * aber ausdruecklich die Stufe. Weder Zusage noch Name aendern sich hier. Die zweite
+     * Ausnahme ist {@link #gastAbsagen} (24.10.2026): Sie nimmt eine Zusage zurueck, statt eine
+     * zu erzeugen.
      *
      * <h2>Eine Stufenaenderung ist eine Teilnehmeraenderung (A15)</h2>
      * Der Fall ist dem Skillwechsel eines Spielers gleich: Der Teilnehmerkreis bleibt, seine
@@ -196,6 +199,104 @@ public class TeilnahmeService {
                 ENTITAET, terminId, details);
     }
 
+    // ------------------------------------------------------------------ Absage fuer einen Gast
+
+    /**
+     * Nimmt die Zusage eines Gastes zurueck, auf Anweisung des Admins (A7, Ergaenzung vom
+     * 24.10.2026).
+     *
+     * <h2>Anlass</h2>
+     * Ein Gast hat zugesagt und muss spontan absagen. Ohne eigenes Konto kann er das oft nicht
+     * mehr: Seine Sitzung ist abgelaufen oder abgemeldet, und eine neue Anmeldung braucht die
+     * zentrale PIN und einen freien Gastplatz. Der Admin nimmt die Zusage deshalb zurueck;
+     * das wirkt wie die Absage des Gastes.
+     *
+     * <h2>Verhaeltnis zu Weggabelung E ("der Admin meldet nicht fuer andere")</h2>
+     * Die Regel verhindert Zusagen, die niemand gegeben hat. Eine <b>Absage</b> erzeugt keine
+     * Zusage, sie verkleinert den Kreis. Die Ausnahme gilt <b>nur fuer Gaeste und nur in
+     * Richtung Absage</b>: Die Suche laeuft ueber {@code gast_name}, der bei einem Spieler
+     * {@code NULL} ist - ein Spieler sagt weiter selbst ab, und eine stellvertretende Zusage
+     * bleibt ausgeschlossen, weil dieser Weg keine Zeile anlegt und kein {@code zusage = true}
+     * schreibt.
+     *
+     * <h2>Reihenfolge der Pruefungen</h2>
+     * {@code 404} (Termin unbekannt), dann {@code 409 TERMIN_GESCHLOSSEN}, dann {@code 404}
+     * (keine Teilnahme dieses Gastes). Die Riegel sind dieselben wie bei der eigenen Absage
+     * ({@link #pruefeOffen}) und stehen vor dem Schreiben - wie in {@link #rueckmeldung}. Folge,
+     * die man kennen muss: Nach Terminbeginn antwortet auch ein wiederholter Aufruf mit
+     * {@code 409}, nicht mit {@code 204}.
+     *
+     * <h2>Zaehler</h2>
+     * Nur {@code teilnehmer_version} steigt, nicht {@code kontingent_version} (Regel vom
+     * 22.10.2026: Eine Absage oeffnet kein Kontingent). Die Einteilung gilt danach als
+     * veraltet, die Warteschlange rueckt beim naechsten Abruf nach - sie ist abgeleitet und
+     * muss nicht angefasst werden.
+     *
+     * <h2>Wiederholbar</h2>
+     * Ist die Teilnahme schon eine Absage, antwortet der Dienst ohne Fehler und aendert
+     * nichts: weder Zaehler noch Protokoll. Ein zweiter Klick nach einem Netzabbruch schadet so
+     * nicht. Entschieden wird das in derselben Anweisung wie das Schreiben
+     * ({@code TeilnahmeRepository#gastAbsagen}), nicht durch ein Lesen davor.
+     *
+     * <h2>Was unberuehrt bleibt</h2>
+     * Gastsitzung und Gastplatz - der Gast ist womoeglich noch angemeldet, und das Abmelden
+     * ist eine andere Handlung ({@code /admin/gast/freigeben}). Die Stufe bleibt ebenfalls:
+     * Sagt der Gast spaeter wieder zu, gilt die Rueckmeldung ohnehin neu.
+     *
+     * <p><b>Keine Push-Nachricht.</b> Das Projekt kennt genau zwei Versandanlaesse (A25b: die
+     * Erinnerung an eine offene Rueckmeldung und die Terminabsage durch den Admin); eine
+     * Nachricht an Nachrueckende gehoert nicht dazu, und weitere Anlaesse sind ausgeschlossen.
+     *
+     * <p><b>Der Termin wird nativ gelesen</b> ({@code findeEintrag}), nicht ueber
+     * {@code findById}: Der Zaehler wird gleich per SQL erhoeht und schreibt
+     * {@code termin.version} fort; eine daneben verwaltete Entity truege danach eine veraltete
+     * Version.
+     *
+     * @param terminId       betroffener Termin
+     * @param gastName       Gastname, zeichengenau wie in der Teilnehmerliste
+     * @param adminSpielerId Profil-Id des handelnden Admins, fuer das Protokoll
+     * @param clientIp       Adresse des Aufrufers, fuer das Protokoll
+     * @throws FachlicherFehler {@code 404}, wenn es den Termin nicht gibt oder der Gast an
+     *                          diesem Termin keine Teilnahme hat; {@code 409
+     *                          TERMIN_GESCHLOSSEN}, wenn der Termin nicht mehr
+     *                          {@code GEPLANT} ist oder begonnen hat
+     */
+    @Transactional
+    public void gastAbsagen(Long terminId, String gastName, Long adminSpielerId, String clientIp) {
+
+        // Die Spalte "eigene Rueckmeldung" des Eintrags interessiert hier nicht; die Id des
+        // Admins haelt die Abfrage auf dem Weg, den auch die Einzelansicht fuer den Admin geht.
+        TerminEintrag termin = terminRepository
+                .findeEintrag(terminId, adminSpielerId, null)
+                .orElseThrow(() -> new FachlicherFehler(Fehlercode.INHALT_NICHT_GEFUNDEN,
+                        "Es gibt keinen Termin mit dieser Id."));
+
+        pruefeOffen(termin);
+
+        GastAbsageErgebnis ergebnis = teilnahmeRepository.gastAbsagen(terminId, gastName);
+
+        switch (ergebnis) {
+            case KEINE_TEILNAHME -> throw new FachlicherFehler(Fehlercode.INHALT_NICHT_GEFUNDEN,
+                    "Für diesen Termin liegt keine Zusage dieses Gastes vor.");
+            case BEREITS_ABGESAGT -> {
+                // Nichts zu tun und nichts zu belegen: Der Zustand, den der Aufrufer wollte,
+                // besteht bereits.
+            }
+            case ABGESAGT -> {
+                // In derselben Transaktion wie die Aenderung - sonst gaelte eine Einteilung als
+                // aktuell, obwohl der Kreis schon ein anderer ist. Nur die Veraltung, nicht das
+                // Kontingent: Eine Absage verschafft niemandem einen weiteren Lauf.
+                terminRepository.teilnehmerVersionErhoehen(terminId);
+
+                Map<String, Object> details = new LinkedHashMap<>();
+                details.put("gastName", gastName);
+
+                auditService.protokolliere(adminSpielerId, clientIp, AuditAktion.GAST_ABGESAGT,
+                        ENTITAET, terminId, details);
+            }
+        }
+    }
+
     // ------------------------------------------------------------------ Uebersicht
 
     /**
@@ -205,16 +306,22 @@ public class TeilnahmeService {
      * bewusst keinen Zwischenspeicher; senkt der Admin {@code max_teilnehmer}, wandert die
      * Warteschlangengrenze sofort mit, ohne dass eine Teilnahme angefasst wird.
      *
-     * @param terminId betroffener Termin
+     * <p><b>Die Gast-Stufe nur fuer den Admin (24.10.2026):</b> Mit {@code mitGastStufe} tragen
+     * die Gaeste unter den Eintraegen ihre Stufe, sonst nicht. Der Dienst reicht den
+     * Wahrheitswert nur durch - <b>wer ihn bildet, steht im Aufrufer</b>
+     * ({@code TerminService#einzelnLesen}), und es gibt keinen zweiten.
+     *
+     * @param terminId     betroffener Termin
+     * @param mitGastStufe {@code true} nur fuer eine Sitzung mit der Rolle {@code ADMIN}
      * @return Zusagen in Meldereihenfolge, dazu Mindest- und Hoechstzahl
      */
     @Transactional(readOnly = true)
-    public Teilnehmeruebersicht uebersicht(Long terminId) {
+    public Teilnehmeruebersicht uebersicht(Long terminId, boolean mitGastStufe) {
         AppConfig konfiguration = configService.lesen();
         return new Teilnehmeruebersicht(
                 konfiguration.getMinTeilnehmer(),
                 konfiguration.getMaxTeilnehmer(),
-                teilnahmeRepository.findeZusagen(terminId));
+                teilnahmeRepository.findeZusagen(terminId, mitGastStufe));
     }
 
     // ------------------------------------------------------------------ Hilfsmittel

@@ -1,6 +1,7 @@
 package de.fubo.appserver.repository.spieltag;
 
 import de.fubo.appserver.domain.auth.GastStufe;
+import de.fubo.appserver.domain.spieltag.GastAbsageErgebnis;
 import de.fubo.appserver.domain.spieltag.Teilnehmereintrag;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -165,13 +166,29 @@ public class TeilnahmeRepository {
      *
      * <p>{@code LEFT JOIN} auf {@code profil.spieler}: Bei einem Gast gibt es keine Zeile
      * dort, {@code s.name} ist dann {@code NULL} und {@code COALESCE} nimmt den Gastnamen.
+     *
+     * <h2>Die Gast-Stufe kommt nur auf Verlangen aus der Datenbank (24.10.2026)</h2>
+     * {@code :mitGastStufe} ist {@code true} nur fuer eine Sitzung mit der Rolle
+     * {@code ADMIN}. Sonst ist die Spalte {@code NULL} - die Bewertung wird nicht gelesen und
+     * nicht erst spaeter herausgefiltert. Die Entscheidung faellt an genau einer Stelle
+     * ({@code TerminService#einzelnLesen}); hier steht nur der Mechanismus.
+     *
+     * <p><b>{@code COALESCE(tn.gast_stufe, 'MITTEL')}</b> wie in der Datengrundlage des
+     * Generators ({@code AufstellungRepository}): Der Admin soll die Stufe sehen, mit der
+     * gerechnet wird, nicht den rohen Spaltenwert. Beim Gast ist die Stufe optional (A17); ein
+     * Spieler hat keine, dort bleibt es {@code NULL} ({@code spieler_id IS NULL} schliesst ihn
+     * aus). Nach einer Korrektur durch {@code gast-stufe} steht hier die korrigierte Stufe,
+     * denn die Teilnahme wird dort ueberschrieben.
      */
     private static final String SQL_UEBERSICHT = """
             SELECT tn.id,
                    tn.spieler_id,
                    tn.gast_name,
                    COALESCE(s.name, tn.gast_name) AS anzeige_name,
-                   row_number() OVER (ORDER BY tn.gemeldet_am, tn.id) AS position
+                   row_number() OVER (ORDER BY tn.gemeldet_am, tn.id) AS position,
+                   CASE WHEN :mitGastStufe AND tn.spieler_id IS NULL
+                        THEN COALESCE(tn.gast_stufe, 'MITTEL')
+                   END AS gast_stufe
               FROM spieltag.teilnahme tn
               LEFT JOIN profil.spieler s ON s.id = tn.spieler_id
              WHERE tn.termin_id = :terminId
@@ -212,6 +229,52 @@ public class TeilnahmeRepository {
                AND t.termin_id = :terminId
                AND t.gast_name = :gastName
             RETURNING alt.gast_stufe
+            """;
+
+    /**
+     * Nimmt die Zusage eines <b>Gastes</b> zurueck, ohne seine Stufe anzufassen (Ergaenzung vom
+     * 24.10.2026: Der Admin sagt fuer einen Gast ab, dessen Sitzung abgelaufen ist).
+     *
+     * <h2>Ein gezielter {@code UPDATE}, nicht {@link #SQL_RUECKMELDUNG_GAST}</h2>
+     * Die Rueckmeldung ist ein Upsert und schriebe {@code gast_stufe} aus der Sitzung in die
+     * Zeile - hier gibt es keine Sitzung, und eine vom Admin korrigierte Stufe ginge verloren.
+     * Ausserdem darf diese Anweisung <b>nie eine Zeile anlegen</b>: Eine Absage fuer einen Gast
+     * ohne Teilnahme ist ein {@code 404}, kein neuer Eintrag.
+     *
+     * <h2>Was die Antwort unterscheidet</h2>
+     * {@code ziel} liest, ob es die Teilnahme gibt; {@code geaendert} schreibt nur, wenn sie
+     * noch eine Zusage ist. <b>Die Bedingung {@code tn.zusage} steht am Ziel des {@code UPDATE}
+     * und nicht an {@code ziel}</b>: Unter READ COMMITTED wertet PostgreSQL die Bedingung nach
+     * dem Warten auf eine gleichzeitige Aenderung gegen die neue Zeilenfassung neu aus. Sagt
+     * der Gast im selben Augenblick selbst ab, aendert diese Anweisung nichts mehr - kein
+     * zweiter Versionssprung, kein zweiter Protokolleintrag. Gaebe es die Bedingung nur an
+     * {@code ziel}, stuende dort der Stand von vor dem Warten.
+     *
+     * <p>Aus beiden Zaehlern ergibt sich der Ausgang: nichts gefunden, gefunden aber schon
+     * abgesagt, oder zurueckgenommen. Alles in einem Zugriff, ohne Fenster zwischen Lesen und
+     * Schreiben.
+     *
+     * <p>{@code gemeldet_am} bleibt unberuehrt - wie bei der eigenen Absage; sie steht ohnehin
+     * nicht in der Reihenfolge. {@code version} steigt mit, wie bei jedem per SQL
+     * geaenderten Stand.
+     */
+    private static final String SQL_GAST_ABSAGEN = """
+            WITH ziel AS (
+                SELECT id
+                  FROM spieltag.teilnahme
+                 WHERE termin_id = :terminId
+                   AND gast_name = :gastName
+            ), geaendert AS (
+                UPDATE spieltag.teilnahme tn
+                   SET zusage  = false,
+                       version = tn.version + 1
+                  FROM ziel
+                 WHERE tn.id = ziel.id
+                   AND tn.zusage
+                RETURNING tn.id
+            )
+            SELECT (SELECT count(*) FROM ziel)      AS vorhanden,
+                   (SELECT count(*) FROM geaendert) AS geaendert
             """;
 
     /**
@@ -335,18 +398,26 @@ public class TeilnahmeRepository {
     /**
      * Liefert die Zusagen eines Termins in Warteschlangenreihenfolge.
      *
-     * @param terminId betroffener Termin
+     * @param terminId     betroffener Termin
+     * @param mitGastStufe {@code true} nur fuer eine Adminsitzung: Dann tragen die Gaeste ihre
+     *                     Stufe; sonst bleibt das Feld {@code null} und die Spalte wird nicht
+     *                     gelesen (A12)
      * @return Eintraege ab Position 1; leere Liste, wenn niemand zugesagt hat
      */
-    public List<Teilnehmereintrag> findeZusagen(Long terminId) {
+    public List<Teilnehmereintrag> findeZusagen(Long terminId, boolean mitGastStufe) {
         return jdbc.sql(SQL_UEBERSICHT)
                 .param("terminId", terminId)
-                .query((rs, zeile) -> new Teilnehmereintrag(
-                        rs.getLong("id"),
-                        rs.getObject("spieler_id", Long.class),
-                        rs.getString("gast_name"),
-                        rs.getString("anzeige_name"),
-                        rs.getInt("position")))
+                .param("mitGastStufe", mitGastStufe)
+                .query((rs, zeile) -> {
+                    String stufe = rs.getString("gast_stufe");
+                    return new Teilnehmereintrag(
+                            rs.getLong("id"),
+                            rs.getObject("spieler_id", Long.class),
+                            rs.getString("gast_name"),
+                            rs.getString("anzeige_name"),
+                            rs.getInt("position"),
+                            stufe == null ? null : GastStufe.valueOf(stufe));
+                })
                 .list();
     }
 
@@ -371,5 +442,32 @@ public class TeilnahmeRepository {
                 .list();
 
         return vorher.isEmpty() ? Optional.empty() : Optional.ofNullable(vorher.getFirst());
+    }
+
+    /**
+     * Nimmt die Zusage eines Gastes zurueck und laesst Stufe, Name und Meldezeit stehen.
+     *
+     * <p>Der Aufrufer prueft vorher, ob der Termin noch Rueckmeldungen annimmt, und erhoeht
+     * danach nur bei {@link GastAbsageErgebnis#ABGESAGT} die Zaehler und schreibt das Protokoll.
+     *
+     * @param terminId betroffener Termin
+     * @param gastName Gastname, zeichengenau wie in der Zeile
+     * @return {@link GastAbsageErgebnis#KEINE_TEILNAHME}, wenn es die Zeile nicht gibt;
+     *         {@link GastAbsageErgebnis#BEREITS_ABGESAGT}, wenn sie schon eine Absage war;
+     *         sonst {@link GastAbsageErgebnis#ABGESAGT}
+     */
+    public GastAbsageErgebnis gastAbsagen(Long terminId, String gastName) {
+        return jdbc.sql(SQL_GAST_ABSAGEN)
+                .param("terminId", terminId)
+                .param("gastName", gastName)
+                .query((rs, zeile) -> {
+                    if (rs.getLong("vorhanden") == 0) {
+                        return GastAbsageErgebnis.KEINE_TEILNAHME;
+                    }
+                    return rs.getLong("geaendert") > 0
+                            ? GastAbsageErgebnis.ABGESAGT
+                            : GastAbsageErgebnis.BEREITS_ABGESAGT;
+                })
+                .single();
     }
 }

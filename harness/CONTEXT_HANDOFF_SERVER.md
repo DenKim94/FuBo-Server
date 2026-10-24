@@ -15,7 +15,8 @@
 > - **Herleitung und Schritt für Schritt** → `harness/tmp/S<n>_UMSETZUNG.md`, für den
 >   Algorithmusteil von S5 zusätzlich `harness/tmp/S5_ALGORITHMUS.md`
 > - **Historie** → Git und `harness/archive/`. Vorfassung:
->   `CONTEXT_HANDOFF_SERVER_2026-10-24_v26_Teilnahmepruefung.md` (Stand vor den Pi-Dateien
+>   `CONTEXT_HANDOFF_SERVER_2026-10-24_v27_Pi-Dateien.md` (Stand vor „Gast absagen"), davor
+>   `…_v26_Teilnahmepruefung.md` (Stand vor den Pi-Dateien
 >   aus S9), davor `…_2026-10-18_v25_A18-Automatisch-abgesagt.md` (Stand vor der
 >   Teilnahmeprüfung am Team-Generator), davor
 >   `…_2026-10-04_v24_S9-Namensbestaetigung.md` (Stand vor dem automatischen
@@ -45,6 +46,29 @@ Commits, nicht gepusht):** Abhängigkeiten auf
 ohne Fehlschlag. Der Probebau des Images lief durch; das JAR (`app-server-1.0.0.jar`) trägt die
 Zielversionen nachweislich. Denis' Versionsanhebung `0.0.1-SNAPSHOT` → `1.0.0` steht als eigener
 Commit davor. **Nächster Schritt liegt bei Denis:** `dev` nach `main` mergen – der Pi baut `main`.
+
+**Neu am 24.10.2026 (zweiter Auftrag) – Gast absagen und Gast-Stufe für den Admin (A7, A12, A17).**
+Anlass: Ein Gast ohne Sitzung kann nicht mehr absagen, und der Admin sah in der Teilnehmerliste nicht,
+welche Stufe er mit `gast-stufe` korrigiert. Vorlage war `harness/tmp/SERVER_ANFRAGE_GAST_ABSAGEN.md`
+(Client-Agent). **Teil 1:** `POST /admin/teilnahme/gast-absagen` (`GastAbsageRequest{terminId, gastName}`,
+`204`, idempotent; `404 INHALT_NICHT_GEFUNDEN` bei unbekanntem Termin oder ohne Gast-Teilnahme, `409
+TERMIN_GESCHLOSSEN`): setzt `zusage = false`, Stufe und `gemeldet_am` bleiben, **nur
+`teilnehmer_version` steigt**, Audit `GAST_ABGESAGT` (`AuditAktion` damit **32**), Gastsitzung und
+Gastplatz bleiben unberührt. Nie für Spieler. **Teil 2:** optionales Feld `gastStufe` in
+`TeilnehmerEintrag`, nur für `ADMIN` und nur bei Gästen, sonst fehlt der Schlüssel. **Abweichung vom
+Anfragetext:** keine; die Anfrage bat um Meldung vor der Umsetzung, Denis hat den Vorschlag
+(Feld in der bestehenden Liste, Regel anpassen) am 24.10.2026 bestätigt. Gebaut: `GastAbsageRequest`,
+`GastAbsageErgebnis`, `TeilnahmeRepository#gastAbsagen` (eine CTE entscheidet über
+Idempotenz), `TeilnahmeService#gastAbsagen`, Controllermethode, `mitGastStufe` durch
+`uebersicht`/`findeZusagen`, die Entscheidung allein in `TerminService#einzelnLesen`. Regeln:
+`AGENT_SERVER.md`, „Skill-Geheimhaltung" (neue Ausnahme) und „Rückmeldung und Warteschlange" 7, 9, 10.
+Vertrag und Bruno (46 Endpunkte, neuer Request „Gast absagen") sind nachgezogen. **Verifiziert:** Das
+neue SQL (Absage-CTE in vier Zuständen, erweiterte Übersicht für Admin und Nicht-Admin) lief gegen
+PGlite (PostgreSQL-WASM) mit den echten Migrationen `V001`–`V016`; Klammerbilanz der geänderten
+Dateien ist geprüft. **Nicht kompiliert, nicht gelaufen** – kein JDK 25, Maven (Maven Central ist
+gesperrt) und Docker. **14 neue Fälle:** `TerminVerwaltungControllerTests` +10, `TeilnehmerlisteTests`
++3, `TeamGeneratorTests` +1, dazu zwei Stellen in `SecurityConfigTests`. Erwartet: **568 Fälle in 36
+Klassen** (554 + 14, mit `grep -c '^\s*@Test\s*$'` nachgezählt). Nicht committet.
 
 **Neu am 24.10.2026 – S9: die Pi-Dateien liegen vor (nicht auf dem Pi erprobt).** In
 `PRJ_FuBo/harness/assets/Deployment/` sind `docker-compose.yml` (Dienste `fubo_db`, `fubo_backend`) und
@@ -172,13 +196,13 @@ einem nicht eingeteilten Gast und ist jetzt `eingeteilterGastDarfErfassen`). Erw
 
 | Gegenstand | Stand |
 |---|---|
-| Vertrag `fubo-api.json` | **45 Endpunkte** (S8 brachte sechs, die Namensbestätigung einen) |
+| Vertrag `fubo-api.json` | **46 Endpunkte** (S8 brachte sechs, die Namensbestätigung einen, „Gast absagen" einen) |
 | Datenmodell | **20 Tabellen**, `V001`–`V016` (`V016`: `termin.kontingent_version`, 22.10.2026) |
 | Konfiguration | **14 Pflichtfelder** im Voll-Update |
 | `Fehlercode` | **39** Werte (neu: `NICHT_EINGETEILT`, davor `KEINE_ZUSAGE`) |
-| `AuditAktion` | **31** Werte |
-| Tests | **483 Fälle in 34 Klassen** zuletzt grün dokumentiert; nach Namensbestätigung, A18- und A15-Änderung nachgezählt **513 in 35**, mit dem Restkontingent **528 in 35**, mit der Durchmischung **538 in 35**, mit der Erfassungsberechtigung **548 in 35**, mit der CORS-Prüfung **554 in 36**, der Lauf steht aus; **sieben Klassen ohne Spring-Kontext** (6.3) |
-| Bruno-Collection | alle 45 Endpunkte, acht Ordner, 99 Requests (`~/Documents/bruno/fubo_server`, unversioniert; am 22.10.2026 um „Teams generieren ohne Zusage" ergänzt) |
+| `AuditAktion` | **32** Werte (neu: `GAST_ABGESAGT`) |
+| Tests | **483 Fälle in 34 Klassen** zuletzt grün dokumentiert; nach Namensbestätigung, A18- und A15-Änderung nachgezählt **513 in 35**, mit dem Restkontingent **528 in 35**, mit der Durchmischung **538 in 35**, mit der Erfassungsberechtigung **548 in 35**, mit der CORS-Prüfung **554 in 36**, mit „Gast absagen" **568 in 36**, der Lauf steht aus; **sieben Klassen ohne Spring-Kontext** (6.3) |
+| Bruno-Collection | alle 46 Endpunkte, acht Ordner (`~/Documents/bruno/fubo_server`, unversioniert; am 24.10.2026 um „Gast absagen" ergänzt – die frühere Angabe „99 Requests" liess sich nicht nachzählen, es liegen 78 Request-Dateien vor) |
 | Plattform | **Spring Boot 4.1.1**, Tomcat 11.0.26 und Jackson 3.1.7 per Override (S9, 03.10.2026) |
 
 **Was S8 gebracht hat:** Web Push nach RFC 8030/8291/8292 **ohne Fremdbibliothek**, mit
@@ -198,7 +222,7 @@ erst recht nicht gegen die Antwort des Dienstes.
 
 **Offen sind der Testlauf, Handarbeit und S9:**
 
-1. **Testlauf und Commit der A18- und A15-Änderung** – `./mvnw clean verify`, erwartet **554/36** (548 davon vor der CORS-Prüfung, 538 vor der Erfassungsberechtigung, 528 vor der Durchmischung, 513 vor dem Restkontingent; **die Integrationsfälle der Durchmischung sind nie gelaufen**)
+1. **Testlauf und Commit der A18- und A15-Änderung** – `./mvnw clean verify`, erwartet **568/36** (554 davon vor „Gast absagen", 548 davon vor der CORS-Prüfung, 538 vor der Erfassungsberechtigung, 528 vor der Durchmischung, 513 vor dem Restkontingent; **die Integrationsfälle der Durchmischung sind nie gelaufen**)
    (Namensbestätigung, automatische Absage und Teilnahmeprüfung zusammen; die neue Migration
    `V016` läuft dabei gegen PostgreSQL 17 im Testcontainer – dort ist sie noch nicht gelaufen). Danach für die Namensbestätigung
    eine Handprüfung mit echter Mail (Bruno: „Anmeldenamen aendern" → PIN nach `namePin` →
@@ -213,8 +237,9 @@ erst recht nicht gegen die Antwort des Dienstes.
    Dockerfile-Kommentar für den Pi vor (nicht erprobt). Offen sind der **Client-Hostname**
    (`S9_DEPLOYMENT.md` 12, Punkt 11), die Prüfung der Memory-Cgroup auf dem Pi, Erstinbetriebnahme,
    Backup und API-Doku. Gebaut wird auf dem Pi der aktuelle Stand von `main`.
-4. **Client-Track informieren.** Der Vertrag steht bei 45 Endpunkten; die Push-Zeilen in 4.1 sind
-   seit dem Commit in `fubo-api.json` **verbindlich** und nicht mehr Vorausschau. **Dazu die brechende
+4. **Client-Track informieren.** Der Vertrag steht bei 46 Endpunkten; die Push-Zeilen in 4.1 sind
+   seit dem Commit in `fubo-api.json` **verbindlich** und nicht mehr Vorausschau. **Neu (24.10.2026,
+   additiv):** `POST /admin/teilnahme/gast-absagen` und das Feld `gastStufe` (nur Adminsitzung) – 4.1. **Dazu die brechende
    Änderung am Namenswechsel** – sie trifft C4 (Admin-Zugang), bevor es begonnen ist.
    **Dazu zwei Verhaltensänderungen ohne Schemaänderung** (4.1): Ein Termin kann ohne Zutun des Admins
    `ABGESAGT` werden, und `/termine/lesen` ohne `ab` liefert auch vergangene Termine.
@@ -282,9 +307,9 @@ Vollständige Liste in `CONTEXT_HANDOFF.md`, Abschnitt 3. Serverseitig besonders
 **Maßgeblich ist `server/fubo-api.json`** – OpenAPI 3.1 in JSON auf der Repo-Wurzel und damit
 mitversioniert. **Bei Abweichungen gilt die Datei, nicht dieses Dokument.**
 
-**Umfang: 45 Endpunkte** (Landkarte in 6.1). Aufgenommen wird nur, was umgesetzt ist. **S9 bringt
+**Umfang: 46 Endpunkte** (Landkarte in 6.1). Aufgenommen wird nur, was umgesetzt ist. **S9 bringt
 keine** – es ist Härtung und Deployment; der 45. kam am 04.10.2026 mit der Bestätigung der
-Namensänderung. Kernpunkte: REST/JSON, getrennte Origins mit
+Namensänderung, der 46. am 24.10.2026 mit „Gast absagen". Kernpunkte: REST/JSON, getrennte Origins mit
 CORS-Allowlist (`allowCredentials`), HttpOnly-Session-Cookie, `401`/`403`-Semantik, DTOs ohne
 Skillwerte für USER und GAST, Belegtstatus zum Pollen, einheitliches Fehler-JSON nach RFC 9457.
 
@@ -432,6 +457,17 @@ naheliegende Annahme falsch ist. Wann sie dazukam, steht in Git.
 | Abschalten **löscht keine Abonnements** | Sonst verlangte das Wiedereinschalten einen neuen Browserdialog, auf jedem Gerät einzeln |
 | iOS | Web Push erst ab 16.4 und **nur nach „Zum Home-Bildschirm"**. Auf dem iPhone ist A25(a) die technische Voraussetzung für A25(b); die Berechtigung ist aus einer Nutzergeste heraus zu erfragen |
 
+**Gast absagen und Gast-Stufe für den Admin (24.10.2026) – additiv, nichts bricht**
+
+| Punkt | Bedeutung für den Client |
+|---|---|
+| `POST /admin/teilnahme/gast-absagen` | Der Admin sagt für einen **Gast** ab, `{ terminId, gastName }`, Antwort `204`. Der Name steht **zeichengenau** wie in `teilnehmer[].anzeigeName` (nur Randleerzeichen werden entfernt). **Für Spieler gibt es das nicht** – ihr Anzeigename trifft nie (`404`) |
+| Idempotent | Hat der Gast schon abgesagt, kommt ebenfalls `204`. Die Oberfläche darf die Liste unbedenklich neu laden, auch nach einem Doppelklick |
+| Fehler | `404 INHALT_NICHT_GEFUNDEN` (Termin unbekannt **oder** keine Zusage dieses Gastes; `detail`: „Für diesen Termin liegt keine Zusage dieses Gastes vor."), `409 TERMIN_GESCHLOSSEN` (abgesagt, abgeschlossen oder begonnen), `400` bei leerem oder über 40 Zeichen langem Namen |
+| Wirkung | Der Gast verschwindet aus `teilnehmer`, alle dahinter rücken auf. `teilnehmerVersion` steigt, eine vorhandene Einteilung wird `veraltet`; `kontingentGenerierung` ändert sich **nicht**. Der Gast bleibt angemeldet und kann wieder zusagen. **Keine Push-Nachricht** für Nachrückende |
+| `teilnehmer[].gastStufe` | Optional, `STARK`/`MITTEL`/`SCHWACH`. **Nur in der Antwort an eine Adminsitzung und nur bei `gast: true`;** für `USER` und `GAST` fehlt der **Schlüssel**, bei Spielern auch für den Admin. Ein Gast ohne Stufe zeigt `MITTEL` (die Stufe, mit der gerechnet wird). Als optionales Feld behandeln, nie als Pflichtfeld – ein Generator, der es als Pflicht liest, scheitert bei jeder Nicht-Admin-Antwort |
+| Anzeige | Ein Admin-Bildschirm kann an der Gast-Zeile Stufe und die Schaltflächen „Stufe ändern" (`gast-stufe`) und „Absagen" (`gast-absagen`) anbieten. **Die Stufe gehört nur dorthin** – Spieler- und Gastansichten bekommen sie nie |
+
 ### 4.2 Offene Übergabe: das Admin-Anmeldeformular
 
 Es braucht ein zweites Eingabefeld. Drei Punkte gehören dabei ins Frontend:
@@ -486,7 +522,7 @@ ohnehin in `src/` und veralteten mit jedem Commit. Die Langfassung liegt in
 
 ```
 server/                        Repo-Wurzel (remote: FuBo-Server, oeffentlich)
-  fubo-api.json                Endpunktkontrakt, 45 Endpunkte
+  fubo-api.json                Endpunktkontrakt, 46 Endpunkte
   compose.dev.yml              postgres:17
   Dockerfile, .dockerignore    Produktionsimage (S9); .dockerignore ist eine Whitelist
   .env / .env.example          DB-Zugang, FUBO_INITIAL_PIN, ADMIN_*, SMTP_*, FUBO_VAPID_*
@@ -540,7 +576,7 @@ anlegt (`profil.push_abo`), `V015` legt die zweite an (`profil.name_aenderung`, 
 ohne Migration aus** – das hängt an Voraussetzungen, die in `S5_UMSETZUNG.md` 0.4/0.6 und
 `S6_UMSETZUNG.md` 0.2/1.3 stehen; fällt eine davon, fällt die Aussage.
 
-**Die 45 Endpunkte, nach Bereichen.** Zweck, Körper und Antworten stehen in `fubo-api.json` –
+**Die 46 Endpunkte, nach Bereichen.** Zweck, Körper und Antworten stehen in `fubo-api.json` –
 hier nur die Landkarte, damit eine Änderung nicht an zwei Stellen gepflegt werden muss:
 
 | Bereich | Pfade unter `/api/v1` | Anzahl |
@@ -551,7 +587,7 @@ hier nur die Landkarte, damit eine Änderung nicht an zwei Stellen gepflegt werd
 | Konfiguration (S3) | `admin/config/{lesen,aendern}` | 2 |
 | Gastverwaltung (30.08.) | `admin/gast/{lesen,freigeben}` | 2 |
 | Termine lesen und melden (S4) | `termine/lesen`, `termine/{terminId}/lesen`, `termine/rueckmeldung` | 3 |
-| Terminverwaltung (S4) | `admin/termin/{anlegen,aendern,absagen,entfernen}`, `admin/serie/anlegen`, `admin/teilnahme/gast-stufe` | 6 |
+| Terminverwaltung (S4; Gast absagen 24.10.) | `admin/termin/{anlegen,aendern,absagen,entfernen}`, `admin/serie/anlegen`, `admin/teilnahme/{gast-stufe,gast-absagen}` | 7 |
 | Teamgenerierung (S5) | `teams/generieren`, `admin/teams/generieren` (A24) | 2 |
 | Ergebnis und Bilanz (S6) | `ergebnis/erfassen`, `admin/ergebnis/korrigieren`, `bilanz/lesen` | 3 |
 | Hallenmodus (S7) | `admin/halle/absagen` | 1 |
@@ -1148,8 +1184,8 @@ Drei Punkte zur Gastverwaltung stehen in keiner Anleitung, die Bruno-Requests un
 | `anzGuests` von 4 auf 2 senken bei vier belegten Plätzen | Plätze 3 und 4 mit `wirksam: false` und weiter `belegt: true`; gelöscht wird nichts |
 
 **Die Bruno-Collection ist die zweite Hälfte der Verifikation.** Sie liegt unversioniert in
-`~/Documents/bruno/fubo_server` und deckt alle 45 Endpunkte in acht Ordnern ab (`auth`, `admin`,
-`termine`, `teams`, `ergebnis`, `halle`, `push`, `system`). Stand 22.10.2026; Format, Konventionen
+`~/Documents/bruno/fubo_server` und deckt alle 46 Endpunkte in acht Ordnern ab (`auth`, `admin`,
+`termine`, `teams`, `ergebnis`, `halle`, `push`, `system`). Stand 24.10.2026; Format, Konventionen
 und die Prüfschritte beim Nachziehen stehen in ihrer `README.md`.
 
 ## 7. Nächste Schritte
@@ -1175,7 +1211,7 @@ und die Prüfschritte beim Nachziehen stehen in ihrer `README.md`.
    - **S6:** Die SQL-Gegenprobe, die die Bilanz gegen die Ergebnisse zählt – sie steht wiederholbar
      im Bruno-Ordnerkommentar `ergebnis/`, **mit `LEFT JOIN`**: Ohne ihn findet sie genau den
      Fehler nicht, bei dem eine Bilanz stehen bleibt, obwohl sie auf null gehörte.
-2. **Client-Track informieren.** Der Vertrag steht bei 45 Endpunkten; die Push-Zeilen in 4.1 sind
+2. **Client-Track informieren.** Der Vertrag steht bei 46 Endpunkten; die Push-Zeilen in 4.1 sind
    **verbindlich**. **Neu und brechend:** der zweistufige Namenswechsel (4.1, „Sieben brechende
    Änderungen") – er gehört in C4. Weiter gilt: **`TERMIN_NICHT_ABGESAGT` gibt es nicht**, und wer vor dem
    12.09.2026 generiert hat, generiert wegen der vier `nullable`-Korrekturen neu.

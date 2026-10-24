@@ -10,7 +10,8 @@ package de.fubo.appserver.domain.audit;
  *
  * <p>Die Liste waechst mit den Meilensteinen (Generierungslaeufe in S5,
  * Ergebniskorrekturen in S6, die Hallenabsage in S7, die beiden Push-Versandlaeufe in S8) -
- * seit S8 auf 29 Werte, seit der Bestaetigung der Namensaenderung (04.10.2026) auf <b>31</b>.
+ * seit S8 auf 29 Werte, seit der Bestaetigung der Namensaenderung (04.10.2026) auf 31 und seit der
+ * Absage fuer einen Gast durch den Admin (24.10.2026) auf <b>32</b>.
  *
  * <p><b>Es sind zwei neue und nicht vier</b> (Entscheidung vom 14.09.2026): An- und Abmeldung
  * eines Abonnements werden <i>nicht</i> protokolliert. {@code AGENT.md} sah
@@ -232,13 +233,31 @@ public enum AuditAktion {
      * Der Admin hat die Skill-Stufe eines Gastes an einer Teilnahme geaendert (A17, S4
      * Abschnitt 6.3).
      *
-     * <p>Die <b>einzige</b> Adminaktion an einer Teilnahme. Zu- und Absagen der Nutzer werden
-     * nicht protokolliert - sie stehen vollstaendig in {@code spieltag.teilnahme} samt
-     * {@code gemeldet_am}, und ein zweiter Beleg verdoppelte personenbezogene Daten, die nach
-     * 30 Tagen der Loeschfrist zum Opfer fielen, waehrend die Teilnahme bliebe. Diese
-     * Aenderung dagegen ueberschreibt eine Selbsteinschaetzung und gehoert deshalb belegt.
+     * <p>Eine von <b>zwei</b> Adminaktionen an einer Teilnahme, neben {@link #GAST_ABGESAGT}.
+     * Zu- und Absagen der Nutzer werden nicht protokolliert - sie stehen vollstaendig in
+     * {@code spieltag.teilnahme} samt {@code gemeldet_am}, und ein zweiter Beleg verdoppelte
+     * personenbezogene Daten, die nach 30 Tagen der Loeschfrist zum Opfer fielen, waehrend die
+     * Teilnahme bliebe. Diese Aenderung dagegen ueberschreibt eine Selbsteinschaetzung und
+     * gehoert deshalb belegt.
      */
     GAST_STUFE_GEAENDERT,
+
+    /**
+     * Der Admin hat die Zusage eines Gastes zurueckgenommen (A7, Ergaenzung vom 24.10.2026,
+     * {@code /admin/teilnahme/gast-absagen}).
+     *
+     * <p>Als {@code entitaet} steht {@code termin}, als {@code entitaet_id} die Termin-Id; die
+     * Details nennen den {@code gastName}. <b>Anders als die eigene Absage wird diese
+     * protokolliert</b>: Die Regel "Adminaktionen ja, Nutzerhandlungen nein" gilt, weil hier
+     * ein Dritter handelt - ohne den Eintrag liesse sich die Zeile mit {@code zusage = false}
+     * nicht von einer Absage des Gastes selbst unterscheiden.
+     *
+     * <p><b>Nur wenn dieser Aufruf etwas geaendert hat.</b> Ein wiederholter Aufruf fuer eine
+     * schon abgesagte Teilnahme antwortet {@code 204} und schreibt nichts: Das Protokoll
+     * belegt vollzogene Aenderungen, keine Klicks. Der Eintrag ueberlebt die Loeschfrist von 30
+     * Tagen nicht; die Teilnahme selbst bleibt.
+     */
+    GAST_ABGESAGT,
 
     /**
      * Ein Generierungslauf am Termin (A15, S5 Abschnitt 7.1).

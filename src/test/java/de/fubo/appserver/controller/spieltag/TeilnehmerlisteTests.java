@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers;
 import org.springframework.test.web.servlet.MockMvc;
@@ -26,6 +27,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -234,6 +236,9 @@ class TeilnehmerlisteTests {
      * dorthin nicht verlassen. Geprueft wird die vollstaendige Feldliste und nicht nur das
      * Fehlen einzelner Namen: Der Pruefpunkt ist "was kommt heraus", nicht "kommt ein
      * bestimmtes Wort vor".
+     *
+     * <p>Das gilt fuer Spieler und Gast. <b>Einzige Ausnahme</b> ist die Gast-Stufe fuer eine
+     * Adminsitzung (24.10.2026) - sie hat zwei eigene Faelle weiter unten.
      */
     @Test
     void dieListeTraegtKeineBewertungen() throws Exception {
@@ -242,6 +247,86 @@ class TeilnehmerlisteTests {
 
         assertThat(teilnehmer(terminId).getFirst().keySet())
                 .containsExactlyInAnyOrder("position", "anzeigeName", "gast", "wartet");
+    }
+
+    /**
+     * Fuer den Admin tragen die Gaeste ihre Stufe - fuer niemanden sonst (24.10.2026).
+     *
+     * <p>Der Admin korrigiert die Selbsteinschaetzung eines Gastes ueber {@code gast-stufe};
+     * dazu muss er die geltende Stufe an der Zeile sehen. <b>Ein fehlender Wert zeigt
+     * {@code MITTEL}</b>: Der Generator rechnet damit, und der Admin soll die Stufe sehen,
+     * mit der gerechnet wird. Die Zeile des Spielers bleibt auch fuer den Admin ohne das
+     * Feld - Spielerbewertungen verlassen den Server weiterhin nicht (A12).
+     *
+     * <p>Eine korrigierte Stufe erscheint sofort; dieselbe Zeile wird von
+     * {@code gast-stufe} beschrieben.
+     */
+    @Test
+    void dieListeTraegtFuerDenAdminDieGastStufe() throws Exception {
+        Long terminId = terminAnlegen(7);
+        gastZusageAnlegen(terminId, "Testgast Ada", 30);                 // Stufe MITTEL, Platz 1
+        jdbc.update("""
+                INSERT INTO spieltag.teilnahme (termin_id, gast_name, gast_stufe, zusage, gemeldet_am)
+                VALUES (?, 'Testgast Ben', NULL, true, now() - make_interval(mins => 20))
+                """, terminId);                                              // ohne Stufe, Platz 2
+        zusageAnlegen(terminId, spielerId(0), 10);                       // Spieler, Platz 3
+        jdbc.update("UPDATE spieltag.teilnahme SET gast_stufe = 'STARK' WHERE gast_name = 'Testgast Ada'");
+
+        List<Map<String, Object>> liste = teilnehmer(terminId, adminSitzung());
+
+        assertThat(liste.get(0).get("gastStufe")).as("Die korrigierte Stufe").isEqualTo("STARK");
+        assertThat(liste.get(1).get("gastStufe")).as("Ohne Stufe gilt MITTEL").isEqualTo("MITTEL");
+        assertThat(liste.get(2).keySet())
+                .as("Ein Spieler traegt auch fuer den Admin keine Bewertung")
+                .containsExactlyInAnyOrder("position", "anzeigeName", "gast", "wartet");
+    }
+
+    /**
+     * Spieler und Gast sehen die Stufe eines Gastes nie - das Feld fehlt ganz, es ist nicht
+     * nur {@code null} (24.10.2026, A12).
+     *
+     * <p>Beide Rollen in einem Fall, weil dieselbe Entscheidung im Service sie trennt
+     * ({@code Rolle.ADMIN} gegen den Rest). Der Gast liest unter einer eigenen, echt
+     * angemeldeten Sitzung.
+     */
+    @Test
+    void dieListeTraegtFuerSpielerUndGastKeineGastStufe() throws Exception {
+        Long terminId = terminAnlegen(8);
+        gastZusageAnlegen(terminId, "Testgast Cleo", 10);
+
+        for (String token : List.of(spielerSitzung(), gastSitzung("Testgast Dora"))) {
+            assertThat(teilnehmer(terminId, token).getFirst().keySet())
+                    .containsExactlyInAnyOrder("position", "anzeigeName", "gast", "wartet");
+        }
+    }
+
+    /**
+     * Sagt der Admin fuer einen Gast ab, verschwindet der Gast aus der Liste, und alle
+     * dahinter ruecken auf - wie bei der eigenen Absage eines Spielers.
+     *
+     * <p>Die Hoechstzahl steht auf 2: Der Spieler auf Platz 3 wartet, bis der Gast
+     * wegfaellt. Damit ist die Wirkung auf die Warteschlange (A10) im selben Fall zu sehen.
+     */
+    @Test
+    void eineGastAbsageNimmtDenGastAusDerListe() throws Exception {
+        grenzenSetzen(2, 2);
+        Long terminId = terminAnlegen(9);
+        zusageAnlegen(terminId, spielerId(0), 30);                       // Platz 1
+        gastZusageAnlegen(terminId, "Testgast Emil", 20);                // Platz 2
+        zusageAnlegen(terminId, spielerId(1), 10);                       // Platz 3, wartet
+        String admin = adminSitzung();
+
+        assertThat(teilnehmer(terminId, admin).get(2).get("wartet")).isEqualTo(true);
+
+        mockMvc.perform(post("/api/v1/admin/teilnahme/gast-absagen")
+                        .cookie(new Cookie(COOKIE, admin))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"terminId\":%d,\"gastName\":\"Testgast Emil\"}".formatted(terminId)))
+                .andExpect(status().isNoContent());
+
+        List<Map<String, Object>> danach = teilnehmer(terminId, admin);
+        assertThat(namen(danach)).containsExactly(name(0), name(1));
+        assertThat(danach.get(1).get("wartet")).as("Der Nachrueckende wartet nicht mehr").isEqualTo(false);
     }
 
     // --------------------------------------------------------------------- Hilfsmittel
@@ -307,6 +392,38 @@ class TeilnehmerlisteTests {
 
     private List<Map<String, Object>> teilnehmer(Long terminId) throws Exception {
         return eintraege(liste(terminId));
+    }
+
+    /** Die Teilnehmerliste unter einer beliebigen Sitzung - die Rolle entscheidet ueber den Inhalt. */
+    private List<Map<String, Object>> teilnehmer(Long terminId, String token) throws Exception {
+        String antwort = mockMvc.perform(get("/api/v1/termine/%d/lesen".formatted(terminId))
+                        .cookie(new Cookie(COOKIE, token)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        Map<String, Object> details = objectMapper.readValue(antwort, new TypeReference<>() {
+        });
+        return eintraege(teilnehmerliste(details));
+    }
+
+    private String adminSitzung() {
+        Long adminId = jdbc.queryForObject(
+                "SELECT spieler_id FROM profil.admin_konto WHERE id = 1", Long.class);
+        return sessionService.anlegen(Stage.PROFILE_AUTHENTICATED, adminId, Rolle.ADMIN);
+    }
+
+    /** Meldet einen Gast ueber den echten Anmeldeweg an und liefert seinen Token. */
+    private String gastSitzung(String gastName) throws Exception {
+        String setCookie = mockMvc.perform(post("/api/v1/auth/gast/anmelden")
+                        .cookie(new Cookie(COOKIE, sessionService.anlegen(Stage.PIN_VERIFIED, null, null)))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"gastName\":\"%s\",\"stufe\":\"MITTEL\"}".formatted(gastName)))
+                .andExpect(status().isNoContent())
+                .andReturn().getResponse().getHeader("Set-Cookie");
+        assertThat(setCookie).isNotNull();
+        String ohneName = setCookie.substring(setCookie.indexOf('=') + 1);
+        int ende = ohneName.indexOf(';');
+        return ende < 0 ? ohneName : ohneName.substring(0, ende);
     }
 
     @SuppressWarnings("unchecked")

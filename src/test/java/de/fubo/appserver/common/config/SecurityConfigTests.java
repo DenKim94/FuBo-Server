@@ -351,6 +351,10 @@ class SecurityConfigTests {
                         .contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isUnauthorized());
 
+        mockMvc.perform(post("/api/v1/admin/teilnahme/gast-absagen")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isUnauthorized());
+
         mockMvc.perform(post("/api/v1/termine/rueckmeldung")
                         .contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isUnauthorized());
@@ -445,6 +449,12 @@ class SecurityConfigTests {
                 .andExpect(status().isForbidden());
 
         mockMvc.perform(post("/api/v1/admin/teilnahme/gast-stufe")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}")
+                        .cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))
+                .andExpect(status().isForbidden());
+
+        // 24.10.2026: Auch die Absage fuer einen Gast ist dem Admin vorbehalten.
+        mockMvc.perform(post("/api/v1/admin/teilnahme/gast-absagen")
                         .contentType(MediaType.APPLICATION_JSON).content("{}")
                         .cookie(new Cookie(COOKIE, sitzung(Rolle.USER))))
                 .andExpect(status().isForbidden());

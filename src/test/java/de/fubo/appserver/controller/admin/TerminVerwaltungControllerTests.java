@@ -473,6 +473,245 @@ class TerminVerwaltungControllerTests {
         gastStufe(terminId, "Testgast Mia", "STARK").andExpect(status().isNotFound());
     }
 
+    // --------------------------------------------------------------------- Gast absagen (24.10.2026)
+
+    /**
+     * Der Admin sagt fuer einen Gast ab - und aendert damit nur die Zusage.
+     *
+     * <p>Stufe und Meldezeit bleiben (die Meldezeit steht bei einer eigenen Absage ebenso
+     * unberuehrt). Der Vorgang zaehlt als Teilnehmeraenderung, oeffnet aber das Kontingent
+     * <b>nicht</b>: Wer abspringt, ist keine Aenderung der Bewertung, und eine Absage
+     * bringt den Generator nicht auf neue Gedanken (A15, 22.10.2026).
+     *
+     * <p>Der zweite Gast prueft, dass nur die angesprochene Zeile betroffen ist.
+     */
+    @Test
+    void gastAbsagenSetztNurDieZusageZurueck() throws Exception {
+        Long terminId = angelegterTermin(tag(44));
+        gastTeilnahmeAnlegen(terminId, "Testgast Karl", "STARK");
+        gastTeilnahmeAnlegen(terminId, "Testgast Lotte", "SCHWACH");
+        Object meldezeitVorher = jdbc.queryForObject(
+                "SELECT gemeldet_am FROM spieltag.teilnahme WHERE gast_name = 'Testgast Karl'",
+                Object.class);
+        int vorher = teilnehmerVersion(terminId);
+        int kontingentVorher = kontingentVersion(terminId);
+
+        gastAbsagen(terminId, "Testgast Karl").andExpect(status().isNoContent());
+
+        Map<String, Object> karl = jdbc.queryForMap("""
+                SELECT zusage, gast_stufe, gemeldet_am FROM spieltag.teilnahme
+                 WHERE termin_id = ? AND gast_name = 'Testgast Karl'
+                """, terminId);
+        assertThat(karl.get("zusage")).isEqualTo(false);
+        assertThat(karl.get("gast_stufe")).as("Die Stufe bleibt stehen").isEqualTo("STARK");
+        assertThat(karl.get("gemeldet_am")).as("Die Meldezeit bleibt").isEqualTo(meldezeitVorher);
+        assertThat(jdbc.queryForObject("""
+                SELECT zusage FROM spieltag.teilnahme
+                 WHERE termin_id = ? AND gast_name = 'Testgast Lotte'
+                """, Boolean.class, terminId))
+                .as("Der andere Gast bleibt unberuehrt")
+                .isTrue();
+        assertThat(teilnehmerVersion(terminId)).isEqualTo(vorher + 1);
+        assertThat(kontingentVersion(terminId))
+                .as("Eine Absage oeffnet das Generierungskontingent nicht")
+                .isEqualTo(kontingentVorher);
+    }
+
+    /** Das Protokoll haelt den Gastnamen fest; Entitaet ist der Termin. */
+    @Test
+    void gastAbsagenWirdProtokolliert() throws Exception {
+        Long terminId = angelegterTermin(tag(45));
+        gastTeilnahmeAnlegen(terminId, "Testgast Mona", "MITTEL");
+
+        gastAbsagen(terminId, "Testgast Mona").andExpect(status().isNoContent());
+
+        assertThat(jdbc.queryForObject("""
+                SELECT details->>'gastName' FROM profil.audit_log
+                 WHERE aktion = 'GAST_ABGESAGT' AND entitaet = 'termin' AND entitaet_id = ?
+                """, String.class, terminId))
+                .isEqualTo("Testgast Mona");
+    }
+
+    /**
+     * Eine zweite Absage aendert nichts: {@code 204}, kein Zaehler, kein Protokolleintrag.
+     *
+     * <p>Der Admin klickt doppelt oder die Antwort ging verloren - beides soll folgenlos sein.
+     * Die Zeilenversion beweist, dass die Zeile auch nicht ein zweites Mal geschrieben wurde.
+     */
+    @Test
+    void gastAbsagenIstIdempotent() throws Exception {
+        Long terminId = angelegterTermin(tag(46));
+        gastTeilnahmeAnlegen(terminId, "Testgast Nora", "MITTEL");
+        gastAbsagen(terminId, "Testgast Nora").andExpect(status().isNoContent());
+        int teilnehmerNach = teilnehmerVersion(terminId);
+        Object zeilenVersion = jdbc.queryForObject(
+                "SELECT version FROM spieltag.teilnahme WHERE termin_id = ?", Object.class, terminId);
+
+        gastAbsagen(terminId, "Testgast Nora").andExpect(status().isNoContent());
+
+        assertThat(teilnehmerVersion(terminId)).isEqualTo(teilnehmerNach);
+        assertThat(jdbc.queryForObject(
+                "SELECT version FROM spieltag.teilnahme WHERE termin_id = ?", Object.class, terminId))
+                .isEqualTo(zeilenVersion);
+        assertThat(jdbc.queryForObject("""
+                SELECT count(*) FROM profil.audit_log
+                 WHERE aktion = 'GAST_ABGESAGT' AND entitaet_id = ?
+                """, Integer.class, terminId))
+                .as("Nur die erste Absage steht im Protokoll")
+                .isEqualTo(1);
+    }
+
+    /** Ohne Teilnahme dieses Gastes gibt es nichts abzusagen: {@code 404} mit festem Text. */
+    @Test
+    void gastAbsagenOhneTeilnahmeLiefert404() throws Exception {
+        Long terminId = angelegterTermin(tag(47));
+        gastTeilnahmeAnlegen(terminId, "Testgast Otto", "MITTEL");
+
+        String antwort = gastAbsagen(terminId, "Testgast Unbekannt")
+                .andExpect(status().isNotFound())
+                .andReturn().getResponse().getContentAsString();
+
+        Map<String, Object> problem = karte(antwort);
+        assertThat(problem.get("code")).isEqualTo("INHALT_NICHT_GEFUNDEN");
+        assertThat(problem.get("detail")).isEqualTo("Für diesen Termin liegt keine Zusage dieses Gastes vor.");
+    }
+
+    /** Ein unbekannter Termin ist ebenfalls {@code 404}. */
+    @Test
+    void gastAbsagenFuerUnbekanntenTerminLiefert404() throws Exception {
+        String antwort = gastAbsagen(999999999L, "Testgast Paula")
+                .andExpect(status().isNotFound())
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(karte(antwort).get("code")).isEqualTo("INHALT_NICHT_GEFUNDEN");
+    }
+
+    /**
+     * Der Endpunkt sagt nie fuer einen Spieler ab - auch nicht, wenn der Name stimmt.
+     *
+     * <p>Die Suche laeuft ueber {@code gast_name}, und der ist bei einem Spieler leer. Die
+     * Zusage eines Spielers bleibt, auch wenn ihr Anzeigename in der Liste steht. Eine
+     * Zusage stellvertretend zu beenden bliebe sonst der Weg, einem Spieler den Platz zu nehmen.
+     */
+    @Test
+    void gastAbsagenTrifftKeinenSpieler() throws Exception {
+        Long terminId = angelegterTermin(tag(48));
+        teilnahmeAnlegen(terminId);
+        String spielerName = jdbc.queryForObject("""
+                SELECT name FROM profil.spieler WHERE rolle = 'USER' AND aktiv ORDER BY name LIMIT 1
+                """, String.class);
+        int vorher = teilnehmerVersion(terminId);
+
+        gastAbsagen(terminId, spielerName).andExpect(status().isNotFound());
+
+        assertThat(jdbc.queryForObject(
+                "SELECT zusage FROM spieltag.teilnahme WHERE termin_id = ?", Boolean.class, terminId))
+                .as("Die Zusage des Spielers bleibt")
+                .isTrue();
+        assertThat(teilnehmerVersion(terminId)).isEqualTo(vorher);
+    }
+
+    /** Der Name wird zeichengenau verglichen: Gross- und Kleinschreibung zaehlen. */
+    @Test
+    void gastAbsagenVergleichtDenNamenZeichengenau() throws Exception {
+        Long terminId = angelegterTermin(tag(49));
+        gastTeilnahmeAnlegen(terminId, "Testgast Quirin", "MITTEL");
+
+        gastAbsagen(terminId, "testgast quirin").andExpect(status().isNotFound());
+
+        assertThat(jdbc.queryForObject(
+                "SELECT zusage FROM spieltag.teilnahme WHERE termin_id = ?", Boolean.class, terminId))
+                .isTrue();
+    }
+
+    /**
+     * Nach dem Start, abgesagt oder abgeschlossen: {@code 409 TERMIN_GESCHLOSSEN}, und die
+     * Zusage steht weiter.
+     *
+     * <p>Alle drei Faelle in einem Test, weil sie dieselbe Pruefung ({@code pruefeOffen})
+     * durchlaufen; ein Fehler in einer der Bedingungen faellt hier trotzdem einzeln auf.
+     * Der begonnene Termin liegt gestern und ist noch {@code GEPLANT} - der Zustand zwischen
+     * Beginn und dem Auto-Abschluss (A18).
+     */
+    @Test
+    void gastAbsagenAmGeschlossenenTerminLiefert409() throws Exception {
+        Long abgesagt = angelegterTermin(tag(50));
+        gastTeilnahmeAnlegen(abgesagt, "Testgast Rita", "MITTEL");
+        jdbc.update("UPDATE spieltag.termin SET status = 'ABGESAGT', version = version + 1 WHERE id = ?",
+                abgesagt);
+
+        Long abgeschlossen = angelegterTermin(tag(51));
+        gastTeilnahmeAnlegen(abgeschlossen, "Testgast Rita", "MITTEL");
+        jdbc.update("UPDATE spieltag.termin SET status = 'ABGESCHLOSSEN', version = version + 1 WHERE id = ?",
+                abgeschlossen);
+
+        Long begonnen = jdbc.queryForObject("""
+                INSERT INTO spieltag.termin (datum, uhrzeit) VALUES (?, ?) RETURNING id
+                """, Long.class, LocalDate.now().minusDays(1), UHRZEIT);
+        gastTeilnahmeAnlegen(begonnen, "Testgast Rita", "MITTEL");
+
+        for (Long terminId : List.of(abgesagt, abgeschlossen, begonnen)) {
+            String antwort = gastAbsagen(terminId, "Testgast Rita")
+                    .andExpect(status().isConflict())
+                    .andReturn().getResponse().getContentAsString();
+
+            assertThat(karte(antwort).get("code")).isEqualTo("TERMIN_GESCHLOSSEN");
+            assertThat(jdbc.queryForObject(
+                    "SELECT zusage FROM spieltag.teilnahme WHERE termin_id = ?", Boolean.class, terminId))
+                    .as("Die Zusage bleibt")
+                    .isTrue();
+            assertThat(teilnehmerVersion(terminId)).isZero();
+        }
+    }
+
+    /** Fehlende, leere oder zu lange Angaben sind {@code 400}. */
+    @Test
+    void gastAbsagenPrueftDieEingabe() throws Exception {
+        Long terminId = angelegterTermin(tag(52));
+
+        mockMvc.perform(post("/api/v1/admin/teilnahme/gast-absagen")
+                        .cookie(new Cookie(COOKIE, adminSitzung()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"gastName\":\"Testgast Sven\"}"))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post("/api/v1/admin/teilnahme/gast-absagen")
+                        .cookie(new Cookie(COOKIE, adminSitzung()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"terminId\":%d}".formatted(terminId)))
+                .andExpect(status().isBadRequest());
+
+        gastAbsagen(terminId, "   ").andExpect(status().isBadRequest());
+        gastAbsagen(terminId, "x".repeat(41)).andExpect(status().isBadRequest());
+    }
+
+    /**
+     * Die Absage laesst Gastsitzung und Gastplatz in Ruhe (Entscheidung 24.10.2026).
+     *
+     * <p>Der Gast ist weiter angemeldet und belegt seinen Platz; er kann sich also sofort
+     * wieder zusagen. Das Pruefen geschieht ueber den Anmeldeweg des Gastes und nicht per
+     * Direktanlage, damit Sitzung und Slot so entstehen, wie sie im Betrieb entstehen.
+     */
+    @Test
+    void gastAbsagenLaesstSitzungUndPlatzUnberuehrt() throws Exception {
+        Long terminId = angelegterTermin(tag(53));
+        String gastToken = gastAnmelden("Testgast Tilda");
+        gastTeilnahmeAnlegen(terminId, "Testgast Tilda", "MITTEL");
+        int slotsVorher = belegteSlots();
+        int sitzungenVorher = jdbc.queryForObject(
+                "SELECT count(*) FROM profil.session WHERE gast_name = 'Testgast Tilda'", Integer.class);
+
+        gastAbsagen(terminId, "Testgast Tilda").andExpect(status().isNoContent());
+
+        assertThat(belegteSlots()).isEqualTo(slotsVorher);
+        assertThat(jdbc.queryForObject(
+                "SELECT count(*) FROM profil.session WHERE gast_name = 'Testgast Tilda'", Integer.class))
+                .isEqualTo(sitzungenVorher);
+        mockMvc.perform(get("/api/v1/termine/%d/lesen".formatted(terminId))
+                        .cookie(new Cookie(COOKIE, gastToken)))
+                .andExpect(status().isOk());
+    }
+
     // --------------------------------------------------------------------- Auto-Abschluss (A18)
 
     /**
@@ -861,6 +1100,32 @@ class TerminVerwaltungControllerTests {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"terminId\":%d,\"gastName\":\"%s\",\"stufe\":\"%s\"}"
                         .formatted(terminId, gastName, stufe)));
+    }
+
+    private ResultActions gastAbsagen(Long terminId, String gastName) throws Exception {
+        return mockMvc.perform(post("/api/v1/admin/teilnahme/gast-absagen")
+                .cookie(new Cookie(COOKIE, adminSitzung()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"terminId\":%d,\"gastName\":\"%s\"}".formatted(terminId, gastName)));
+    }
+
+    /** Meldet einen Gast ueber den echten Anmeldeweg an und liefert seinen neuen Token. */
+    private String gastAnmelden(String gastName) throws Exception {
+        String alterToken = sessionService.anlegen(Stage.PIN_VERIFIED, null, null);
+        String setCookie = mockMvc.perform(post("/api/v1/auth/gast/anmelden")
+                        .cookie(new Cookie(COOKIE, alterToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"gastName\":\"%s\",\"stufe\":\"MITTEL\"}".formatted(gastName)))
+                .andExpect(status().isNoContent())
+                .andReturn().getResponse().getHeader("Set-Cookie");
+        assertThat(setCookie).isNotNull();
+        String ohneName = setCookie.substring(setCookie.indexOf('=') + 1);
+        int ende = ohneName.indexOf(';');
+        return ende < 0 ? ohneName : ohneName.substring(0, ende);
+    }
+
+    private int belegteSlots() {
+        return jdbc.queryForObject("SELECT count(*) FROM profil.gast_slot WHERE belegt", Integer.class);
     }
 
     /** Eine Zusage des ersten Demoprofils - genug, damit der Termin als verwendet gilt. */

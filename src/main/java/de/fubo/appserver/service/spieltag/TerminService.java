@@ -4,6 +4,7 @@ import de.fubo.appserver.common.error.FachlicherFehler;
 import de.fubo.appserver.common.error.Fehlercode;
 import de.fubo.appserver.domain.audit.AuditAktion;
 import de.fubo.appserver.domain.auth.AktiveSitzung;
+import de.fubo.appserver.domain.auth.Rolle;
 import de.fubo.appserver.domain.spieltag.AutomatischerAbschluss;
 import de.fubo.appserver.domain.spieltag.Termin;
 import de.fubo.appserver.domain.spieltag.TerminAbgesagtEreignis;
@@ -166,6 +167,12 @@ public class TerminService {
      * Berechtigung setzt der Absagepfad selbst durch; die Client-Rechnung blendet nur einen
      * Knopf aus.
      *
+     * <p><b>Die Gast-Stufe ist die eine rollenabhaengige Stelle dieser Antwort (24.10.2026).</b>
+     * Der Admin sieht in der Teilnehmerliste, mit welcher Stufe ein Gast zaehlt - auch wenn
+     * dessen Sitzung laengst abgelaufen ist. Jede andere Rolle bekommt das Feld nicht (A12).
+     * Die Entscheidung faellt <b>hier und nur hier</b> ({@code sitzung.rolle() == ADMIN}); die
+     * Abfrage liest die Spalte fuer alle anderen gar nicht erst.
+     *
      * @param terminId gesuchter Termin
      * @param sitzung  aufrufende Sitzung
      * @return Termin und Teilnehmer; die Version ist im Termin enthalten
@@ -188,7 +195,7 @@ public class TerminService {
         // beliebig - keine der fuenf Ergaenzungen haengt von einer anderen ab. Das
         // Restkontingent (22.10.2026) liest nur und schreibt nichts: Der Endpunkt wird gepollt.
         return new TerminMitTeilnehmern(termin,
-                teilnahmeService.uebersicht(terminId),
+                teilnahmeService.uebersicht(terminId, sitzung.rolle() == Rolle.ADMIN),
                 teamGenerierungService.einteilungLesen(terminId).orElse(null),
                 ergebnisService.lesen(terminId).orElse(null),
                 LocalDateTime.of(termin.datum(), termin.uhrzeit()).minusHours(vorlauf),

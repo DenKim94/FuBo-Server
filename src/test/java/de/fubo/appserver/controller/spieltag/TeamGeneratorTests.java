@@ -674,6 +674,30 @@ class TeamGeneratorTests {
         assertThat(teams(einzeln(spielerSitzung(0), terminId))).containsEntry("veraltet", true);
     }
 
+    /**
+     * Auch die Absage des Admins fuer einen Gast laesst die Einteilung veralten (24.10.2026).
+     *
+     * <p>Wie bei der eigenen Absage steigt nur {@code teilnehmer_version}: Der Kreis ist ein
+     * anderer, das Kontingent bleibt zu. Der Gast steht in der aktuellen Einteilung; ohne die
+     * Absage waere sie weiter gueltig.
+     */
+    @Test
+    void eineGastAbsageLaesstDieEinteilungVeralten() throws Exception {
+        Long terminId = terminMitZusagen(8);
+        gastZusageAnlegen(terminId, "Testgast Veraltet", "MITTEL", 1);
+        generieren(spielerSitzung(0), terminId).andExpect(status().isCreated());
+        assertThat(teams(einzeln(spielerSitzung(0), terminId))).containsEntry("veraltet", false);
+
+        mockMvc.perform(post("/api/v1/admin/teilnahme/gast-absagen")
+                        .cookie(new Cookie(COOKIE, adminSitzung()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"terminId\":%d,\"gastName\":\"Testgast Veraltet\"}"
+                                .formatted(terminId)))
+                .andExpect(status().isNoContent());
+
+        assertThat(teams(einzeln(spielerSitzung(0), terminId))).containsEntry("veraltet", true);
+    }
+
     // --------------------------------------------------------------------- Durchmischung
 
     /**

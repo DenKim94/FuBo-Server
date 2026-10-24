@@ -2,6 +2,7 @@ package de.fubo.appserver.controller.admin;
 
 import de.fubo.appserver.common.config.ApiVersionConfig;
 import de.fubo.appserver.domain.auth.AktiveSitzung;
+import de.fubo.appserver.dto.spieltag.GastAbsageRequest;
 import de.fubo.appserver.dto.spieltag.GastStufeRequest;
 import de.fubo.appserver.dto.spieltag.SerieAngelegt;
 import de.fubo.appserver.dto.spieltag.SerieAnlegenRequest;
@@ -166,10 +167,10 @@ public class TerminVerwaltungController {
     /**
      * Setzt die Skill-Stufe eines Gastes an einer bestehenden Teilnahme (A17).
      *
-     * <p><b>Die einzige Adminaktion an einer Teilnahme.</b> Weggabelung E: Eine Rueckmeldung
-     * ist eine Aussage ueber die eigene Verfuegbarkeit und wird nicht stellvertretend
-     * gesetzt; A17 gibt dem Admin ausdruecklich die Stufe - und nur sie. Weder Zusage noch
-     * Name aendern sich.
+     * <p><b>Eine von zwei Adminaktionen an einer Teilnahme</b> (die andere ist
+     * {@link #gastAbsagen}, seit 24.10.2026). Weggabelung E: Eine Zusage ist eine Aussage
+     * ueber die eigene Verfuegbarkeit und wird nicht stellvertretend gesetzt; A17 gibt dem
+     * Admin ausdruecklich die Stufe. Weder Zusage noch Name aendern sich.
      *
      * <p>Der Vorgang zaehlt als Teilnehmeraenderung und erhoeht die
      * {@code teilnehmerVersion} des Termins (A15) - der Teilnehmerkreis bleibt, seine
@@ -188,6 +189,41 @@ public class TerminVerwaltungController {
 
         teilnahmeService.gastStufeAendern(anfrage.terminId(), anfrage.gastNameBereinigt(),
                 anfrage.stufe(), sitzung.spielerId(), ClientIpErmittler.ermitteln(request));
+
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Nimmt die Zusage eines Gastes zurueck, auf Anweisung des Admins (A7, Ergaenzung vom
+     * 24.10.2026).
+     *
+     * <p><b>Wirkt wie eine Absage des Gastes.</b> Gedacht fuer den Gast, der spontan absagen
+     * muss und ohne Sitzung nicht mehr kann: Seine Sitzung ist abgelaufen, und eine neue
+     * Anmeldung braeuchte die zentrale PIN und einen freien Gastplatz. Der Termin muss noch
+     * {@code GEPLANT} und nicht begonnen sein (sonst {@code 409 TERMIN_GESCHLOSSEN}), dieselben
+     * Riegel wie bei der eigenen Absage.
+     *
+     * <p><b>Weggabelung E bleibt bestehen:</b> Der Admin meldet nicht fuer andere. Die Ausnahme
+     * gilt nur fuer Gaeste und nur in Richtung Absage - ein Spieler sagt selbst ab, und eine
+     * stellvertretende Zusage gibt es nicht.
+     *
+     * <p><b>Wiederholbar:</b> Ist die Teilnahme schon eine Absage, antwortet der Endpunkt
+     * {@code 204} und aendert nichts - kein Zaehlerstand, kein Protokolleintrag. Gastsitzung
+     * und Gastplatz bleiben unberuehrt. Der Vorgang erhoeht nur die {@code teilnehmerVersion}
+     * des Termins und oeffnet das Generierungskontingent nicht (Regel vom 22.10.2026).
+     *
+     * @param anfrage Termin und Gastname
+     * @param request fuer die Ermittlung der Client-IP
+     * @param sitzung aufrufende Adminsitzung
+     * @return {@code 204} ohne Inhalt
+     */
+    @PostMapping(value = "/teilnahme/gast-absagen", version = ApiVersionConfig.VERSION)
+    public ResponseEntity<Void> gastAbsagen(@Valid @RequestBody GastAbsageRequest anfrage,
+                                            HttpServletRequest request,
+                                            @AuthenticationPrincipal AktiveSitzung sitzung) {
+
+        teilnahmeService.gastAbsagen(anfrage.terminId(), anfrage.gastNameBereinigt(),
+                sitzung.spielerId(), ClientIpErmittler.ermitteln(request));
 
         return ResponseEntity.noContent().build();
     }
