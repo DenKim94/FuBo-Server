@@ -152,7 +152,7 @@ public class MailService {
                 wird erst übernommen, wenn die PIN in der Anwendung bestätigt ist.
 
                 Wenn Du die Änderung nicht angefordert hast, dann ignoriere diese
-                Nachricht und ändere Dein Admin-Passwort: Jemand hat Zugriff auf eine
+                Nachricht und ändere dein Admin-Passwort: Jemand hat Zugriff auf eine
                 angemeldete Adminsitzung.
 
                 Freundliche Grüße
