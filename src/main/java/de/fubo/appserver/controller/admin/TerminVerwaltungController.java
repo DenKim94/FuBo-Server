@@ -135,9 +135,15 @@ public class TerminVerwaltungController {
     }
 
     /**
-     * Entfernt einen Termin endgueltig (A19, Ergaenzung vom 30.08.2026).
+     * Entfernt einen Termin endgueltig (A19, Ergaenzung vom 30.08.2026, erweitert am
+     * 31.10.2026).
      *
-     * <p><b>Nur, solange nichts darauf verweist.</b> Liegen Rueckmeldungen, ein
+     * <p><b>Abgesagte Termine lassen sich immer entfernen</b> - auch mit eingetragenen
+     * Rueckmeldungen, Generierungslaeufen und Kontingenten, die mit dem Termin geloescht
+     * werden.
+     *
+     * <p><b>Alle anderen nur, solange nichts darauf verweist.</b> Liegen bei einem
+     * {@code GEPLANT}en oder {@code ABGESCHLOSSEN}en Termin Rueckmeldungen, ein
      * Generierungslauf, ein Kontingent oder ein Ergebnis vor, antwortet der Endpunkt
      * {@code 409 TERMIN_IN_VERWENDUNG} - dann ist das Absagen der richtige Weg. Fuenf
      * Tabellen haengen mit {@code ON DELETE CASCADE} am Termin; ein ungepruefter Aufruf
@@ -145,8 +151,7 @@ public class TerminVerwaltungController {
      *
      * <p><b>Der Weg zurueck aus einer versehentlichen Absage.</b> Ein abgesagter Termin
      * belegt seinen Zeitpunkt weiter - {@code uq_termin_zeit} gilt fuer ihn genauso. Wer ihn
-     * doch braucht, entfernt ihn und legt ihn neu an; solange niemand geantwortet hat,
-     * gelingt das.
+     * doch braucht, entfernt ihn und legt ihn neu an.
      *
      * @param anfrage Id des zu entfernenden Termins
      * @param request fuer die Ermittlung der Client-IP

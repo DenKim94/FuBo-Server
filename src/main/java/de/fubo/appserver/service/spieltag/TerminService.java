@@ -11,6 +11,7 @@ import de.fubo.appserver.domain.spieltag.TerminAbgesagtEreignis;
 import de.fubo.appserver.domain.spieltag.TerminEintrag;
 import de.fubo.appserver.domain.spieltag.TerminMitTeilnehmern;
 import de.fubo.appserver.domain.spieltag.TerminStatus;
+import de.fubo.appserver.domain.spieltag.Terminverwendung;
 import de.fubo.appserver.dto.spieltag.TerminAendernRequest;
 import de.fubo.appserver.dto.spieltag.TerminAngelegt;
 import de.fubo.appserver.repository.spieltag.TerminRepository;
@@ -443,32 +444,44 @@ public class TerminService {
     // ------------------------------------------------------------------ Entfernen
 
     /**
-     * Entfernt einen Termin endgueltig (A19, Ergaenzung vom 30.08.2026).
+     * Entfernt einen Termin endgueltig (A19, Ergaenzung vom 30.08.2026, erweitert am
+     * 31.10.2026).
      *
-     * <h2>Nur, solange nichts darauf verweist</h2>
+     * <h2>Abgesagte Termine lassen sich immer entfernen</h2>
+     * Ob Rueckmeldungen eingetragen sind oder Teams generiert wurden, spielt fuer einen
+     * {@code ABGESAGT}en Termin keine Rolle. Die Kaskaden raeumen sie mit ab. Das ist
+     * unbedenklich, weil an einem abgesagten Termin nichts haengt, was nicht mehr
+     * nachzubilden waere: Ein Ergebnis gibt es fuer ihn nicht ({@code ErgebnisService}
+     * verlangt {@code ABGESCHLOSSEN}, und der Status geht nur von {@code GEPLANT} aus
+     * vorwaerts), die Bilanz bleibt also unberuehrt.
+     *
+     * <h2>Alle anderen Termine nur, solange nichts darauf verweist</h2>
      * Fuenf Tabellen haengen mit {@code ON DELETE CASCADE} am Termin. Ein ungepruefter
-     * {@code DELETE} raeumte lautlos den halben Spieltag ab - einschliesslich der
-     * Rueckmeldungen, die der einzige Beleg dafuer sind, wer zugesagt hatte, und
-     * einschliesslich der Ergebnisse aus S6. Die Kaskaden sind richtig gesetzt; nur darf sie
-     * niemand ausloesen. Liegt etwas vor, antwortet der Endpunkt
-     * {@code 409 TERMIN_IN_VERWENDUNG} und verweist auf das Absagen - dasselbe Muster wie
-     * bei {@code PROFIL_IN_VERWENDUNG} aus S2b.
+     * {@code DELETE} raeumte bei einem geplanten oder abgeschlossenen Termin lautlos den
+     * halben Spieltag ab - einschliesslich der Rueckmeldungen, die der einzige Beleg dafuer
+     * sind, wer zugesagt hatte, und einschliesslich der Ergebnisse aus S6. Liegt etwas vor,
+     * antwortet der Endpunkt {@code 409 TERMIN_IN_VERWENDUNG} und verweist auf das Absagen -
+     * dasselbe Muster wie bei {@code PROFIL_IN_VERWENDUNG} aus S2b. Wer einen geplanten
+     * Termin mit Rueckmeldungen loswerden will, sagt ihn zuerst ab.
      *
      * <h2>Wofuer der Vorgang gedacht ist</h2>
-     * Fuer den versehentlich angelegten Termin. <b>Er ist zugleich der einzige Weg zurueck
-     * aus einer versehentlichen Absage:</b> Ein abgesagter Termin belegt seinen Zeitpunkt
-     * weiter, denn {@code uq_termin_zeit} gilt fuer ihn genauso - ohne das Entfernen bliebe
-     * der Zeitpunkt dauerhaft gesperrt. Entfernen und neu anlegen ist deshalb der
-     * vorgesehene Ablauf, und er funktioniert genau dann, wenn noch niemand geantwortet hat.
+     * Fuer den versehentlich angelegten Termin und als <b>Weg zurueck aus einer
+     * versehentlichen Absage</b>: Ein abgesagter Termin belegt seinen Zeitpunkt weiter,
+     * denn {@code uq_termin_zeit} gilt fuer ihn genauso - ohne das Entfernen bliebe der
+     * Zeitpunkt dauerhaft gesperrt. Entfernen und neu anlegen ist deshalb der vorgesehene
+     * Ablauf, auch wenn schon geantwortet wurde.
      *
      * <p><b>Der Protokolleintrag ist der einzige Rest.</b> Anders als beim Absagen bleibt
-     * keine Zeile zurueck; die Details nennen deshalb Datum, Uhrzeit und Status.
+     * keine Zeile zurueck; die Details nennen deshalb Datum, Uhrzeit und Status sowie die
+     * Zahl der Rueckmeldungen, Zusagen und Generierungslaeufe, die mit dem Termin
+     * verschwanden. Die Zahlen werden vor dem {@code DELETE} gelesen.
      *
      * @param terminId       zu entfernender Termin
      * @param adminSpielerId Profil-Id des handelnden Admins, fuer das Protokoll
      * @param clientIp       Adresse des Aufrufers, fuer das Protokoll
      * @throws FachlicherFehler {@code 404}, wenn es die Id nicht gibt;
-     *                          {@code 409 TERMIN_IN_VERWENDUNG}, wenn Daten darauf verweisen
+     *                          {@code 409 TERMIN_IN_VERWENDUNG}, wenn der Termin nicht
+     *                          abgesagt ist und Daten darauf verweisen
      */
     @Transactional
     public void entfernen(Long terminId, Long adminSpielerId, String clientIp) {
@@ -477,16 +490,24 @@ public class TerminService {
                 .orElseThrow(() -> new FachlicherFehler(Fehlercode.INHALT_NICHT_GEFUNDEN,
                         "Es gibt keinen Termin mit dieser Id."));
 
-        if (terminRepository.istReferenziert(terminId)) {
+        // Ein abgesagter Termin ist ausgenommen. Die Kaskade loescht auch ein Ergebnis mit;
+        // dass es bei ABGESAGT keines gibt, sichern die Stellen davor: ErgebnisService
+        // verlangt ABGESCHLOSSEN, und der Status geht nur von GEPLANT aus weiter. Darum
+        // steht hier keine zweite Pruefung auf ergebnis.
+        if (termin.getStatus() != TerminStatus.ABGESAGT && terminRepository.istReferenziert(terminId)) {
             throw new FachlicherFehler(Fehlercode.TERMIN_IN_VERWENDUNG);
         }
 
-        // Vor dem Loeschen lesen: Danach gibt es die Zeile nicht mehr, und die Entity ist
+        // Vor dem Loeschen lesen: Danach gibt es die Zeilen nicht mehr, und die Entity ist
         // nach dem Flush ohnehin geloest.
+        Terminverwendung verwendung = terminRepository.verwendung(terminId);
         Map<String, Object> details = Map.of(
                 "datum", termin.getDatum().toString(),
                 "uhrzeit", termin.getUhrzeit().toString(),
-                "status", termin.getStatus().name());
+                "status", termin.getStatus().name(),
+                "teilnahmen", verwendung.teilnahmen(),
+                "zusagen", verwendung.zusagen(),
+                "generierungen", verwendung.generierungen());
 
         terminRepository.delete(termin);
         terminRepository.flush();

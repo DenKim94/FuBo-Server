@@ -155,6 +155,10 @@ public enum Fehlercode {
      * lautlos mit ab, und die Rueckmeldungen sind der einzige Beleg dafuer, wer zugesagt
      * hatte. Dasselbe Muster wie bei {@link #PROFIL_IN_VERWENDUNG}: Wo geloescht nicht mehr
      * geht, ist Absagen der richtige Weg.
+     *
+     * <p><b>Nie bei einem abgesagten Termin</b> (Ergaenzung vom 31.10.2026): Er laesst sich
+     * auch mit Rueckmeldungen, Generierungslaeufen und Kontingenten entfernen. Der Code
+     * betrifft nur {@code GEPLANT} und {@code ABGESCHLOSSEN}.
      */
     TERMIN_IN_VERWENDUNG(HttpStatus.CONFLICT,
             "Für diesen Termin liegen bereits Rückmeldungen oder Ergebnisse vor. "

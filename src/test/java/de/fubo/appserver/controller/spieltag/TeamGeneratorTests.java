@@ -1011,6 +1011,49 @@ class TeamGeneratorTests {
         assertThat(antwort).doesNotContain("kontingentGenerierung");
     }
 
+    // --------------------------------------------------------------------- Entfernen
+
+    /**
+     * Ein abgesagter Termin laesst sich mit Einteilung und Kontingent entfernen
+     * (Ergaenzung vom 31.10.2026).
+     *
+     * <p>Vor der Absage gilt die alte Regel: Der geplante Termin mit Lauf ist
+     * {@code 409 TERMIN_IN_VERWENDUNG}. Nach der Absage raeumt die Kaskade Rueckmeldungen,
+     * Generierungslauf, Zuteilungen und Kontingent ab; Zuteilungen anderer Termine bleiben.
+     * Das Protokoll haelt die Zahlen fest.
+     */
+    @Test
+    void einAbgesagterTerminMitEinteilungLaesstSichEntfernen() throws Exception {
+        Long terminId = terminMitZusagen(8);
+        generieren(spielerSitzung(0), terminId).andExpect(status().isCreated());
+        int zuteilungenGesamt = anzahlZuteilungen();
+        int zuteilungenDesTermins = anzahlZuteilungen(terminId);
+        assertThat(zuteilungenDesTermins).isPositive();
+        assertThat(anzahlKontingentzeilen(terminId)).isPositive();
+
+        adminAufruf("/api/v1/admin/termin/entfernen", terminId).andExpect(status().isConflict());
+        assertThat(anzahlLaeufe(terminId)).isEqualTo(1);
+
+        adminAufruf("/api/v1/admin/termin/absagen", terminId).andExpect(status().isNoContent());
+        adminAufruf("/api/v1/admin/termin/entfernen", terminId).andExpect(status().isNoContent());
+
+        assertThat(jdbc.queryForObject(
+                "SELECT count(*) FROM spieltag.termin WHERE id = ?", Integer.class, terminId)).isZero();
+        assertThat(jdbc.queryForObject(
+                "SELECT count(*) FROM spieltag.teilnahme WHERE termin_id = ?", Integer.class, terminId))
+                .isZero();
+        assertThat(anzahlLaeufe(terminId)).isZero();
+        assertThat(anzahlKontingentzeilen(terminId)).isZero();
+        assertThat(anzahlZuteilungen()).isEqualTo(zuteilungenGesamt - zuteilungenDesTermins);
+        assertThat(jdbc.queryForObject("""
+                SELECT (details->>'teilnahmen') || '/' || (details->>'zusagen') || '/'
+                       || (details->>'generierungen')
+                  FROM profil.audit_log
+                 WHERE aktion = 'TERMIN_ENTFERNT' AND entitaet = 'termin' AND entitaet_id = ?
+                """, String.class, terminId))
+                .isEqualTo("8/8/1");
+    }
+
     // --------------------------------------------------------------------- Hilfsmittel
 
     /**
@@ -1205,6 +1248,27 @@ class TeamGeneratorTests {
                         .content("{\"spielerId\":%d,\"skills\":{\"ANGRIFF\":%d}}"
                                 .formatted(spielerId, angriff)))
                 .andExpect(status().isNoContent());
+    }
+
+    private int anzahlZuteilungen() {
+        return jdbc.queryForObject("SELECT count(*) FROM spieltag.team_zuteilung", Integer.class);
+    }
+
+    private int anzahlZuteilungen(Long terminId) {
+        return jdbc.queryForObject("""
+                SELECT count(*) FROM spieltag.team_zuteilung z
+                  JOIN spieltag.team_generierung g ON g.id = z.generierung_id
+                 WHERE g.termin_id = ?
+                """, Integer.class, terminId);
+    }
+
+    /** Ein Adminaufruf mit der Termin-Id im Koerper, etwa Absagen oder Entfernen. */
+    private ResultActions adminAufruf(String pfad, Long terminId) throws Exception {
+        return mockMvc.perform(post(pfad)
+                .cookie(new Cookie(COOKIE, adminSitzung()))
+                .header("CF-Connecting-IP", "198.51.100.60")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"terminId\":%d}".formatted(terminId)));
     }
 
     private int anzahlLaeufe(Long terminId) {

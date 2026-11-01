@@ -4,6 +4,7 @@ import de.fubo.appserver.domain.spieltag.AutomatischerAbschluss;
 import de.fubo.appserver.domain.spieltag.Erinnerungstermin;
 import de.fubo.appserver.domain.spieltag.Hallentermin;
 import de.fubo.appserver.domain.spieltag.TerminEintrag;
+import de.fubo.appserver.domain.spieltag.Terminverwendung;
 import de.fubo.appserver.domain.spieltag.Terminzustand;
 
 import java.time.LocalDate;
@@ -198,6 +199,20 @@ public interface TerminRepositoryCustom {
      * @return {@code true}, wenn mindestens ein Datensatz auf ihn zeigt
      */
     boolean istReferenziert(Long terminId);
+
+    /**
+     * Zaehlt, was beim Entfernen mit dem Termin verschwindet (A19, Ergaenzung vom 31.10.2026).
+     *
+     * <p>Gebraucht wird die Zahl nur fuer den Protokolleintrag: Ein abgesagter Termin darf
+     * auch mit Rueckmeldungen und Generierungslaeufen entfernt werden, und danach gibt es
+     * von ihnen keine Zeile mehr. Es werden bewusst nur Zahlen gelesen, keine Namen - das
+     * Protokoll ist flach und soll keine Personendaten ansammeln.
+     *
+     * @param terminId betroffener Termin
+     * @return Zahl der Rueckmeldungen, der Zusagen und der Generierungslaeufe; jeweils
+     *         {@code 0}, wenn nichts vorliegt
+     */
+    Terminverwendung verwendung(Long terminId);
 
     /**
      * Liest Status, Zeitpunkt, Ort und einen vorhandenen Absagevermerk (A23, S7 Abschnitt 3.2).

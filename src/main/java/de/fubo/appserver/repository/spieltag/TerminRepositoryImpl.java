@@ -5,6 +5,7 @@ import de.fubo.appserver.domain.spieltag.Erinnerungstermin;
 import de.fubo.appserver.domain.spieltag.Hallentermin;
 import de.fubo.appserver.domain.spieltag.TerminEintrag;
 import de.fubo.appserver.domain.spieltag.TerminStatus;
+import de.fubo.appserver.domain.spieltag.Terminverwendung;
 import de.fubo.appserver.domain.spieltag.Terminzustand;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
@@ -290,6 +291,22 @@ class TerminRepositoryImpl implements TerminRepositoryCustom {
                 OR EXISTS (SELECT 1 FROM spieltag.ergebnis WHERE termin_id = :terminId)
             """;
 
+    /**
+     * Die Zahlen fuer den Protokolleintrag beim Entfernen (A19, Ergaenzung vom 31.10.2026).
+     *
+     * <p>Ein Aufruf mit drei Skalarunterabfragen statt drei Aufrufen: Die Zeilen sind an
+     * dieser Stelle noch nicht geloescht, und ein Entfernen ist kein Massenvorgang.
+     * {@code FILTER} zaehlt die Zusagen aus derselben Menge wie die Rueckmeldungen.
+     */
+    private static final String SQL_VERWENDUNG = """
+            SELECT (SELECT count(*) FROM spieltag.teilnahme
+                     WHERE termin_id = :terminId)                    AS teilnahmen,
+                   (SELECT count(*) FROM spieltag.teilnahme
+                     WHERE termin_id = :terminId AND zusage)         AS zusagen,
+                   (SELECT count(*) FROM spieltag.team_generierung
+                     WHERE termin_id = :terminId)                    AS generierungen
+            """;
+
 
     /**
      * Status, Zeitpunkt, Ort und Absagevermerk fuer den Hallenmodus (A23, S7 Abschnitt 3.2).
@@ -511,6 +528,17 @@ class TerminRepositoryImpl implements TerminRepositoryCustom {
                 .param("terminId", terminId)
                 .query(Boolean.class)
                 .single());
+    }
+
+    @Override
+    public Terminverwendung verwendung(Long terminId) {
+        return jdbc.sql(SQL_VERWENDUNG)
+                .param("terminId", terminId)
+                .query((rs, zeile) -> new Terminverwendung(
+                        rs.getInt("teilnahmen"),
+                        rs.getInt("zusagen"),
+                        rs.getInt("generierungen")))
+                .single();
     }
 
     @Override

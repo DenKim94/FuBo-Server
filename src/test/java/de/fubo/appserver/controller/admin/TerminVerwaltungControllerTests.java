@@ -385,7 +385,7 @@ class TerminVerwaltungControllerTests {
     }
 
     /**
-     * Ein abgesagter Termin laesst sich entfernen - das ist der einzige Weg zurueck.
+     * Ein abgesagter Termin laesst sich entfernen - das ist der Weg zurueck.
      *
      * <p>Er belegt seinen Zeitpunkt sonst dauerhaft weiter, denn {@code uq_termin_zeit} gilt
      * fuer ihn genauso. Absagen ist endgueltig; entfernen und neu anlegen ist die Heilung.
@@ -396,6 +396,69 @@ class TerminVerwaltungControllerTests {
         absagen(terminId).andExpect(status().isNoContent());
 
         entfernen(terminId).andExpect(status().isNoContent());
+    }
+
+    /**
+     * Ein abgesagter Termin laesst sich auch entfernen, wenn schon geantwortet wurde
+     * (Ergaenzung vom 31.10.2026).
+     *
+     * <p>Die Kaskade loescht die Rueckmeldungen mit; der Zeitpunkt wird frei, und das
+     * Protokoll haelt fest, was verschwunden ist: drei Rueckmeldungen, davon zwei Zusagen, ein
+     * Spieler und zwei Gaeste. Das Absagen behaelt die Zeilen, erst das Entfernen raeumt
+     * sie ab.
+     */
+    @Test
+    void einAbgesagterTerminMitRueckmeldungenLaesstSichEntfernen() throws Exception {
+        LocalDate datum = tag(91);
+        Long terminId = angelegterTermin(datum);
+        teilnahmeAnlegen(terminId);
+        gastTeilnahmeAnlegen(terminId, "Testgast Rita", "MITTEL");
+        zusagenAnlegen(terminId, 1, false);
+        absagen(terminId).andExpect(status().isNoContent());
+        assertThat(anzahlTeilnahmen(terminId)).isEqualTo(3);
+
+        entfernen(terminId).andExpect(status().isNoContent());
+
+        assertThat(anzahlTeilnahmen(terminId)).isZero();
+        assertThat(jdbc.queryForObject(
+                "SELECT count(*) FROM spieltag.termin WHERE id = ?", Integer.class, terminId))
+                .isZero();
+        anlegen(datum, "Sporthalle Nord").andExpect(status().isCreated());
+        Map<String, Object> details = jdbc.queryForObject("""
+                SELECT details->>'status' AS status, details->>'teilnahmen' AS teilnahmen,
+                       details->>'zusagen' AS zusagen, details->>'generierungen' AS generierungen
+                  FROM profil.audit_log
+                 WHERE aktion = 'TERMIN_ENTFERNT' AND entitaet = 'termin' AND entitaet_id = ?
+                """, (rs, zeile) -> Map.<String, Object>of(
+                "status", rs.getString("status"),
+                "teilnahmen", rs.getString("teilnahmen"),
+                "zusagen", rs.getString("zusagen"),
+                "generierungen", rs.getString("generierungen")), terminId);
+        assertThat(details).containsEntry("status", "ABGESAGT")
+                .containsEntry("teilnahmen", "3")
+                .containsEntry("zusagen", "2")
+                .containsEntry("generierungen", "0");
+    }
+
+    /**
+     * Die Lockerung gilt nur fuer {@code ABGESAGT}: Ein abgeschlossener Termin mit
+     * Rueckmeldungen bleibt gesperrt (Ergaenzung vom 31.10.2026).
+     *
+     * <p>Bei ihm koennte ein Ergebnis dranhaengen, und die Bilanz haengt am Ergebnis.
+     */
+    @Test
+    void einAbgeschlossenerTerminMitRueckmeldungenLiefert409() throws Exception {
+        Long terminId = angelegterTermin(tag(92));
+        teilnahmeAnlegen(terminId);
+        aendern(Map.of("terminId", terminId, "version", version(terminId), "status", "ABGESCHLOSSEN"))
+                .andExpect(status().isNoContent());
+
+        String antwort = entfernen(terminId)
+                .andExpect(status().isConflict())
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(karte(antwort).get("code")).isEqualTo("TERMIN_IN_VERWENDUNG");
+        assertThat(anzahlTeilnahmen(terminId)).isEqualTo(1);
     }
 
     /**
@@ -1167,6 +1230,11 @@ class TerminVerwaltungControllerTests {
                     VALUES (?, ?, 'MITTEL', ?)
                     """, terminId, "Testgast " + (zusage ? "Zusage " : "Absage ") + i, zusage);
         }
+    }
+
+    private int anzahlTeilnahmen(Long terminId) {
+        return jdbc.queryForObject(
+                "SELECT count(*) FROM spieltag.teilnahme WHERE termin_id = ?", Integer.class, terminId);
     }
 
     private Map<String, Object> terminZeile(Long terminId) {

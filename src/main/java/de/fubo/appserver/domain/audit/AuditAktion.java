@@ -222,10 +222,13 @@ public enum AuditAktion {
      *
      * <p><b>Der Eintrag ist der einzige Rest.</b> Anders als beim Absagen bleibt keine Zeile
      * zurueck, an der sich der Vorgang spaeter ablesen liesse - die Details nennen deshalb
-     * Datum, Uhrzeit und Status des entfernten Termins, nicht nur seine Id.
+     * Datum, Uhrzeit und Status des entfernten Termins, nicht nur seine Id. Seit dem
+     * 31.10.2026 kommen {@code teilnahmen}, {@code zusagen} und {@code generierungen} hinzu:
+     * Ein abgesagter Termin wird auch mit Rueckmeldungen und Generierungslaeufen entfernt,
+     * und von ihnen bleibt sonst nichts.
      *
-     * <p>Entfernt wird nur, solange nichts auf den Termin verweist; wo Rueckmeldungen oder
-     * Ergebnisse vorliegen, bleibt das Absagen der Weg.
+     * <p>Ein geplanter oder abgeschlossener Termin wird nur entfernt, solange nichts auf ihn
+     * verweist; wo Rueckmeldungen oder Ergebnisse vorliegen, bleibt das Absagen der Weg.
      */
     TERMIN_ENTFERNT,
 
