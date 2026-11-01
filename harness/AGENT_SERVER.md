@@ -547,10 +547,14 @@ eine erneute Einteilung liefert. Zwei Aufgaben mit verschiedenen Auslösern brau
 4. **Ein Zeitpunkt in der Vergangenheit wird abgelehnt**, geprüft werden `datum` *und* `uhrzeit` –
    ein Termin von heute Morgen nähme nie eine Rückmeldung entgegen. Beim Ändern greift die Prüfung
    nur bei echter Zeitänderung; eine Ortskorrektur schadet niemandem.
-5. **Entfernt wird nur ohne Verweise** (`409 TERMIN_IN_VERWENDUNG`, geprüft: `teilnahme`,
-   `team_generierung`, `generierung_kontingent`, `ergebnis`). **Damit ist das Entfernen zugleich
-   der einzige Weg zurück aus einer versehentlichen Absage** – ein abgesagter Termin belegt seinen
-   Zeitpunkt weiter.
+5. **Ein abgesagter Termin lässt sich immer entfernen, alle anderen nur ohne Verweise** (`409 TERMIN_IN_VERWENDUNG`,
+   geprüft: `teilnahme`, `team_generierung`, `generierung_kontingent`, `ergebnis`). Bei `ABGESAGT` entfällt die
+   Prüfung; die Kaskade räumt Rückmeldungen, Läufe, Zuteilungen und Kontingente mit ab. Das ist sicher, weil
+   ein abgesagter Termin kein Ergebnis hat (`ErgebnisService` verlangt `ABGESCHLOSSEN`, der Status geht nur
+   von `GEPLANT` aus vorwärts) – **darum steht dort keine zweite Prüfung auf `ergebnis`.** Weil danach nichts
+   mehr zu lesen ist, schreibt `TERMIN_ENTFERNT` Zahlen für `teilnahmen`, `zusagen` und `generierungen` ins
+   Protokoll (vor dem `DELETE` gelesen). **Das Entfernen ist zugleich der Weg zurück aus einer versehentlichen
+   Absage** – ein abgesagter Termin belegt seinen Zeitpunkt weiter.
 6. **Der Status ist nur vorwärts setzbar**: `ABGESAGT` und `ABGESCHLOSSEN` ja, `GEPLANT` nein –
    ein `400`, kein `409`, denn es ist kein Zustand, der sich mit der Zeit ändert. Über `aendern`
    auf `ABGESAGT` gesetzt, heisst der Protokolleintrag trotzdem `TERMIN_ABGESAGT`.

@@ -15,6 +15,7 @@
 > - **Herleitung und Schritt für Schritt** → `harness/tmp/S<n>_UMSETZUNG.md`, für den
 >   Algorithmusteil von S5 zusätzlich `harness/tmp/S5_ALGORITHMUS.md`
 > - **Historie** → Git und `harness/archive/`. Vorfassung:
+>   `CONTEXT_HANDOFF_SERVER_2026-10-31_v28_Gast-absagen.md` (Stand vor dem Entfernen abgesagter Termine), davor
 >   `CONTEXT_HANDOFF_SERVER_2026-10-24_v27_Pi-Dateien.md` (Stand vor „Gast absagen"), davor
 >   `…_v26_Teilnahmepruefung.md` (Stand vor den Pi-Dateien
 >   aus S9), davor `…_2026-10-18_v25_A18-Automatisch-abgesagt.md` (Stand vor der
@@ -33,7 +34,7 @@
 > Was hier steht, steht **nur** hier. Wird eine Festlegung zur Architekturregel, wandert sie
 > nach `AGENT_SERVER.md` und **verschwindet hier** – sonst laufen beide auseinander.
 
-## Stand: 24.10.2026
+## Stand: 31.10.2026
 
 **S0 bis S8 sind abgeschlossen und verifiziert.** Alles bis S8 ist auf `dev` committet (18 Commits
 für S8), **nicht gepusht**.
@@ -46,6 +47,30 @@ Commits, nicht gepusht):** Abhängigkeiten auf
 ohne Fehlschlag. Der Probebau des Images lief durch; das JAR (`app-server-1.0.0.jar`) trägt die
 Zielversionen nachweislich. Denis' Versionsanhebung `0.0.1-SNAPSHOT` → `1.0.0` steht als eigener
 Commit davor. **Nächster Schritt liegt bei Denis:** `dev` nach `main` mergen – der Pi baut `main`.
+
+**Neu am 31.10.2026 – abgesagte Termine entfernen, auch mit Rückmeldungen und Teams (A19).**
+Anforderung von Denis: Der Admin soll abgesagte Termine entfernen können, unabhängig davon, ob schon
+Teilnehmer eingetragen sind oder Teams generiert wurden. **Umsetzung:** `TerminService#entfernen` ruft
+`istReferenziert` nur noch auf, wenn der Status **nicht** `ABGESAGT` ist; `GEPLANT` und `ABGESCHLOSSEN`
+bleiben bei `409 TERMIN_IN_VERWENDUNG`. **Annahme, die Denis nicht ausdrücklich bestätigt hat:** Die
+Lockerung gilt nur für `ABGESAGT` – ein geplanter Termin mit Rückmeldungen wird weiter erst abgesagt und
+dann entfernt. Der Grund, warum die Kaskade hier ungefährlich ist: Ein abgesagter Termin hat kein
+Ergebnis (`ErgebnisService` verlangt `ABGESCHLOSSEN`, Absagen gibt es nur aus `GEPLANT`), die Bilanz bleibt
+also unberührt; deshalb gibt es bewusst keine zweite Prüfung auf `ergebnis`. **Protokoll:** Die
+Rückmeldungen verschwinden mit, darum trägt `TERMIN_ENTFERNT` zusätzlich `teilnahmen`, `zusagen` und
+`generierungen` (flach, nur Zahlen, vor dem `DELETE` gelesen über das neue
+`TerminRepository#verwendung` und den Record `Terminverwendung`). `AuditAktion` bleibt bei **32**,
+`Fehlercode` bei **39** (die Meldung von `TERMIN_IN_VERWENDUNG` ist unverändert). Vertrag (nicht brechend:
+es entfällt nur eine Ablehnung), Javadoc, `AGENT_SERVER.md` (Regel 5) und Bruno sind nachgezogen; die
+Beschreibung des Absagens im Vertrag sagt nicht mehr „ein Termin wird nie gelöscht". **Drei neue Fälle:**
+`TerminVerwaltungControllerTests` +2 (abgesagt mit Spieler, Gast und Absage → `204`, Zeilen weg, Zeitpunkt
+frei, Protokollzahlen; abgeschlossen mit Teilnahme → weiter `409`), `TeamGeneratorTests` +1 (erst `409` mit
+Lauf, nach der Absage `204`; Lauf, Zuteilungen und Kontingent weg, Zuteilungen anderer Termine bleiben).
+Erwartet: **571 Fälle in 36 Klassen** (568 + 3). **Nicht kompiliert, nicht gelaufen** – derselbe Grund wie
+zuvor (kein JDK 25, Maven Central gesperrt, kein Docker); geprüft wurden nur Klammerbilanz, Vertrag
+(JSON lädt, kein `nullable`) und die Testzahl. Nicht committet. `harness/tmp/S4_UMSETZUNG.md` (Herleitung
+vom 30.08.2026) trägt die alte Regel weiter und ist bewusst unverändert. Zu „Gast absagen" (`3425c20`, nicht
+gepusht): Denis meldete die Verifikation danach als erfolgreich.
 
 **Neu am 24.10.2026 (zweiter Auftrag) – Gast absagen und Gast-Stufe für den Admin (A7, A12, A17).**
 Anlass: Ein Gast ohne Sitzung kann nicht mehr absagen, und der Admin sah in der Teilnehmerliste nicht,
@@ -68,7 +93,7 @@ PGlite (PostgreSQL-WASM) mit den echten Migrationen `V001`–`V016`; Klammerbila
 Dateien ist geprüft. **Nicht kompiliert, nicht gelaufen** – kein JDK 25, Maven (Maven Central ist
 gesperrt) und Docker. **14 neue Fälle:** `TerminVerwaltungControllerTests` +10, `TeilnehmerlisteTests`
 +3, `TeamGeneratorTests` +1, dazu zwei Stellen in `SecurityConfigTests`. Erwartet: **568 Fälle in 36
-Klassen** (554 + 14, mit `grep -c '^\s*@Test\s*$'` nachgezählt). Nicht committet.
+Klassen** (554 + 14, mit `grep -c '^\s*@Test\s*$'` nachgezählt). Inzwischen committet (`3425c20`).
 
 **Neu am 24.10.2026 – S9: die Pi-Dateien liegen vor (nicht auf dem Pi erprobt).** In
 `PRJ_FuBo/harness/assets/Deployment/` sind `docker-compose.yml` (Dienste `fubo_db`, `fubo_backend`) und
@@ -201,7 +226,7 @@ einem nicht eingeteilten Gast und ist jetzt `eingeteilterGastDarfErfassen`). Erw
 | Konfiguration | **14 Pflichtfelder** im Voll-Update |
 | `Fehlercode` | **39** Werte (neu: `NICHT_EINGETEILT`, davor `KEINE_ZUSAGE`) |
 | `AuditAktion` | **32** Werte (neu: `GAST_ABGESAGT`) |
-| Tests | **483 Fälle in 34 Klassen** zuletzt grün dokumentiert; nach Namensbestätigung, A18- und A15-Änderung nachgezählt **513 in 35**, mit dem Restkontingent **528 in 35**, mit der Durchmischung **538 in 35**, mit der Erfassungsberechtigung **548 in 35**, mit der CORS-Prüfung **554 in 36**, mit „Gast absagen" **568 in 36**, der Lauf steht aus; **sieben Klassen ohne Spring-Kontext** (6.3) |
+| Tests | **483 Fälle in 34 Klassen** zuletzt grün dokumentiert; nach Namensbestätigung, A18- und A15-Änderung nachgezählt **513 in 35**, mit dem Restkontingent **528 in 35**, mit der Durchmischung **538 in 35**, mit der Erfassungsberechtigung **548 in 35**, mit der CORS-Prüfung **554 in 36**, mit „Gast absagen" **568 in 36** (laut Denis grün), mit dem Entfernen abgesagter Termine **571 in 36**, der Lauf steht aus; **sieben Klassen ohne Spring-Kontext** (6.3) |
 | Bruno-Collection | alle 46 Endpunkte, acht Ordner (`~/Documents/bruno/fubo_server`, unversioniert; am 24.10.2026 um „Gast absagen" ergänzt – die frühere Angabe „99 Requests" liess sich nicht nachzählen, es liegen 78 Request-Dateien vor) |
 | Plattform | **Spring Boot 4.1.1**, Tomcat 11.0.26 und Jackson 3.1.7 per Override (S9, 03.10.2026) |
 
@@ -222,7 +247,7 @@ erst recht nicht gegen die Antwort des Dienstes.
 
 **Offen sind der Testlauf, Handarbeit und S9:**
 
-1. **Testlauf und Commit der A18- und A15-Änderung** – `./mvnw clean verify`, erwartet **568/36** (554 davon vor „Gast absagen", 548 davon vor der CORS-Prüfung, 538 vor der Erfassungsberechtigung, 528 vor der Durchmischung, 513 vor dem Restkontingent; **die Integrationsfälle der Durchmischung sind nie gelaufen**)
+1. **Testlauf und Commit der A18- und A15-Änderung** – `./mvnw clean verify`, erwartet **571/36** (568 davon vor dem Entfernen abgesagter Termine, 554 davon vor „Gast absagen", 548 davon vor der CORS-Prüfung, 538 vor der Erfassungsberechtigung, 528 vor der Durchmischung, 513 vor dem Restkontingent; **die Integrationsfälle der Durchmischung sind nie gelaufen**)
    (Namensbestätigung, automatische Absage und Teilnahmeprüfung zusammen; die neue Migration
    `V016` läuft dabei gegen PostgreSQL 17 im Testcontainer – dort ist sie noch nicht gelaufen). Danach für die Namensbestätigung
    eine Handprüfung mit echter Mail (Bruno: „Anmeldenamen aendern" → PIN nach `namePin` →
@@ -375,7 +400,7 @@ naheliegende Annahme falsch ist. Wann sie dazukam, steht in Git.
 | Punkt | Bedeutung für den Client |
 |---|---|
 | `TerminStatus` | `GEPLANT`, `ABGESAGT`, `ABGESCHLOSSEN`. **Eine Absage ist endgültig** – kein Weg zurück nach `GEPLANT`, auch nicht bei der automatischen Absage unter der Mindestzahl |
-| `/admin/termin/entfernen` | löscht endgültig, aber nur ohne Verweise (`409 TERMIN_IN_VERWENDUNG`). **Der einzige Weg zurück aus einer versehentlichen Absage** – ein abgesagter Termin belegt seinen Zeitpunkt weiter |
+| `/admin/termin/entfernen` | löscht endgültig; **ein abgesagter Termin immer** (samt Rückmeldungen, Läufen, Kontingenten), alle anderen nur ohne Verweise (`409 TERMIN_IN_VERWENDUNG`). **Der Weg zurück aus einer versehentlichen Absage** – ein abgesagter Termin belegt seinen Zeitpunkt weiter |
 | **Ein Ergebnis lässt sich nicht löschen** | A21 sieht nur die Korrektur vor. Es gibt keinen Endpunkt dafür, und es wird keinen geben, ohne dass jemand ihn anfordert |
 | **Eine versandte Hallenabsage lässt sich nicht zurücknehmen** | Es gibt keinen Endpunkt und keinen Weg, die Mail ungeschehen zu machen. Die Bestätigungsabfrage muss sagen, dass die Nachricht **sofort** hinausgeht |
 | **Eine zugestellte Push-Nachricht ebenso nicht** | Deshalb gibt es für beide Versandanlässe **keinen** Endpunkt: Die Erinnerung läuft als Auftrag, die Absagenachricht hängt am Statuswechsel. Ein „jetzt erinnern"-Knopf wäre ein Knopf, der sich nicht zurücknehmen lässt |
@@ -634,7 +659,7 @@ und Herleitung steht in `…_v14_S4-abgeschlossen.md`.
 | Beim Anlegen entscheidet **`ON CONFLICT DO NOTHING RETURNING id`**, nicht eine vorgelagerte Abfrage | „prüfen und Constraint behalten" lässt ein Fenster offen, und dann bricht der `INSERT` doch am Constraint – mit genau dem `500`, den die Prüfung verhindern sollte. Beim **Ändern** bleibt es bei der Vorabprüfung: ein `UPDATE` kennt kein `ON CONFLICT` |
 | Geprüft wird der **Zeitpunkt**, nicht nur der Tag | ein Termin heute um 8 Uhr, angelegt um 20 Uhr, nähme nie eine Rückmeldung entgegen |
 | Beim Ändern greift die Vergangenheitsprüfung nur, wenn Datum oder Uhrzeit sich **wirklich** ändern | sonst liesse sich der Ort eines vergangenen Termins nicht mehr berichtigen. Verschieben *in* die Vergangenheit bleibt gesperrt |
-| **Entfernt wird nur ohne Verweise** (`409 TERMIN_IN_VERWENDUNG`), und die **Absage bleibt endgültig** | Fünf Tabellen hängen mit `ON DELETE CASCADE` am Termin, ein ungeprüftes Löschen räumte den halben Spieltag ab – und das Entfernen ist zugleich der einzige Weg zurück aus einer versehentlichen Absage, weil ein abgesagter Termin seinen Zeitpunkt weiter belegt |
+| **Ein abgesagter Termin lässt sich immer entfernen, alle anderen nur ohne Verweise** (`409 TERMIN_IN_VERWENDUNG`), und die **Absage bleibt endgültig** (31.10.2026, Anforderung von Denis) | Fünf Tabellen hängen mit `ON DELETE CASCADE` am Termin, ein ungeprüftes Löschen räumte bei geplanten und abgeschlossenen Terminen den halben Spieltag ab. Bei `ABGESAGT` ist die Kaskade ungefährlich, weil es dort kein Ergebnis gibt; das Entfernen ist der Weg zurück aus einer versehentlichen Absage, weil ein abgesagter Termin seinen Zeitpunkt weiter belegt. Die Zahlen für das Protokoll werden vor dem `DELETE` gelesen |
 | Die A18-Frist ist eine **Konstante im Dienst**, der Auftrag läuft alle fünf Minuten | ein weiteres Pflichtfeld wäre brechend; der Takt genügt, weil keine fachliche Regel an der Pünktlichkeit hängt – ob gemeldet werden darf, entscheidet die Uhrzeit, nicht der Status |
 | **Das Adminprofil kann nicht zusagen** (`409 PROFIL_GESCHUETZT`) | der Rückmeldeendpunkt liegt ausserhalb von `/admin/`, das Adminprofil trägt aber eine `spielerId` – ohne die Prüfung stünde das technische Konto mit Skillwerten von 0 in der Teameinteilung |
 | „Schwächster Auswechselspieler" nach dem **Skill-Snapshot des Laufs**, nicht nach dem aktuellen Profilstand | sonst wechselte der Auswechselspieler einer gespeicherten Einteilung rückwirkend, sobald ein Skillwert korrigiert wird |
