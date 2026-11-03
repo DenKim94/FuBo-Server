@@ -80,7 +80,7 @@ import jakarta.validation.constraints.Size;
  * @param maxTeilnehmer          Hoechstteilnehmerzahl (A11); nicht unter {@code minTeilnehmer}
  * @param anzGuests              Obergrenze gleichzeitig angemeldeter Gaeste (A17)
  * @param algorithmType          Verfahren der Teamgenerierung (A15)
- * @param auswechselModus        Auswahl des Auswechselspielers bei ungerader Zahl (A20b)
+ * @param auswechselModus        Wahl des Springers bei ungerader Zahl (A20b)
  * @param anzTeamGenerator       Kontingent an Generierungslaeufen je Nutzer und Spieltag (A15)
  * @param sessionLeerlaufMinuten gleitendes Leerlauf-Fenster in Minuten (A14)
  * @param sessionMaximalStunden  harte Obergrenze der Sitzungsdauer in Stunden (A14)
@@ -112,7 +112,7 @@ public record KonfigurationAendernRequest(
         @NotNull(message = "Das Verfahren der Teamgenerierung fehlt.")
         AlgorithmType algorithmType,
 
-        @NotNull(message = "Die Auswahl des Auswechselspielers fehlt.")
+        @NotNull(message = "Die Wahl des Springers fehlt.")
         AuswechselModus auswechselModus,
 
         @Min(value = 1, message = "Das Kontingent des Teamgenerators muss mindestens 1 betragen.")

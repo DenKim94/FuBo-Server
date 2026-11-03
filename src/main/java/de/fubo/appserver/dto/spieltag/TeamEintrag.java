@@ -18,13 +18,15 @@ import de.fubo.appserver.domain.team.Einteilungseintrag;
  *
  * @param anzeigeName       Profilname oder Gastname
  * @param gast              {@code true} bei einem Gast
- * @param auswechselspieler {@code true} fuer genau einen Teilnehmer des groesseren Teams bei
- *                          ungerader Teilnehmerzahl (A20b)
+ * @param auswechselspieler {@code true} fuer den <b>Springer</b> bei ungerader Teilnehmerzahl
+ *                          (A20b, seit 03.11.2026); er steht im Team, bei dem er beginnt. Der
+ *                          Feldname bleibt, weil er im Vertrag so heisst - ein Umbenennen waere
+ *                          fuer den Client brechend, ohne dass es ihm etwas sagte
  */
 public record TeamEintrag(String anzeigeName, boolean gast, boolean auswechselspieler) {
 
     /** Bildet das Wertobjekt auf den Vertrag ab. */
     public static TeamEintrag von(Einteilungseintrag eintrag) {
-        return new TeamEintrag(eintrag.anzeigeName(), eintrag.gast(), eintrag.auswechselspieler());
+        return new TeamEintrag(eintrag.anzeigeName(), eintrag.gast(), eintrag.springer());
     }
 }

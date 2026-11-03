@@ -109,7 +109,8 @@ class KonfigurationControllerTests {
         assertThat(zahl(konfiguration, "maxTeilnehmer")).isEqualTo(22);
         assertThat(zahl(konfiguration, "anzGuests")).isEqualTo(4);
         assertThat(konfiguration.get("algorithmType")).isEqualTo("EXHAUSTIV");
-        assertThat(konfiguration.get("auswechselModus")).isEqualTo("SCHWAECHSTER_UEBERZAHL");
+        assertThat(konfiguration.get("auswechselModus"))
+                .as("V017 schreibt die Vorgabe auf ZUFAELLIG um").isEqualTo("ZUFAELLIG");
         assertThat(zahl(konfiguration, "anzTeamGenerator")).isEqualTo(1);
         assertThat(zahl(konfiguration, "sessionLeerlaufMinuten")).isEqualTo(15);
         assertThat(zahl(konfiguration, "sessionMaximalStunden")).isEqualTo(1);
@@ -414,7 +415,26 @@ class KonfigurationControllerTests {
 
         aendern(koerper).andExpect(status().isBadRequest());
 
-        assertThat(konfigurationsZeile().get("auswechsel_modus")).isEqualTo("SCHWAECHSTER_UEBERZAHL");
+        assertThat(konfigurationsZeile().get("auswechsel_modus")).isEqualTo("ZUFAELLIG");
+    }
+
+    /**
+     * Der fruehere Vorgabewert {@code SCHWAECHSTER_UEBERZAHL} ist seit {@code V017} unbekannt
+     * (A20b, 03.11.2026) - die brechende Seite der Aenderung fuer den Client.
+     *
+     * <p>Ein Formular, das den alten Wert noch kennt und unveraendert zurueckschickt, bekommt
+     * {@code 400}, und die Zeile bleibt, wie sie ist. Ohne diesen Fall fiele ein
+     * Rueckwaertsalias im Enum nicht auf, der den alten Namen still auf einen der neuen
+     * abbildete.
+     */
+    @Test
+    void derFruehereSchwaechsterModusWirdAbgelehnt() throws Exception {
+        Map<String, Object> koerper = aktuellerKoerper();
+        koerper.put("auswechselModus", "SCHWAECHSTER_UEBERZAHL");
+
+        aendern(koerper).andExpect(status().isBadRequest());
+
+        assertThat(konfigurationsZeile().get("auswechsel_modus")).isEqualTo("ZUFAELLIG");
     }
 
     /**

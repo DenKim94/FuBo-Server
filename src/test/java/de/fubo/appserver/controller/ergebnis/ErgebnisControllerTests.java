@@ -289,28 +289,29 @@ class ErgebnisControllerTests {
     }
 
     /**
-     * Der Auswechselspieler darf erfassen - und er steht in {@code teams.teamA} oder
-     * {@code teams.teamB}, nicht daneben.
+     * Der Springer darf erfassen - und er steht in {@code teams.teamA} oder
+     * {@code teams.teamB}, nicht daneben (seit 03.11.2026 Springer statt Auswechselspieler).
      *
      * <p>Beides haengt zusammen: Der Vertrag sichert dem Client zu, dass "eingeteilt" genau
-     * "steht in einer der beiden Listen der Einzelansicht" heisst. Faellt der
-     * Auswechselspieler aus den Listen, taugt die Zusicherung nicht mehr.
+     * "steht in einer der beiden Listen der Einzelansicht" heisst. Faellt der Springer aus den
+     * Listen, taugt die Zusicherung nicht mehr. Dass er keine Bilanz bekommt, aendert daran
+     * nichts: Er hat gespielt und kennt das Ergebnis.
      */
     @Test
     @SuppressWarnings("unchecked")
-    void auswechselspielerDarfErfassen() throws Exception {
+    void springerDarfErfassen() throws Exception {
         Long terminId = terminBereitFuerErgebnis(7);
 
         Map<String, Object> teams = (Map<String, Object>) einzeln(spielerSitzung(0), terminId)
                 .get("teams");
         String name = (String) teams.get("auswechselspieler");
-        assertThat(name).as("bei sieben Eingeteilten gibt es einen Auswechselspieler").isNotNull();
+        assertThat(name).as("bei sieben Eingeteilten gibt es einen Springer").isNotNull();
 
         List<Map<String, Object>> eintraege = new ArrayList<>();
         eintraege.addAll((List<Map<String, Object>>) teams.get("teamA"));
         eintraege.addAll((List<Map<String, Object>>) teams.get("teamB"));
         assertThat(eintraege)
-                .as("Der Auswechselspieler steht in einer der beiden Listen, markiert")
+                .as("Der Springer steht in einer der beiden Listen, markiert")
                 .anySatisfy(eintrag -> {
                     assertThat(eintrag.get("anzeigeName")).isEqualTo(name);
                     assertThat(eintrag.get("auswechselspieler")).isEqualTo(true);
@@ -571,24 +572,38 @@ class ErgebnisControllerTests {
     }
 
     /**
-     * Bei ungerader Zahl zaehlt der Auswechselspieler mit - er hat gespielt.
+     * Bei ungerader Zahl zaehlt der Springer nicht (Entscheidung vom 03.11.2026) - alle
+     * anderen Eingeteilten wie bisher.
      *
-     * <p>Er steht in {@code team_zuteilung} wie alle anderen; ihn herauszunehmen waere
-     * zusaetzlicher Aufwand fuer ein falsches Ergebnis. Zumal er nirgends gespeichert ist und
-     * beim Lesen jedes Mal neu bestimmt wird.
+     * <p>Er wechselt nach jedem Tor seines Teams die Seite und steht am Ende bei dem Team, das
+     * das letzte Tor kassiert hat; ein Sieg oder eine Niederlage waere fuer ihn eine Behauptung
+     * ohne Grundlage. Geprueft wird auch nach einer Korrektur - dort laeuft die Neuberechnung
+     * ein zweites Mal, und ein vergessenes {@code NOT tz.springer} auf einer der beiden Ebenen
+     * fiele erst hier auf.
      */
     @Test
-    void auswechselspielerZaehltMit() throws Exception {
+    void springerZaehltNichtInDerBilanz() throws Exception {
         Long terminId = terminBereitFuerErgebnis(7);
         Map<Long, String> teams = teamzuordnung(terminId);
+        Long springer = jdbc.queryForObject("""
+                SELECT tn.spieler_id
+                  FROM spieltag.team_zuteilung tz
+                  JOIN spieltag.team_generierung tg ON tg.id = tz.generierung_id
+                                                   AND tg.abgeloest_am IS NULL
+                  JOIN spieltag.teilnahme tn        ON tn.id = tz.teilnahme_id
+                 WHERE tg.termin_id = ? AND tz.springer
+                """, Long.class, terminId);
 
-        erfassen(spielerSitzung(0), terminId, "A", false).andExpect(status().isCreated());
+        long version = version(erfassen(spielerSitzung(0), terminId, "A", false)
+                .andExpect(status().isCreated()));
+        korrigieren(adminSitzung(), terminId, "U", false, version)
+                .andExpect(status().isNoContent());
 
-        assertThat(teams).hasSize(7);
+        assertThat(teams).hasSize(7).containsKey(springer);
         teams.keySet().forEach(spielerId ->
                 assertThat(gesamt(spielerId))
-                        .as("jeder Eingeteilte hat genau ein gewertetes Spiel")
-                        .isEqualTo(1));
+                        .as("Spieler %d", spielerId)
+                        .isEqualTo(spielerId.equals(springer) ? 0 : 1));
     }
 
     // --------------------------------------------------------------------- Korrigieren

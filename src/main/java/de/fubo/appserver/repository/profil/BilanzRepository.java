@@ -47,8 +47,15 @@ public class BilanzRepository {
      * der Join ohnehin nicht.
      *
      * <p><b>{@code deutlich} kommt nicht vor.</b> Es beschreibt die Hoehe, nicht den Ausgang.
-     * Der Auswechselspieler dagegen zaehlt mit: Er steht in {@code team_zuteilung} wie alle
-     * anderen, und er hat gespielt.
+     *
+     * <p><b>Der Springer zaehlt nicht</b> (Entscheidung vom 03.11.2026): Er wechselt nach jedem
+     * Tor seines Teams die Seite und steht am Ende bei dem Team, das das letzte Tor kassiert hat
+     * - ein Sieg oder eine Niederlage waere fuer ihn eine Behauptung ohne Grundlage. {@code NOT
+     * tz.springer} steht deshalb auf <b>beiden</b> Ebenen: aussen, damit ein Termin als Springer
+     * in keinem Zaehler auftaucht, innen, damit er nicht zu den Betroffenen dieses Termins
+     * gehoert. Faellt er innen heraus, bleibt seine Zeile unberuehrt - richtig so, denn dieser
+     * Termin aendert an seiner Bilanz nichts. Fuer Laeufe von vor {@code V017} steht die Spalte
+     * auf {@code false}; dort zaehlt der damalige Auswechselspieler weiter mit.
      *
      * <p><b>{@code FILTER} statt {@code sum(CASE ...)}</b> - Standard-SQL, und drei Zeilen, die
      * man nebeneinander lesen kann.
@@ -83,13 +90,15 @@ public class BilanzRepository {
                       JOIN spieltag.team_zuteilung  tz ON tz.generierung_id = tg.id
                       JOIN spieltag.teilnahme       tn ON tn.id = tz.teilnahme_id
                      WHERE tn.spieler_id IS NOT NULL
+                       AND NOT tz.springer
                        AND tn.spieler_id IN (SELECT tn2.spieler_id
                                                FROM spieltag.team_generierung tg2
                                                JOIN spieltag.team_zuteilung  tz2 ON tz2.generierung_id = tg2.id
                                                JOIN spieltag.teilnahme       tn2 ON tn2.id = tz2.teilnahme_id
                                               WHERE tg2.termin_id = :terminId
                                                 AND tg2.abgeloest_am IS NULL
-                                                AND tn2.spieler_id IS NOT NULL)
+                                                AND tn2.spieler_id IS NOT NULL
+                                                AND NOT tz2.springer)
                      GROUP BY tn.spieler_id
                    ) b
              WHERE s.id = b.spieler_id
@@ -129,7 +138,7 @@ public class BilanzRepository {
      *
      * @param terminId Termin, dessen Einteilung die Betroffenen bestimmt
      * @return Zahl der geaenderten Profile; sie ist die Zahl der eingeteilten <b>Spieler</b>
-     *         ohne Gaeste und geht als Beleg in das Audit-Log
+     *         ohne Gaeste und ohne den Springer und geht als Beleg in das Audit-Log
      */
     public int neuBerechnen(Long terminId) {
         return jdbc.sql(SQL_NEU_BERECHNEN).param("terminId", terminId).update();

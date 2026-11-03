@@ -28,7 +28,8 @@ import java.util.List;
  *
  * <h2>Zweimal "tatsaechlich verwendet" ist kein Zufall</h2>
  * Der manuelle Lauf hat zwei Stellen, an denen die Anwendung von der Konfiguration abweichen
- * darf - {@code MAX_EXHAUSTIV} und die fehlende Meldezeit (8.4) - und keine Tabelle, in der
+ * darf - {@code MAX_EXHAUSTIV} und die fehlende Meldezeit, mit der {@code ZULETZT_ANGEMELDET}
+ * auf {@code ZUFAELLIG} zurueckfaellt - und keine Tabelle, in der
  * man spaeter nachsaehe. Was abgewichen ist, steht deshalb in der Antwort.
  *
  * <p><b>Das Ergebnis wird nirgends gespeichert.</b> Es erscheint bei keinem anderen Nutzer und
@@ -37,10 +38,13 @@ import java.util.List;
  *
  * @param algorithmType        das tatsaechlich gerechnete Verfahren, nicht das eingestellte
  * @param auswechselModus      die tatsaechlich angewandte Regel, nicht die eingestellte
- * @param auswechselspieler    Anzeigename oder {@code null} bei gerader Teilnehmerzahl
- * @param differenzTeamstaerke die <b>Kosten der Zielfunktion</b> - die gewichtete Summe der
- *                             Kategoriedifferenzen, nicht die Differenz der Gesamtstaerken.
- *                             {@code 0} heisst perfekt ausgeglichen, groesser heisst schlechter
+ * @param auswechselspieler    Anzeigename des Springers oder {@code null} bei gerader
+ *                             Teilnehmerzahl; er steht zusaetzlich in seinem Startteam
+ * @param differenzTeamstaerke die gewichtete <b>Summe der Kategoriedifferenzen</b>, nicht die
+ *                             Differenz der Gesamtstaerken; bei ungerader Zahl ohne den
+ *                             Springer. {@code 0} heisst perfekt ausgeglichen, groesser heisst
+ *                             schlechter. Gewaehlt wurde zuerst nach der groessten
+ *                             Einzelabweichung (seit 03.11.2026), erst danach nach dieser Summe
  * @param teamA                Team A
  * @param teamB                Team B
  */
@@ -56,7 +60,7 @@ public record ManuelleEinteilung(AlgorithmType algorithmType,
         return new ManuelleEinteilung(
                 ergebnis.verwendetesVerfahren(),
                 ergebnis.verwendeterModus(),
-                ergebnis.auswechselName(),
+                ergebnis.springerName(),
                 ergebnis.kostenAlsDezimal(),
                 eintraege(ergebnis, ergebnis.aufteilung().teamA()),
                 eintraege(ergebnis, ergebnis.aufteilung().teamB()));
@@ -74,7 +78,7 @@ public record ManuelleEinteilung(AlgorithmType algorithmType,
         for (Integer index : team) {
             Aufstellungsspieler spieler = ergebnis.spieler(index);
             eintraege.add(new TeamEintrag(spieler.anzeigeName(), spieler.gast(),
-                    ergebnis.istAuswechselspieler(index)));
+                    ergebnis.istSpringer(index)));
         }
         return eintraege;
     }

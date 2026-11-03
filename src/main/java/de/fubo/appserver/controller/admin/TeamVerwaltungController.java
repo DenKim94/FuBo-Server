@@ -30,8 +30,8 @@ import org.springframework.web.bind.annotation.RestController;
  * Regel <i>davor</i> setzte - die erste passende Matcher-Regel gewinnt.
  *
  * <h2>Zweite Eingangstuer, kein zweiter Generator</h2>
- * Verzweigt wird allein die Herkunft der Aufstellung. Zielfunktion, beide Verfahren und der
- * Auswechselspieler bleiben unberuehrt; gerechnet wird dasselbe wie am Termin.
+ * Verzweigt wird allein die Herkunft der Aufstellung. Zielfunktion, beide Verfahren und die
+ * Wahl des Springers bleiben unberuehrt; gerechnet wird dasselbe wie am Termin.
  *
  * <h2>Zum Paketschnitt</h2>
  * Der Controller liegt in {@code controller/admin}, seine DTOs ausnahmsweise ebenfalls in

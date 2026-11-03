@@ -3,6 +3,7 @@ package de.fubo.appserver.domain.team;
 import de.fubo.appserver.domain.profil.SkillKategorie;
 import de.fubo.appserver.domain.spieltag.Aufstellungsspieler;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -64,9 +65,10 @@ public record Aufstellung(List<Aufstellungsspieler> spieler, List<SkillKategorie
      * Groesse des <b>kleineren</b> Teams, {@code n / 2} mit ganzzahliger Division.
      *
      * <p><b>Daraus folgt A20a ohne eigene Pruefung:</b> Das andere Team bekommt
-     * {@code n - n/2}, die Groessendifferenz ist damit bauartbedingt hoechstens 1. Und bei
-     * ungerader Zahl ist das kleinere Team dasjenige, das die Optimierung auf <i>Summen</i>
-     * tendenziell staerker besetzt - genau so verlangt es A20a.
+     * {@code n - n/2}, die Groessendifferenz ist damit bauartbedingt hoechstens 1. Bei
+     * ungerader Zahl kommt eine solche Aufstellung seit dem 03.11.2026 nur noch in Tests an
+     * ein Verfahren: Der {@code Teamrechner} nimmt den Springer vorher heraus
+     * ({@link #ohne(int)}), und die uebrigen sind gerade.
      *
      * <p><b>"Kleiner" heisst nicht "Team A".</b> Welche der beiden Haelften A und welche B
      * wird, entscheidet der Seed; sonst stuende bei ungerader Zahl immer dasselbe Team in
@@ -76,8 +78,28 @@ public record Aufstellung(List<Aufstellungsspieler> spieler, List<SkillKategorie
         return spieler.size() / 2;
     }
 
-    /** {@code true}, wenn ein Auswechselspieler auszuweisen ist (A20b). */
+    /** {@code true}, wenn ein Springer zu bestimmen ist (A20b). */
     public boolean ungerade() {
         return spieler.size() % 2 != 0;
+    }
+
+    /**
+     * Dieselbe Aufstellung ohne den Teilnehmer an dieser Position - fuer die Einteilung ohne
+     * den Springer (A20b, 03.11.2026).
+     *
+     * <p><b>Die Reihenfolge der uebrigen bleibt erhalten</b>, die Positionen hinter der
+     * entfernten ruecken um eins nach vorn. Nur so laesst sich ein Ergebnis auf die volle
+     * Aufstellung zurueckbilden, ohne eine Zuordnung mitzufuehren: Position {@code p} der
+     * neuen Aufstellung ist {@code p < position ? p : p + 1} der alten.
+     *
+     * @param position der zu entfernende Teilnehmer
+     * @return eine neue Aufstellung mit einem Teilnehmer weniger und denselben Kategorien
+     * @throws IllegalArgumentException wenn danach weniger als zwei uebrig blieben - ein
+     *                                  Springer setzt mindestens drei Teilnehmer voraus
+     */
+    public Aufstellung ohne(int position) {
+        List<Aufstellungsspieler> uebrige = new ArrayList<>(spieler);
+        uebrige.remove(position);
+        return new Aufstellung(uebrige, kategorien);
     }
 }

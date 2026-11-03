@@ -19,9 +19,10 @@ import java.util.List;
  * @param veraltet          {@code true}, wenn sich der Teilnehmerkreis seither geaendert hat.
  *                          <b>Heisst "noch anzeigen, aber nicht mehr aktuell"</b> - verstecken
  *                          waere falsch, jemand hat sie vielleicht schon vorgelesen
- * @param auswechselspieler Anzeigename oder {@code null} bei gerader Teilnehmerzahl.
- *                          <b>{@code null} und kein leerer String</b>: Die Antwort sagt es
- *                          genauso
+ * @param springer          Anzeigename des Springers oder {@code null} bei gerader
+ *                          Teilnehmerzahl - und bei Laeufen von vor dem 03.11.2026, fuer die
+ *                          kein Springer gespeichert ist. <b>{@code null} und kein leerer
+ *                          String</b>: Die Antwort sagt es genauso
  * @param teamA             die Teilnehmer des ersten Teams
  * @param teamB             die Teilnehmer des zweiten Teams. <b>Die Reihenfolge in beiden
  *                          Listen ist keine Rangfolge</b> und darf im Frontend frei sortiert
@@ -31,7 +32,7 @@ import java.util.List;
 public record Einteilung(OffsetDateTime erzeugtAm,
                          String erzeugtVon,
                          boolean veraltet,
-                         String auswechselspieler,
+                         String springer,
                          List<Einteilungseintrag> teamA,
                          List<Einteilungseintrag> teamB) {
 

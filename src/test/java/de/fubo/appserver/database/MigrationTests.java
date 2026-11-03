@@ -125,11 +125,86 @@ class MigrationTests {
     void auswechselModusHatVorgabeUndCheckConstraint() {
         String vorgabe = jdbc.queryForObject(
                 "SELECT auswechsel_modus FROM configs.app_config WHERE id = 1", String.class);
-        assertThat(vorgabe).isEqualTo("SCHWAECHSTER_UEBERZAHL");
+        assertThat(vorgabe).as("seit V017").isEqualTo("ZUFAELLIG");
 
         assertThatThrownBy(() -> jdbc.update(
                 "UPDATE configs.app_config SET auswechsel_modus = 'IRGENDWER' WHERE id = 1"))
                 .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    /**
+     * {@code V017}, erster Teil: Der fruehere Wert {@code SCHWAECHSTER_UEBERZAHL} ist nicht mehr
+     * zulaessig, und der Spaltenvorgabewert ist der neue (A20b, 03.11.2026).
+     *
+     * <p>Der alte Wert kaeme sonst ueber {@code psql} zurueck, und die Anwendung braeche beim
+     * naechsten Lesen am Enum. Ein alter Vorgabewert liesse eine neu angelegte Zeile am CHECK
+     * scheitern. <b>Die scheiternde Anweisung steht zuletzt</b>: Danach ist die Transaktion in
+     * PostgreSQL abgebrochen und nimmt keine Abfrage mehr an.
+     */
+    @Test
+    void v017LehntDenFrueherenModusAb() {
+        assertThat(jdbc.queryForObject("""
+                SELECT column_default FROM information_schema.columns
+                 WHERE table_schema = 'configs' AND table_name = 'app_config'
+                   AND column_name = 'auswechsel_modus'
+                """, String.class)).startsWith("'ZUFAELLIG'");
+
+        assertThatThrownBy(() -> jdbc.update(
+                "UPDATE configs.app_config SET auswechsel_modus = 'SCHWAECHSTER_UEBERZAHL' WHERE id = 1"))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    /**
+     * {@code V017}, zweiter Teil: {@code team_zuteilung.springer} steht auf {@code false}, und
+     * je Lauf gibt es hoechstens einen Springer ({@code uq_team_zuteilung_springer}).
+     *
+     * <p>Ein zweiter Springer liesse die Einzelansicht zufaellig einen von beiden nennen. Ein
+     * {@code CHECK} kann das nicht verhindern, weil die Bedingung mehrere Zeilen spannt - daher
+     * der partielle Index, und daher dieser Fall.
+     */
+    @Test
+    void v017ErlaubtHoechstensEinenSpringerJeLauf() {
+        Long terminId = jdbc.queryForObject("""
+                INSERT INTO spieltag.termin (datum, uhrzeit)
+                VALUES (DATE '2099-01-02', TIME '20:00')
+                RETURNING id
+                """, Long.class);
+        Long generierungId = jdbc.queryForObject("""
+                INSERT INTO spieltag.team_generierung
+                       (termin_id, teilnehmer_version, seed, erzeugt_von_bezeichnung)
+                VALUES (?, 0, 1, 'Pruefspieler M')
+                RETURNING id
+                """, Long.class, terminId);
+        Long ohneAngabe = gastTeilnahme(terminId, "Testgast M1");
+        Long ersterSpringer = gastTeilnahme(terminId, "Testgast M2");
+        Long zweiterSpringer = gastTeilnahme(terminId, "Testgast M3");
+
+        jdbc.update("""
+                INSERT INTO spieltag.team_zuteilung
+                       (generierung_id, teilnahme_id, team, score_snapshot, skills_snapshot)
+                VALUES (?, ?, 'B', 0, '{}'::jsonb)
+                """, generierungId, ohneAngabe);
+        assertThat(jdbc.queryForObject("""
+                SELECT springer FROM spieltag.team_zuteilung
+                 WHERE generierung_id = ? AND teilnahme_id = ?
+                """, Boolean.class, generierungId, ohneAngabe)).as("Vorgabe").isFalse();
+
+        String springer = """
+                INSERT INTO spieltag.team_zuteilung
+                       (generierung_id, teilnahme_id, team, springer, score_snapshot, skills_snapshot)
+                VALUES (?, ?, 'A', true, 0, '{}'::jsonb)
+                """;
+        jdbc.update(springer, generierungId, ersterSpringer);
+        assertThatThrownBy(() -> jdbc.update(springer, generierungId, zweiterSpringer))
+                .isInstanceOf(DuplicateKeyException.class);
+    }
+
+    private Long gastTeilnahme(Long terminId, String gastName) {
+        return jdbc.queryForObject("""
+                INSERT INTO spieltag.teilnahme (termin_id, gast_name, zusage)
+                VALUES (?, ?, true)
+                RETURNING id
+                """, Long.class, terminId, gastName);
     }
 
     /**

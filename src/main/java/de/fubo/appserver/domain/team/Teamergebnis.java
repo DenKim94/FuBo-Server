@@ -17,7 +17,7 @@ import java.util.List;
  * ist der Kern von "zweite Eingangstuer, kein zweiter Generator".
  *
  * <h2>Er buendelt, was zusammen entstanden ist</h2>
- * Aufstellung, Aufteilung, Auswechselspieler und Seed gehoeren zu <i>einem</i> Lauf. Sie
+ * Aufstellung, Aufteilung, Springer und Seed gehoeren zu <i>einem</i> Lauf. Sie
  * einzeln durchzureichen hiesse, dass jeder Aufrufer sie wieder zusammenfuehrt - und der
  * erste, der eine Aufteilung mit der falschen Aufstellung paart, bekommt Namen zu Indizes, die
  * nie zusammengehoerten.
@@ -25,23 +25,24 @@ import java.util.List;
  * @param aufstellung        wer gerechnet wurde; die Indizes der Aufteilung zeigen hierauf
  * @param aufteilung         die beiden Teams, Kosten und das tatsaechlich verwendete Verfahren
  * @param staerken           gewichtete Gesamtstaerke je Aufstellungsindex, in Hundertsteln.
- *                           <b>Sie reist mit, statt dreimal gerechnet zu werden</b>: Der
- *                           Auswechselspieler braucht sie, der {@code score_snapshot} jeder
- *                           Zuteilung ebenfalls (7.2) - und eine zweite Rechnung ist eine
+ *                           <b>Sie reist mit, statt zweimal gerechnet zu werden</b>: Das
+ *                           Startteam des Springers braucht sie, der {@code score_snapshot}
+ *                           jeder Zuteilung ebenfalls (7.2) - und eine zweite Rechnung ist eine
  *                           zweite Gelegenheit, sie anders zu machen
- * @param auswechselIndex    Index des Auswechselspielers in {@link #aufstellung} oder
- *                           {@code null} bei gerader Teilnehmerzahl. <b>{@code null} und kein
+ * @param springerIndex      Index des Springers in {@link #aufstellung} oder {@code null} bei
+ *                           gerader Teilnehmerzahl. Er steht zugleich in dem Team der
+ *                           {@code aufteilung}, bei dem er beginnt. <b>{@code null} und kein
  *                           Platzhalter</b> - die Antwort sagt das genauso
  * @param verwendeterModus   die Regel, nach der er bestimmt wurde. Kann von der Konfiguration
- *                           abweichen (8.4); bei gerader Zahl ist es der eingestellte Wert,
- *                           denn es war nichts zu entscheiden
+ *                           abweichen (manueller Lauf ohne Meldezeiten); bei gerader Zahl ist
+ *                           es der eingestellte Wert, denn es war nichts zu entscheiden
  * @param seed               der Seed dieses Laufs. Er wird am Termin gespeichert und steht im
  *                           manuellen Lauf ausschliesslich im Audit-Eintrag (9.4)
  */
 public record Teamergebnis(Aufstellung aufstellung,
                            Teamaufteilung aufteilung,
                            List<Long> staerken,
-                           Integer auswechselIndex,
+                           Integer springerIndex,
                            AuswechselModus verwendeterModus,
                            long seed) {
 
@@ -87,14 +88,14 @@ public record Teamergebnis(Aufstellung aufstellung,
         return aufteilung.verwendetesVerfahren();
     }
 
-    /** Anzeigename des Auswechselspielers oder {@code null} bei gerader Teilnehmerzahl. */
-    public String auswechselName() {
-        return auswechselIndex == null ? null : spieler(auswechselIndex).anzeigeName();
+    /** Anzeigename des Springers oder {@code null} bei gerader Teilnehmerzahl. */
+    public String springerName() {
+        return springerIndex == null ? null : spieler(springerIndex).anzeigeName();
     }
 
-    /** {@code true}, wenn dieser Index den Auswechselspieler bezeichnet. */
-    public boolean istAuswechselspieler(int index) {
-        return auswechselIndex != null && auswechselIndex == index;
+    /** {@code true}, wenn dieser Index den Springer bezeichnet. */
+    public boolean istSpringer(int index) {
+        return springerIndex != null && springerIndex == index;
     }
 
     /** Der Teilnehmer an dieser Stelle der Aufstellung. */

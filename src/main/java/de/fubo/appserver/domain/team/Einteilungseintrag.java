@@ -11,8 +11,8 @@ package de.fubo.appserver.domain.team;
  *
  * @param anzeigeName       Profilname oder Gastname
  * @param gast              {@code true} bei einem Gast; das Frontend kennzeichnet ihn
- * @param auswechselspieler {@code true} fuer genau einen Teilnehmer des groesseren Teams bei
- *                          ungerader Teilnehmerzahl (A20b), sonst fuer niemanden
+ * @param springer          {@code true} fuer den Springer bei ungerader Teilnehmerzahl (A20b);
+ *                          er steht im Team, bei dem er beginnt. Sonst fuer niemanden
  */
-public record Einteilungseintrag(String anzeigeName, boolean gast, boolean auswechselspieler) {
+public record Einteilungseintrag(String anzeigeName, boolean gast, boolean springer) {
 }

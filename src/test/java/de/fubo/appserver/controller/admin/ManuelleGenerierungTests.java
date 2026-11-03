@@ -320,6 +320,10 @@ class ManuelleGenerierungTests {
      * <p>Der Modus hat hier keine Datengrundlage: {@code gemeldetAm} ist {@code null}, weil
      * sich niemand gemeldet hat. <b>Still zurueckzufallen waere das Schlimmste von beidem</b>:
      * Der Admin hat die Einstellung gesetzt und saehe ein Ergebnis, das ihr widerspricht.
+     * Seit dem 03.11.2026 faellt die Wahl auf {@code ZUFAELLIG} zurueck.
+     *
+     * <p>Zugleich die Form des Springers im manuellen Lauf: Er steht markiert in seinem
+     * Startteam, und ohne ihn sind beide Teams gleich gross.
      */
     @Test
     void zuletztAngemeldetFaelltZurueckUndSagtEs() throws Exception {
@@ -328,8 +332,13 @@ class ManuelleGenerierungTests {
         Map<String, Object> antwort = alsKarte(
                 manuell(spielerIds(7), "[]").andExpect(status().isOk()));
 
-        assertThat(antwort).containsEntry("auswechselModus", "SCHWAECHSTER_UEBERZAHL");
-        assertThat((String) antwort.get("auswechselspieler")).isNotNull();
+        assertThat(antwort).containsEntry("auswechselModus", "ZUFAELLIG");
+        String springer = (String) antwort.get("auswechselspieler");
+        assertThat(springer).isNotNull();
+        assertThat(alleEintraege(antwort))
+                .filteredOn(eintrag -> Boolean.TRUE.equals(eintrag.get("auswechselspieler")))
+                .extracting(eintrag -> eintrag.get("anzeigeName"))
+                .containsExactly(springer);
     }
 
     /**

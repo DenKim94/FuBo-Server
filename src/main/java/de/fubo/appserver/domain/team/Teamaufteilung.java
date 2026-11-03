@@ -12,7 +12,7 @@ import java.util.List;
  * sondern dieselbe Festlegung wie ueberall im Algorithmusteil: <b>Die Identitaet innerhalb
  * eines Laufs ist die Position in der Liste.</b> Wer den Namen braucht, greift ueber die
  * Aufstellung zu; wer die Staerke eines Spielers braucht - fuer {@code score_snapshot} (7.2)
- * oder den Auswechselspieler (8.1) -, gibt denselben Index an {@code Zielfunktion#staerke}.
+ * oder das Startteam des Springers -, gibt denselben Index an {@code Zielfunktion#staerke}.
  * Ein Ergebnis, das Spieler traegt, muesste diesen Weg fuer jeden von ihnen erst wieder
  * herstellen.
  *
@@ -24,10 +24,13 @@ import java.util.List;
  *
  * @param teamA                Indizes des ersten Teams
  * @param teamB                Indizes des zweiten Teams
- * @param kosten               Wert der Zielfunktion in <b>Hundertsteln</b>; {@code 0} heisst
- *                             perfekt ausgeglichen. Dieselbe Zahl, die der Lauf minimiert hat
- *                             und die als {@code differenz_teamstaerke} gespeichert wird -
- *                             nicht der Tie-Break
+ * @param kosten               Summe der gewichteten Kategorieabweichungen in
+ *                             <b>Hundertsteln</b> ({@code Zielfunktion#kosten}); {@code 0}
+ *                             heisst perfekt ausgeglichen. Die Zahl, die als
+ *                             {@code differenz_teamstaerke} gespeichert wird - nicht der
+ *                             Tie-Break und nicht die {@code Zielfunktion#bewertung}, nach der
+ *                             gewaehlt wurde (seit 03.11.2026: erst Engpass, dann diese Summe).
+ *                             Bei ungerader Zahl ohne den Springer gerechnet
  * @param verwendetesVerfahren das Verfahren, das gerechnet hat
  */
 public record Teamaufteilung(List<Integer> teamA, List<Integer> teamB, long kosten,
@@ -37,16 +40,5 @@ public record Teamaufteilung(List<Integer> teamA, List<Integer> teamB, long kost
     public Teamaufteilung {
         teamA = List.copyOf(teamA);
         teamB = List.copyOf(teamB);
-    }
-
-    /**
-     * Die Indizes des groesseren Teams - dort steht bei ungerader Zahl der Auswechselspieler
-     * (A20b).
-     *
-     * <p>Bei gerader Zahl sind beide gleich gross; die Methode liefert dann {@code teamA},
-     * und der Aufrufer fragt vorher {@link Aufstellung#ungerade()}.
-     */
-    public List<Integer> ueberzahl() {
-        return teamB.size() > teamA.size() ? teamB : teamA;
     }
 }

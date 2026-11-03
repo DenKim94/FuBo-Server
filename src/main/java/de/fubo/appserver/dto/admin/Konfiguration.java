@@ -43,7 +43,7 @@ import java.time.OffsetDateTime;
  * @param maxTeilnehmer          Hoechstteilnehmerzahl (A11)
  * @param anzGuests              Obergrenze gleichzeitig angemeldeter Gaeste (A17)
  * @param algorithmType          Verfahren der Teamgenerierung (A15)
- * @param auswechselModus        Auswahl des Auswechselspielers bei ungerader Zahl (A20b)
+ * @param auswechselModus        Wahl des Springers bei ungerader Zahl (A20b)
  * @param anzTeamGenerator       Kontingent an Generierungslaeufen je Nutzer und Spieltag (A15)
  * @param sessionLeerlaufMinuten gleitendes Leerlauf-Fenster in Minuten (A14)
  * @param sessionMaximalStunden  harte Obergrenze der Sitzungsdauer in Stunden (A14)

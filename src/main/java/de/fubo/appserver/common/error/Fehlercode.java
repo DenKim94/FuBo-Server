@@ -365,7 +365,7 @@ public enum Fehlercode {
      * eintragen (A21, Aenderung vom 22.10.2026).
      *
      * <p>Eintragen duerfen der Admin und die Eingeteilten der <b>aktuellen</b> Einteilung:
-     * Team A, Team B und der Auswechselspieler, Spieler wie Gast. Wer nur zugesagt hat (etwa
+     * Team A, Team B und der Springer, Spieler wie Gast. Wer nur zugesagt hat (etwa
      * in der Warteschlange oder nach dem Lauf), abgesagt oder sich nie gemeldet hat, steht
      * nicht darin. Nach dem Termin ist die Einteilung der einzige verlaessliche Nachweis, wer
      * gespielt hat - und die Grundlage der Bilanz. Weil der erste Eintrag gilt und nur der

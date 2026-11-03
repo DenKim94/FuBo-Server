@@ -26,7 +26,9 @@ import java.util.List;
  * @param erzeugtVon        Anzeigename des Aufrufers zum Zeitpunkt des Laufs
  * @param veraltet          {@code true} heisst "noch anzeigen, aber nicht mehr aktuell" -
  *                          verstecken waere falsch, jemand hat sie vielleicht schon vorgelesen
- * @param auswechselspieler Anzeigename oder {@code null} bei gerader Teilnehmerzahl
+ * @param auswechselspieler Anzeigename des <b>Springers</b> (A20b, seit 03.11.2026) oder
+ *                          {@code null} bei gerader Teilnehmerzahl und bei Laeufen von vor
+ *                          dieser Aenderung; der Feldname bleibt, siehe {@link TeamEintrag}
  * @param teamA             Team A; die Reihenfolge ist <b>keine Rangfolge</b>
  * @param teamB             Team B
  */
@@ -43,7 +45,7 @@ public record Teameinteilung(OffsetDateTime erzeugtAm,
                 einteilung.erzeugtAm(),
                 einteilung.erzeugtVon(),
                 einteilung.veraltet(),
-                einteilung.auswechselspieler(),
+                einteilung.springer(),
                 einteilung.teamA().stream().map(TeamEintrag::von).toList(),
                 einteilung.teamB().stream().map(TeamEintrag::von).toList());
     }

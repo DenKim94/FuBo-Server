@@ -258,7 +258,7 @@ public class AufstellungService {
      *
      * <p>{@code teilnahmeId} und {@code gemeldetAm} bleiben {@code null}: Es gibt keine
      * Teilnahmezeile, und niemand hat sich gemeldet. Beides ist im Record vermerkt; die
-     * Folge fuer den Auswechselspieler steht in 8.4.
+     * Folge fuer den Springer: {@code ZULETZT_ANGEMELDET} faellt auf {@code ZUFAELLIG} zurueck.
      */
     private List<Aufstellungsspieler> zusammenstellen(ManuelleAuswahl auswahl,
                                                       List<Profileintrag> profile,

@@ -59,7 +59,7 @@ class ConfigServiceTests {
 
         // Teamgenerator (A15)
         assertThat(cfg.getAlgorithmType()).isEqualTo(AlgorithmType.EXHAUSTIV);
-        assertThat(cfg.getAuswechselModus()).isEqualTo(AuswechselModus.SCHWAECHSTER_UEBERZAHL);
+        assertThat(cfg.getAuswechselModus()).isEqualTo(AuswechselModus.ZUFAELLIG);
         assertThat(cfg.getAnzTeamGenerator()).isEqualTo((short) 1);
 
         // Zwei-Timer-Modell (A14)
@@ -87,7 +87,10 @@ class ConfigServiceTests {
         // Aenderungsverfolgung
         assertThat(cfg.getGeaendertVon()).isNull();
         assertThat(cfg.getGeaendertAm()).isNotNull();
-        assertThat(cfg.getVersion()).isZero();
+        // V017 schreibt die Zeile um (auswechsel_modus -> ZUFAELLIG) und zaehlt version dabei
+        // fort, wie jede per SQL geaenderte version-Spalte; eine frische Datenbank steht damit
+        // auf 1. Kommt eine weitere Migration mit demselben Muster dazu, steigt der Wert erneut.
+        assertThat(cfg.getVersion()).as("seit V017").isEqualTo(1L);
     }
 
     /**
@@ -104,8 +107,8 @@ class ConfigServiceTests {
         assertThat(AlgorithmType.valueOf("HEURISTIK")).isEqualTo(AlgorithmType.HEURISTIK);
         assertThat(AlgorithmType.values()).hasSize(2);
 
-        assertThat(AuswechselModus.valueOf("SCHWAECHSTER_UEBERZAHL"))
-                .isEqualTo(AuswechselModus.SCHWAECHSTER_UEBERZAHL);
+        assertThat(AuswechselModus.valueOf("ZUFAELLIG"))
+                .isEqualTo(AuswechselModus.ZUFAELLIG);
         assertThat(AuswechselModus.valueOf("ZULETZT_ANGEMELDET"))
                 .isEqualTo(AuswechselModus.ZULETZT_ANGEMELDET);
         assertThat(AuswechselModus.values()).hasSize(2);

@@ -37,7 +37,8 @@ import java.util.Map;
  *                    Admin liest die Teams vor und muss sagen koennen, wer gemeint ist
  * @param gast        {@code true}, wenn die Werte aus {@code profil.gast_vorlage} stammen
  * @param gemeldetAm  Zeitpunkt der Zusage; {@code null} im manuellen Lauf, weil sich dort
- *                    niemand gemeldet hat. Folge fuer den Auswechselspieler in 8.4
+ *                    niemand gemeldet hat. Folge fuer den Springer: {@code ZULETZT_ANGEMELDET}
+ *                    faellt auf {@code ZUFAELLIG} zurueck
  * @param werte       Skillwert je Kategorieschluessel, vollstaendig ueber alle aktiven
  *                    Kategorien - die Vollstaendigkeit prueft der {@code AufstellungService},
  *                    nicht die Zielfunktion

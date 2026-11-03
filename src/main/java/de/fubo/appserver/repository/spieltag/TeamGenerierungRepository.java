@@ -1,6 +1,7 @@
 package de.fubo.appserver.repository.spieltag;
 
 import de.fubo.appserver.domain.team.Generierungskopf;
+import de.fubo.appserver.domain.team.Teamzugehoerigkeit;
 import de.fubo.appserver.domain.team.Zuteilungssatz;
 import de.fubo.appserver.domain.team.Zuteilungszeile;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -95,13 +96,18 @@ public class TeamGenerierungRepository {
      * ohne Fehlermeldung - {@code ->>'TORWART'} liefert darauf {@code null}. Hier laeuft die
      * Umsetzung deshalb ueber den {@code ObjectMapper}, und der Regressionstest prueft
      * {@code jsonb_typeof(skills_snapshot) = 'object'} statt eines herausgelesenen Werts.
+     *
+     * <p>{@code springer} (seit {@code V017}) markiert den Springer des Laufs; er steht mit
+     * {@code team} im Team, bei dem er beginnt. Hoechstens eine Zeile je Lauf traegt
+     * {@code true} ({@code uq_team_zuteilung_springer}).
      */
     private static final String SQL_ZUTEILUNG_EINFUEGEN = """
             INSERT INTO spieltag.team_zuteilung
-                        (generierung_id, teilnahme_id, team, score_snapshot, skills_snapshot)
+                        (generierung_id, teilnahme_id, team, springer, score_snapshot, skills_snapshot)
                  VALUES (:generierungId,
                          :teilnahmeId,
                          CAST(:team AS char(1)),
+                         :springer,
                          :score,
                          CAST(:skills AS jsonb))
             """;
@@ -123,7 +129,6 @@ public class TeamGenerierungRepository {
             SELECT tg.id,
                    tg.erzeugt_am,
                    tg.erzeugt_von_bezeichnung,
-                   tg.seed,
                    (tg.teilnehmer_version <> t.teilnehmer_version) AS veraltet
               FROM spieltag.team_generierung tg
               JOIN spieltag.termin t ON t.id = tg.termin_id
@@ -136,21 +141,17 @@ public class TeamGenerierungRepository {
     /**
      * Die Zuteilungen eines Laufs, in der Reihenfolge, in der sie geschrieben wurden.
      *
-     * <p><b>{@code ORDER BY tz.id} ist nicht Kosmetik.</b> Der Auswechselspieler wird beim
-     * Lesen erneut bestimmt, und bei Gleichstand entscheidet der Seed ueber die Position in
-     * der Kandidatenliste (8.3). Nur wenn die Reihenfolge dieselbe ist wie im Lauf, faellt die
-     * Wahl genauso aus. {@code BIGSERIAL} vergibt innerhalb einer Transaktion aufsteigend;
-     * der Dienst schreibt Team A und Team B je in Laufreihenfolge.
-     *
-     * <p>{@code score_snapshot} und {@code gemeldet_am} kommen mit, weil die Wahl sie braucht -
-     * in die Antwort gehen sie nicht (A12).
+     * <p><b>{@code ORDER BY tz.id} haelt die Antwort stabil:</b> Jeder Leser bekommt die Teams
+     * in derselben Reihenfolge, der Lauf und die Einzelansicht ebenso. Bis zum 03.11.2026 hing
+     * zusaetzlich die Wahl des Auswechselspielers daran; seither steht der Springer in einer
+     * eigenen Spalte, und {@code score_snapshot} und {@code gemeldet_am} werden nicht mehr
+     * gelesen - was nicht gelesen wird, kann nicht in eine Antwort rutschen (A12).
      */
     private static final String SQL_ZUTEILUNGEN_LESEN = """
             SELECT COALESCE(s.name, tn.gast_name) AS anzeige_name,
                    (tn.spieler_id IS NULL)        AS gast,
                    tz.team,
-                   tz.score_snapshot,
-                   tn.gemeldet_am
+                   tz.springer
               FROM spieltag.team_zuteilung tz
               JOIN spieltag.teilnahme tn ON tn.id = tz.teilnahme_id
               LEFT JOIN profil.spieler s ON s.id = tn.spieler_id
@@ -171,7 +172,7 @@ public class TeamGenerierungRepository {
      * ab, und gezaehlt werden soll hier nichts.
      */
     private static final String SQL_AKTUELLE_TEAMS = """
-            SELECT tz.teilnahme_id, tz.team
+            SELECT tz.teilnahme_id, tz.team, tz.springer
               FROM spieltag.team_zuteilung tz
               JOIN spieltag.team_generierung tg ON tg.id = tz.generierung_id
              WHERE tg.termin_id = :terminId
@@ -186,8 +187,8 @@ public class TeamGenerierungRepository {
      * nur in einer abgeloesten steht, war nach dem letzten Lauf nicht mehr dabei. Ob die
      * Einteilung {@code veraltet} ist, zaehlt nicht - dieselbe Einteilung liefert die Bilanz.
      *
-     * <p><b>Jede Zuteilung zaehlt</b> - Team A, Team B und der Auswechselspieler, der keine
-     * eigene Zeile hat, sondern in einem der beiden Teams steht.
+     * <p><b>Jede Zuteilung zaehlt</b> - Team A, Team B und der Springer, der als gewoehnliche
+     * Zuteilung in seinem Startteam steht und nur zusaetzlich markiert ist.
      *
      * <p><b>Die Identitaet wie bei {@code TeilnahmeRepository#hatZugesagt}:</b> Ein Spieler
      * ueber die Profil-Id, ein Gast ueber den Namen ({@code gast_name} ist je Termin
@@ -275,6 +276,7 @@ public class TeamGenerierungRepository {
                     .param("generierungId", generierungId)
                     .param("teilnahmeId", satz.teilnahmeId())
                     .param("team", String.valueOf(satz.team()))
+                    .param("springer", satz.springer())
                     .param("score", satz.score())
                     .param("skills", objectMapper.writeValueAsString(satz.werte()))
                     .update();
@@ -332,7 +334,6 @@ public class TeamGenerierungRepository {
                         rs.getLong("id"),
                         rs.getObject("erzeugt_am", OffsetDateTime.class),
                         rs.getString("erzeugt_von_bezeichnung"),
-                        rs.getLong("seed"),
                         rs.getBoolean("veraltet")))
                 .optional();
     }
@@ -346,33 +347,32 @@ public class TeamGenerierungRepository {
      * Aufstellung um. Die Abfrage laeuft ueber {@code uq_team_zuteilung}
      * ({@code generierung_id} ist dessen erste Spalte) und {@code ix_team_generierung_aktuell}.
      *
+     * <p>Seit dem 03.11.2026 mit dem Springer-Kennzeichen: Der Dienst meidet die bisherige
+     * Aufteilung bei ungerader Zahl nur, wenn derselbe Teilnehmer wieder Springer ist.
+     *
      * @param terminId betroffener Termin
-     * @return Teilnahme-Id auf {@code 'A'} oder {@code 'B'}, in Schreibreihenfolge
+     * @return Teilnahme-Id auf Team und Springer-Kennzeichen, in Schreibreihenfolge
      */
-    public Map<Long, Character> findeAktuelleTeams(Long terminId) {
+    public Map<Long, Teamzugehoerigkeit> findeAktuelleTeams(Long terminId) {
         List<Teamzeile> zeilen = jdbc.sql(SQL_AKTUELLE_TEAMS)
                 .param("terminId", terminId)
                 .query((rs, zeile) -> new Teamzeile(
-                        rs.getLong("teilnahme_id"), rs.getString("team").charAt(0)))
+                        rs.getLong("teilnahme_id"),
+                        new Teamzugehoerigkeit(rs.getString("team").charAt(0),
+                                rs.getBoolean("springer"))))
                 .list();
 
-        Map<Long, Character> teams = new LinkedHashMap<>();
+        Map<Long, Teamzugehoerigkeit> teams = new LinkedHashMap<>();
         for (Teamzeile zeile : zeilen) {
-            teams.put(zeile.teilnahmeId(), zeile.team());
+            teams.put(zeile.teilnahmeId(), zeile.zugehoerigkeit());
         }
         return teams;
     }
 
-    private record Teamzeile(long teilnahmeId, char team) {
+    private record Teamzeile(long teilnahmeId, Teamzugehoerigkeit zugehoerigkeit) {
     }
 
-    /**
-     * Liefert die Zuteilungen eines Laufs in Schreibreihenfolge.
-     *
-     * <p>{@code score_snapshot} wird in Hundertstel zurueckgerechnet - dieselbe Einheit, in der
-     * der Lauf gerechnet hat. {@code movePointRight(2)} ist verlustfrei, weil die Spalte genau
-     * zwei Nachkommastellen fuehrt.
-     */
+    /** Liefert die Zuteilungen eines Laufs in Schreibreihenfolge, mit Springer-Kennzeichen. */
     public List<Zuteilungszeile> findeZuteilungen(Long generierungId) {
         return jdbc.sql(SQL_ZUTEILUNGEN_LESEN)
                 .param("generierungId", generierungId)
@@ -380,8 +380,7 @@ public class TeamGenerierungRepository {
                         rs.getString("anzeige_name"),
                         rs.getBoolean("gast"),
                         rs.getString("team").charAt(0),
-                        rs.getBigDecimal("score_snapshot").movePointRight(2).longValueExact(),
-                        rs.getObject("gemeldet_am", OffsetDateTime.class)))
+                        rs.getBoolean("springer")))
                 .list();
     }
 }

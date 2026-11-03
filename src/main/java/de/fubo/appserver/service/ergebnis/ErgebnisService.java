@@ -100,7 +100,7 @@ public class ErgebnisService {
      *
      * <h2>Wer eintragen darf (A21, 22.10.2026)</h2>
      * Der Admin und die <b>Eingeteilten der aktuellen Einteilung</b> - Team A, Team B und der
-     * Auswechselspieler, {@code USER} wie {@code GAST}. Nach dem Termin ist die Einteilung der
+     * Springer, {@code USER} wie {@code GAST}. Nach dem Termin ist die Einteilung der
      * einzige verlaessliche Nachweis, wer gespielt hat, und sie ist die Grundlage der Bilanz.
      * Weil der erste Eintrag gilt und nur der Admin korrigiert, duerfte sonst ein Aussenstehender
      * das endgueltige Ergebnis setzen. Gemeint ist die <b>aktuelle</b> Einteilung, auch wenn sie

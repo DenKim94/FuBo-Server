@@ -16,14 +16,34 @@ import java.util.List;
  * Dieselben zwei Gruppen mit vertauschten Namen sind <b>dieselbe</b> Einteilung - fuer den
  * Spieler aendert sich nichts. Die Verfahren vergleichen deshalb Gruppen, nicht Beschriftungen.
  *
- * @param teamA Positionen des ersten Teams
- * @param teamB Positionen des zweiten Teams
+ * <h2>Der Springer (03.11.2026)</h2>
+ * Bei ungerader Zahl steht er in einem der beiden Teams und ist zusaetzlich benannt. Der
+ * {@code Teamrechner} braucht ihn, um zu entscheiden, ob es ueberhaupt etwas zu meiden gibt:
+ * Nur wenn derselbe Teilnehmer wieder Springer ist, laesst sich die bisherige Aufteilung der
+ * uebrigen mit der neuen vergleichen. Mit einem anderen Springer ist jede Einteilung eine neue.
+ * Die Verfahren lesen das Feld nicht.
+ *
+ * @param teamA    Positionen des ersten Teams
+ * @param teamB    Positionen des zweiten Teams
+ * @param springer Position des Springers (steht zugleich in {@code teamA} oder {@code teamB})
+ *                 oder {@code null}, wenn es keinen gab - bei gerader Zahl und bei Laeufen von
+ *                 vor dem 03.11.2026
  */
-public record BisherigeAufteilung(List<Integer> teamA, List<Integer> teamB) {
+public record BisherigeAufteilung(List<Integer> teamA, List<Integer> teamB, Integer springer) {
 
     /** Beide Listen unveraenderlich. */
     public BisherigeAufteilung {
         teamA = List.copyOf(teamA);
         teamB = List.copyOf(teamB);
+    }
+
+    /**
+     * Eine bisherige Aufteilung ohne Springer - so, wie sie die Verfahren kennen.
+     *
+     * @param teamA Positionen des ersten Teams
+     * @param teamB Positionen des zweiten Teams
+     */
+    public BisherigeAufteilung(List<Integer> teamA, List<Integer> teamB) {
+        this(teamA, teamB, null);
     }
 }

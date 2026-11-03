@@ -45,7 +45,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <h2>Was hier geprueft wird - und was nicht</h2>
  * Die Rechnung selbst steht in {@code TeamverfahrenTests} und laeuft dort ohne Spring-Kontext.
  * Diese Klasse prueft die Anbindung: Kontingent, Ablosung, Snapshot, Veraltet-Kennzeichen,
- * Auswechselspieler und - am wichtigsten - <b>dass keine Bewertung nach aussen dringt</b>.
+ * Springer und - am wichtigsten - <b>dass keine Bewertung nach aussen dringt</b>.
  * Geprueft wird dafuer die <i>vollstaendige</i> Feldliste eines {@code TeamEintrag} und nicht
  * das Fehlen einzelner Namen; ein spaeter ergaenztes Feld faellt sonst niemandem auf (A12).
  *
@@ -550,40 +550,132 @@ class TeamGeneratorTests {
         assertThat(typen).hasSize(8).containsOnly("object");
     }
 
-    // --------------------------------------------------------------------- Auswechselspieler
+    // --------------------------------------------------------------------- Springer (A20b, 03.11.2026)
 
     /**
-     * Bei ungerader Zahl weist das groessere Team den schwaechsten Spieler als
-     * Auswechselspieler aus (A20b, Vorgabe {@code SCHWAECHSTER_UEBERZAHL}).
+     * Bei ungerader Zahl gibt es einen Springer: Er steht im groesseren Team, die uebrigen
+     * Mitglieder beider Teams sind gleich viele, und er beginnt beim schwaecheren Team.
      *
-     * <p>Geprueft wird gegen {@code score_snapshot} und nicht gegen einen im Test
+     * <p>"Schwaecher" wird gegen {@code score_snapshot} geprueft und nicht gegen einen im Test
      * nachgerechneten Wert: Der Snapshot ist die Zahl, mit der der Lauf gearbeitet hat, und
-     * eine zweite Rechnung im Test waere eine zweite Wahrheit.
+     * eine zweite Rechnung im Test waere eine zweite Wahrheit. Gleichstand ist erlaubt - dann
+     * entscheidet der Seed, und der Fall darf nicht zufaellig rot werden.
      */
     @Test
-    void beiUngeraderZahlSitztDerSchwaechsteDerUeberzahlDrausen() throws Exception {
+    void beiUngeraderZahlBeginntDerSpringerBeimSchwaecherenTeam() throws Exception {
         Long terminId = terminMitZusagen(9);
 
         Map<String, Object> einteilung = alsKarte(
                 generieren(spielerSitzung(0), terminId).andExpect(status().isCreated()));
 
-        String auswechselspieler = (String) einteilung.get("auswechselspieler");
-        assertThat(auswechselspieler).isNotNull();
+        String springer = (String) einteilung.get("auswechselspieler");
+        assertThat(springer).isNotNull();
+        assertThat(alleEintraege(einteilung))
+                .as("genau ein Eintrag traegt das Kennzeichen, und es ist der genannte")
+                .filteredOn(eintrag -> Boolean.TRUE.equals(eintrag.get("auswechselspieler")))
+                .extracting(eintrag -> eintrag.get("anzeigeName"))
+                .containsExactly(springer);
 
-        List<String> ueberzahl = namen(einteilung, "teamA").size() > namen(einteilung, "teamB").size()
-                ? namen(einteilung, "teamA")
-                : namen(einteilung, "teamB");
+        boolean beiA = namen(einteilung, "teamA").contains(springer);
+        List<String> startteam = namen(einteilung, beiA ? "teamA" : "teamB");
+        List<String> gegner = namen(einteilung, beiA ? "teamB" : "teamA");
+        assertThat(startteam).hasSize(5);
+        assertThat(gegner).hasSize(4);
 
-        assertThat(ueberzahl).hasSize(5).contains(auswechselspieler);
-        assertThat(scoreVon(terminId, auswechselspieler))
-                .as("Er hat den kleinsten gespeicherten Score seines Teams")
-                .isEqualByComparingTo(ueberzahl.stream().map(name -> scoreVon(terminId, name))
-                        .min(BigDecimal::compareTo).orElseThrow());
+        BigDecimal ohneSpringer = summeDerScores(terminId,
+                startteam.stream().filter(name -> !name.equals(springer)).toList());
+        assertThat(ohneSpringer)
+                .as("das Startteam ist ohne den Springer nicht staerker als der Gegner")
+                .isLessThanOrEqualTo(summeDerScores(terminId, gegner));
     }
 
-    /** Bei gerader Zahl gibt es keinen Auswechselspieler - {@code null}, kein Platzhalter. */
+    /** Der Springer steht in der Datenbank - genau eine Zeile, und sie gehoert zum genannten. */
     @Test
-    void beiGeraderZahlGibtEsKeinenAuswechselspieler() throws Exception {
+    void derSpringerWirdGespeichert() throws Exception {
+        Long terminId = terminMitZusagen(9);
+
+        Map<String, Object> einteilung = alsKarte(
+                generieren(spielerSitzung(0), terminId).andExpect(status().isCreated()));
+
+        assertThat(springerAusDerDatenbank(terminId))
+                .containsExactly((String) einteilung.get("auswechselspieler"));
+        assertThat(teams(einzeln(spielerSitzung(1), terminId)))
+                .as("die Einzelansicht zeigt denselben Springer wie der Lauf")
+                .containsEntry("auswechselspieler", einteilung.get("auswechselspieler"));
+    }
+
+    /**
+     * Im Modus {@code ZULETZT_ANGEMELDET} ist der Springer, wer zuletzt zugesagt hat.
+     *
+     * <p>{@code terminMitZusagen} zaehlt rueckwaerts: Position 8 meldet sich vor einer Minute
+     * und damit als letzte. Der Modus wird vor dem ersten Aufruf gesetzt - siehe
+     * Klassenkommentar.
+     */
+    @Test
+    void zuletztAngemeldetIstDerSpringer() throws Exception {
+        auswechselModusSetzen("ZULETZT_ANGEMELDET");
+        Long terminId = terminMitZusagen(9);   // Position 8 meldet sich als letzte
+
+        Map<String, Object> einteilung = alsKarte(
+                generieren(spielerSitzung(0), terminId).andExpect(status().isCreated()));
+
+        assertThat(einteilung).containsEntry("auswechselspieler", spielerName(8));
+    }
+
+    /**
+     * Mit demselben Springer meidet ein neuer Lauf die bisherige Aufteilung der uebrigen.
+     *
+     * <p>{@code ZULETZT_ANGEMELDET} haelt den Springer fest; bei acht uebrigen Spielern gibt es
+     * 35 Aufteilungen, die vorige ist also immer vermeidbar.
+     */
+    @Test
+    void mitDemselbenSpringerWirdDieBisherigeAufteilungGemieden() throws Exception {
+        auswechselModusSetzen("ZULETZT_ANGEMELDET");
+        anzTeamGeneratorSetzen(4);
+        Long terminId = terminMitZusagen(9);
+        String token = spielerSitzung(0);
+
+        Set<Set<String>> vorige = aufteilung(alsKarte(
+                generieren(token, terminId).andExpect(status().isCreated())));
+        for (int lauf = 2; lauf <= 4; lauf++) {
+            Map<String, Object> einteilung = alsKarte(
+                    generieren(token, terminId).andExpect(status().isCreated()));
+            assertThat(einteilung).containsEntry("auswechselspieler", spielerName(8));
+
+            Set<Set<String>> aktuelle = aufteilung(einteilung);
+            assertThat(aktuelle).as("Lauf %d gegen Lauf %d", lauf, lauf - 1).isNotEqualTo(vorige);
+            vorige = aktuelle;
+        }
+    }
+
+    /**
+     * Ein Lauf von vor {@code V017} hat keinen Springer - und bekommt beim Lesen auch keinen.
+     *
+     * <p>Nachgestellt, indem das Kennzeichen geloescht wird: genau der Zustand, in dem die
+     * Migration bestehende Zeilen hinterlaesst. Frueher wurde der Auswechselspieler beim Lesen
+     * neu bestimmt; ein nachtraeglich geratener Springer waere eine Behauptung ueber ein Spiel,
+     * das nach anderen Regeln eingeteilt wurde.
+     */
+    @Test
+    void einLaufOhneGespeichertenSpringerZeigtKeinen() throws Exception {
+        Long terminId = terminMitZusagen(9);
+        generieren(spielerSitzung(0), terminId).andExpect(status().isCreated());
+        jdbc.update("""
+                UPDATE spieltag.team_zuteilung SET springer = false
+                 WHERE generierung_id IN (SELECT id FROM spieltag.team_generierung WHERE termin_id = ?)
+                """, terminId);
+
+        Map<String, Object> einteilung = teams(einzeln(spielerSitzung(1), terminId));
+
+        assertThat(einteilung).containsEntry("auswechselspieler", null);
+        assertThat(alleEintraege(einteilung))
+                .allMatch(eintrag -> Boolean.FALSE.equals(eintrag.get("auswechselspieler")));
+        assertThat(alleNamen(einteilung)).hasSize(9);
+    }
+
+    /** Bei gerader Zahl gibt es keinen Springer - {@code null}, kein Platzhalter, keine Zeile. */
+    @Test
+    void beiGeraderZahlGibtEsKeinenSpringer() throws Exception {
         Long terminId = terminMitZusagen(8);
 
         Map<String, Object> einteilung = alsKarte(
@@ -593,6 +685,7 @@ class TeamGeneratorTests {
         assertThat(alleEintraege(einteilung))
                 .as("und niemand traegt das Kennzeichen")
                 .allMatch(eintrag -> Boolean.FALSE.equals(eintrag.get("auswechselspieler")));
+        assertThat(springerAusDerDatenbank(terminId)).isEmpty();
     }
 
     // --------------------------------------------------------------------- Lesepfad
@@ -1189,6 +1282,33 @@ class TeamGeneratorTests {
                    AND tg.abgeloest_am IS NULL
                    AND COALESCE(s.name, tn.gast_name) = ?
                 """, BigDecimal.class, terminId, anzeigeName);
+    }
+
+    /** Summe der gespeicherten Scores mehrerer Teilnehmer der aktuellen Einteilung. */
+    private BigDecimal summeDerScores(Long terminId, List<String> namen) {
+        return namen.stream().map(name -> scoreVon(terminId, name))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    /** Anzeigenamen aller Zuteilungen mit {@code springer = true} im aktuellen Lauf. */
+    private List<String> springerAusDerDatenbank(Long terminId) {
+        return jdbc.queryForList("""
+                SELECT COALESCE(s.name, tn.gast_name)
+                  FROM spieltag.team_zuteilung tz
+                  JOIN spieltag.team_generierung tg ON tg.id = tz.generierung_id
+                  JOIN spieltag.teilnahme tn        ON tn.id = tz.teilnahme_id
+                  LEFT JOIN profil.spieler s        ON s.id  = tn.spieler_id
+                 WHERE tg.termin_id = ?
+                   AND tg.abgeloest_am IS NULL
+                   AND tz.springer
+                """, String.class, terminId);
+    }
+
+    /** Muss wie {@link #maxTeilnehmerSetzen} vor dem ersten HTTP-Aufruf laufen. */
+    private void auswechselModusSetzen(String modus) {
+        jdbc.update("""
+                UPDATE configs.app_config SET auswechsel_modus = ?, version = version + 1 WHERE id = 1
+                """, modus);
     }
 
     /** Die gewichtete Gesamtstaerke einer Gast-Vorlage, gerechnet in der Datenbank. */

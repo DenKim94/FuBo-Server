@@ -12,13 +12,12 @@ import de.fubo.appserver.domain.spieltag.Restkontingent;
 import de.fubo.appserver.domain.spieltag.TerminStatus;
 import de.fubo.appserver.domain.spieltag.Terminzustand;
 import de.fubo.appserver.domain.team.Aufstellung;
-import de.fubo.appserver.domain.team.Bankentscheid;
-import de.fubo.appserver.domain.team.Bankkandidat;
 import de.fubo.appserver.domain.team.BisherigeAufteilung;
 import de.fubo.appserver.domain.team.Einteilung;
 import de.fubo.appserver.domain.team.Einteilungseintrag;
 import de.fubo.appserver.domain.team.Generierungskopf;
 import de.fubo.appserver.domain.team.Teamergebnis;
+import de.fubo.appserver.domain.team.Teamzugehoerigkeit;
 import de.fubo.appserver.domain.team.Zuteilungssatz;
 import de.fubo.appserver.domain.team.Zuteilungszeile;
 import de.fubo.appserver.repository.spieltag.KontingentRepository;
@@ -27,7 +26,6 @@ import de.fubo.appserver.repository.spieltag.TeilnahmeRepository;
 import de.fubo.appserver.repository.spieltag.TerminRepository;
 import de.fubo.appserver.service.audit.AuditService;
 import de.fubo.appserver.service.config.ConfigService;
-import de.fubo.appserver.service.team.AuswechselErmittlung;
 import de.fubo.appserver.service.team.SeedQuelle;
 import de.fubo.appserver.service.team.Teamrechner;
 import org.springframework.stereotype.Service;
@@ -53,13 +51,16 @@ import java.util.Optional;
  * Er kennt Termin, Sitzung, Kontingent und Audit-Log - alles Spieltagswissen. Was mit der
  * Aufstellung <i>gerechnet</i> wird, liegt in {@code service.team} und kennt nichts davon.
  *
- * <h2>Der Auswechselspieler wird zweimal bestimmt, und das ist Absicht</h2>
- * Einmal im Lauf, einmal beim Lesen einer gespeicherten Einteilung ({@link #einteilungLesen}).
- * Gespeichert wird er nicht - {@code team_zuteilung} hat keine Spalte dafuer, und eine haette
- * die Migration {@code V012} gekostet und S5 seine Migrationsfreiheit genommen (8.3).
- * <b>Deshalb liest der Termin-Lauf sein eigenes Ergebnis zurueck</b>, statt die Antwort aus
- * dem Rechenergebnis zu bauen: Weichen Lauf und Ableitung voneinander ab, faellt es sofort
- * auf und nicht erst beim naechsten Oeffnen des Termins.
+ * <h2>Der Springer wird gespeichert, nicht beim Lesen bestimmt (03.11.2026)</h2>
+ * Bis dahin wurde der Auswechselspieler beim Lesen mit dem <i>heute</i> eingestellten Modus neu
+ * bestimmt; das ging, weil die Wahl die Einteilung nicht beeinflusste. Der Springer dagegen
+ * wird vor der Einteilung gezogen, und die Teams werden ohne ihn gerechnet - ein beim Lesen
+ * neu bestimmter passte nach einem Moduswechsel nicht mehr zu ihnen. Er steht deshalb in
+ * {@code team_zuteilung.springer} ({@code V017}).
+ *
+ * <p><b>Der Termin-Lauf liest sein eigenes Ergebnis trotzdem zurueck</b>, statt die Antwort
+ * aus dem Rechenergebnis zu bauen: So sieht, wer gerade generiert hat, Byte fuer Byte dasselbe
+ * wie der, der den Termin danach oeffnet - und ein Fehler beim Schreiben faellt sofort auf.
  */
 @Service
 public class TeamGenerierungService {
@@ -75,7 +76,6 @@ public class TeamGenerierungService {
     private final ConfigService configService;
     private final Teamrechner teamrechner;
     private final SeedQuelle seedQuelle;
-    private final AuswechselErmittlung auswechselErmittlung;
     private final AuditService auditService;
 
     public TeamGenerierungService(AufstellungService aufstellungService,
@@ -86,7 +86,6 @@ public class TeamGenerierungService {
                                   ConfigService configService,
                                   Teamrechner teamrechner,
                                   SeedQuelle seedQuelle,
-                                  AuswechselErmittlung auswechselErmittlung,
                                   AuditService auditService) {
         this.aufstellungService = aufstellungService;
         this.terminRepository = terminRepository;
@@ -96,7 +95,6 @@ public class TeamGenerierungService {
         this.configService = configService;
         this.teamrechner = teamrechner;
         this.seedQuelle = seedQuelle;
-        this.auswechselErmittlung = auswechselErmittlung;
         this.auditService = auditService;
     }
 
@@ -111,8 +109,8 @@ public class TeamGenerierungService {
      *   <li>{@code teilnehmer_version} und {@code kontingent_version} merken</li>
      *   <li>Aufstellung ermitteln - prueft Mindestzahl und Skillwerte</li>
      *   <li><b>Kontingent verbrauchen</b></li>
-     *   <li>Seed ziehen, aktuelle Einteilung als "nicht wiederholen" lesen, rechnen,
-     *       Auswechselspieler bestimmen</li>
+     *   <li>Seed ziehen, aktuelle Einteilung als "nicht wiederholen" lesen, Springer
+     *       bestimmen, rechnen</li>
      *   <li>bestehenden Lauf abloesen</li>
      *   <li>Kopf und Zuteilungen schreiben</li>
      *   <li>Version gegenpruefen</li>
@@ -225,24 +223,32 @@ public class TeamGenerierungService {
      * <p>Verglichen wird ueber die Teilnahme-Id ({@code team_zuteilung.teilnahme_id}), nicht
      * ueber den Namen: Ein Gast mit demselben Namen an einem anderen Termin ist eine andere
      * Teilnahme, und wer absagt und wieder zusagt, behaelt seine Zeile.
+     *
+     * <p><b>Der bisherige Springer reist mit</b> (03.11.2026): Ob es bei ungerader Zahl etwas zu
+     * meiden gibt, entscheidet der {@code Teamrechner} erst, wenn der neue Springer feststeht.
+     * Ein Lauf von vor {@code V017} hat keinen; dann wird bei ungerader Zahl nichts gemieden.
      */
     private BisherigeAufteilung bisherigeAufteilung(Long terminId, Aufstellung aufstellung) {
-        Map<Long, Character> teams = teamGenerierungRepository.findeAktuelleTeams(terminId);
+        Map<Long, Teamzugehoerigkeit> teams = teamGenerierungRepository.findeAktuelleTeams(terminId);
         if (teams.size() != aufstellung.groesse()) {
             return null;
         }
 
         List<Integer> teamA = new ArrayList<>();
         List<Integer> teamB = new ArrayList<>();
+        Integer springer = null;
         for (int position = 0; position < aufstellung.groesse(); position++) {
             Long teilnahmeId = aufstellung.spieler().get(position).teilnahmeId();
-            Character team = teilnahmeId == null ? null : teams.get(teilnahmeId);
-            if (team == null) {
+            Teamzugehoerigkeit zugehoerigkeit = teilnahmeId == null ? null : teams.get(teilnahmeId);
+            if (zugehoerigkeit == null) {
                 return null;
             }
-            (team == 'A' ? teamA : teamB).add(position);
+            (zugehoerigkeit.team() == 'A' ? teamA : teamB).add(position);
+            if (zugehoerigkeit.springer()) {
+                springer = position;
+            }
         }
-        return new BisherigeAufteilung(teamA, teamB);
+        return new BisherigeAufteilung(teamA, teamB, springer);
     }
 
     // ------------------------------------------------------------------ Manueller Lauf (A24)
@@ -481,12 +487,11 @@ public class TeamGenerierungService {
     }
 
     /**
-     * Setzt die Zuteilungszeilen zusammen - erst Team A, dann Team B, je in Laufreihenfolge.
+     * Setzt die Zuteilungszeilen zusammen - erst Team A, dann Team B, je in Laufreihenfolge;
+     * der Springer steht als letzter seines Startteams und traegt das Kennzeichen.
      *
-     * <p><b>Die Reihenfolge ist Teil der Zusicherung</b> und keine Frage des Geschmacks: Der
-     * Auswechselspieler wird beim Lesen erneut bestimmt, und bei Gleichstand entscheidet der
-     * Seed ueber die Position in der Kandidatenliste. Nur wenn die Zeilen in derselben Ordnung
-     * zurueckkommen, faellt die Wahl genauso aus (8.3).
+     * <p>Die Reihenfolge haelt die Antwort stabil; eine Bedeutung traegt sie seit dem
+     * 03.11.2026 nicht mehr - wer Springer ist, sagt die Spalte, nicht die Position.
      *
      * <p>Eine fehlende Teilnahme-Id waere ein halb gebauter Lauf: Sie kann nur im manuellen
      * Lauf fehlen, und der kommt hier nie an. <b>Lieber eine {@code IllegalStateException} als
@@ -509,70 +514,38 @@ public class TeamGenerierungService {
                             + spieler.anzeigeName());
             }
             ziel.add(new Zuteilungssatz(spieler.teilnahmeId(), kennung,
-                    ergebnis.staerkeAlsDezimal(index), spieler.werte()));
+                    ergebnis.istSpringer(index), ergebnis.staerkeAlsDezimal(index),
+                    spieler.werte()));
         }
     }
 
     /**
-     * Setzt die gelesene Einteilung zusammen und bestimmt den Auswechselspieler neu (8.3).
+     * Setzt die gelesene Einteilung zusammen.
      *
-     * <p><b>Massgeblich ist der heute eingestellte Modus</b>, nicht der von damals - er wird
-     * nirgends gespeichert. Das ist vertretbar, weil A20b ihn ausdruecklich als Anzeigeregel
-     * fuehrt: Die Einstellung aendert die Einteilung nicht, nur wer von den Eingeteilten
-     * aussetzt. <b>Der Seed dagegen kommt aus dem Lauf</b> - ohne ihn faellt die Wahl bei
-     * Gleichstand anders aus als damals.
+     * <p>Der Springer kommt aus der Spalte {@code team_zuteilung.springer} - nicht aus dem
+     * eingestellten Modus und nicht aus dem Seed. <b>Ein Lauf von vor {@code V017} hat
+     * keinen</b>, auch bei ungerader Zahl; er wird bewusst nicht nachtraeglich bestimmt, denn
+     * dieser Lauf wurde nach anderen Regeln eingeteilt.
      */
     private Einteilung zusammensetzen(Generierungskopf kopf) {
         List<Zuteilungszeile> zeilen = teamGenerierungRepository.findeZuteilungen(kopf.id());
         List<Zuteilungszeile> teamA = zeilen.stream().filter(z -> z.team() == 'A').toList();
         List<Zuteilungszeile> teamB = zeilen.stream().filter(z -> z.team() == 'B').toList();
-
-        String auswechselspieler = auswechselspieler(teamA, teamB, kopf.seed());
+        String springer = zeilen.stream()
+                .filter(Zuteilungszeile::springer)
+                .map(Zuteilungszeile::anzeigeName)
+                .findFirst()
+                .orElse(null);
 
         return new Einteilung(kopf.erzeugtAm(), kopf.erzeugtVon(), kopf.veraltet(),
-                auswechselspieler,
-                eintraege(teamA, auswechselspieler),
-                eintraege(teamB, auswechselspieler));
+                springer, eintraege(teamA), eintraege(teamB));
     }
 
-    /**
-     * Bestimmt den Auswechselspieler einer gelesenen Einteilung.
-     *
-     * <p>Die Auswahl der Ueberzahl folgt derselben Regel wie {@code Teamaufteilung#ueberzahl}:
-     * das groessere Team. Bei gerader Zahl gibt es keinen - {@code null}, kein Platzhalter.
-     */
-    private String auswechselspieler(List<Zuteilungszeile> teamA, List<Zuteilungszeile> teamB,
-                                     long seed) {
-        if ((teamA.size() + teamB.size()) % 2 == 0) {
-            return null;
-        }
-
-        List<Zuteilungszeile> ueberzahl = teamA.size() > teamB.size() ? teamA : teamB;
-        List<Bankkandidat> kandidaten = new ArrayList<>(ueberzahl.size());
-        for (int i = 0; i < ueberzahl.size(); i++) {
-            kandidaten.add(new Bankkandidat(
-                    i, ueberzahl.get(i).staerke(), ueberzahl.get(i).gemeldetAm()));
-        }
-
-        Bankentscheid entscheid = auswechselErmittlung.waehle(
-                kandidaten, configService.lesen().getAuswechselModus(), seed);
-
-        return ueberzahl.get(entscheid.position()).anzeigeName();
-    }
-
-    /**
-     * Bildet die Zeilen eines Teams auf die Antwortform ab.
-     *
-     * <p>Der Vergleich laeuft ueber den Namen und nicht ueber eine Position: Namen sind je
-     * Termin eindeutig - {@code uq_teilnahme_spieler} und der partielle Index ueber
-     * {@code (termin_id, gast_name)} sorgen dafuer -, und der Auswechselspieler steht in genau
-     * einem der beiden Teams.
-     */
-    private static List<Einteilungseintrag> eintraege(List<Zuteilungszeile> zeilen,
-                                                      String auswechselspieler) {
+    /** Bildet die Zeilen eines Teams auf die Antwortform ab. */
+    private static List<Einteilungseintrag> eintraege(List<Zuteilungszeile> zeilen) {
         return zeilen.stream()
                 .map(zeile -> new Einteilungseintrag(zeile.anzeigeName(), zeile.gast(),
-                        zeile.anzeigeName().equals(auswechselspieler)))
+                        zeile.springer()))
                 .toList();
     }
 

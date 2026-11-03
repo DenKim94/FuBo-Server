@@ -20,12 +20,14 @@ import java.util.Map;
  *                    ({@code NUMERIC(6,2)}). <b>Umgerechnet wird in {@code Zielfunktion}</b> und
  *                    nicht hier oder im Repository: Die Definition von "Staerke" und ihre
  *                    Darstellung sollen nicht an zwei Orten stehen
+ * @param springer    {@code true} fuer den Springer des Laufs (A20b, 03.11.2026); er steht
+ *                    mit {@code team} im Team, bei dem er beginnt
  * @param werte       Skillwert je Kategorieschluessel, flach. <b>Flach und nicht
  *                    geschachtelt</b>, wie der handgeschriebene Serialisierer im
  *                    {@code AuditService}: zwei Formen fuer dieselbe Sache waeren beim
  *                    Auswerten eine Fallunterscheidung ohne Anlass
  */
-public record Zuteilungssatz(Long teilnahmeId, char team, BigDecimal score,
+public record Zuteilungssatz(Long teilnahmeId, char team, boolean springer, BigDecimal score,
                              Map<String, Integer> werte) {
 
     /** Die Karte wird unveraenderlich uebernommen - ein Snapshot, der sich aendert, ist keiner. */

@@ -65,11 +65,11 @@ public class AppConfig {
     private AlgorithmType algorithmType;
 
     /**
-     * Wer bei ungerader Teilnehmerzahl als Auswechselspieler gilt (A20b,
-     * Default {@link AuswechselModus#SCHWAECHSTER_UEBERZAHL}).
+     * Wer bei ungerader Teilnehmerzahl Springer ist (A20b,
+     * Default {@link AuswechselModus#ZUFAELLIG} seit {@code V017}).
      *
-     * <p>{@code length = 24} passt zu {@code VARCHAR(24)} aus {@code V009} und damit zum
-     * laengsten Enum-Namen mit einem Zeichen Luft. Weicht die Laenge ab, bricht der Start
+     * <p>{@code length = 24} passt zu {@code VARCHAR(24)} aus {@code V009}; der laengste
+     * Enum-Name ist seit {@code V017} {@code ZULETZT_ANGEMELDET} mit 18 Zeichen. Weicht die Laenge ab, bricht der Start
      * an {@code ddl-auto=validate} - das ist beabsichtigt.
      */
     @Enumerated(EnumType.STRING)
