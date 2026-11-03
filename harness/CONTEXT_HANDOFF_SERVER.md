@@ -15,6 +15,7 @@
 > - **Herleitung und Schritt für Schritt** → `harness/tmp/S<n>_UMSETZUNG.md`, für den
 >   Algorithmusteil von S5 zusätzlich `harness/tmp/S5_ALGORITHMUS.md`
 > - **Historie** → Git und `harness/archive/`. Vorfassung:
+>   `CONTEXT_HANDOFF_SERVER_2026-11-03_v29_Entfernen-abgesagter.md` (Stand vor dem Springer), davor
 >   `CONTEXT_HANDOFF_SERVER_2026-10-31_v28_Gast-absagen.md` (Stand vor dem Entfernen abgesagter Termine), davor
 >   `CONTEXT_HANDOFF_SERVER_2026-10-24_v27_Pi-Dateien.md` (Stand vor „Gast absagen"), davor
 >   `…_v26_Teilnahmepruefung.md` (Stand vor den Pi-Dateien
@@ -34,7 +35,7 @@
 > Was hier steht, steht **nur** hier. Wird eine Festlegung zur Architekturregel, wandert sie
 > nach `AGENT_SERVER.md` und **verschwindet hier** – sonst laufen beide auseinander.
 
-## Stand: 31.10.2026
+## Stand: 03.11.2026
 
 **S0 bis S8 sind abgeschlossen und verifiziert.** Alles bis S8 ist auf `dev` committet (18 Commits
 für S8), **nicht gepusht**.
@@ -47,6 +48,33 @@ Commits, nicht gepusht):** Abhängigkeiten auf
 ohne Fehlschlag. Der Probebau des Images lief durch; das JAR (`app-server-1.0.0.jar`) trägt die
 Zielversionen nachweislich. Denis' Versionsanhebung `0.0.1-SNAPSHOT` → `1.0.0` steht als eigener
 Commit davor. **Nächster Schritt liegt bei Denis:** `dev` nach `main` mergen – der Pi baut `main`.
+
+**Neu am 03.11.2026 – Springer statt Auswechselspieler, Ausgleich je Kategorie (A20a, A20b).**
+Anforderung von Denis: (1) Das Balancing soll für jede Kategorie möglichst ausgeglichen sein. (2) Bei
+ungerader Zahl ist statt des Schwächsten ein zufälliger Teilnehmer **Springer**, `ZULETZT_ANGEMELDET`
+bleibt; der Springer wechselt zum Gegner, sobald sein aktuelles Team trifft. Eine Datenbankänderung
+war nach Möglichkeit zu vermeiden. **Fünf Weggabelungen**, alle am 03.11.2026 entlang der Empfehlung
+entschieden (6.2): Zielfunktion „Engpass zuerst, dann Summe"; Springer als Spalte in `V017`; er beginnt
+beim schwächeren Grundteam; im Vertrag bleiben die Feldnamen, nur der Enumwert wechselt; der Springer
+bekommt für seinen Termin keine Bilanz. **Umsetzung:** `Zielfunktion#engpass` und `#bewertung`
+(lexikografisch in einer Zahl), Auswahl in beiden Verfahren nach der Bewertung, `HEURISTIK` nimmt weiter
+nach der Summe an; `Teamrechner` bestimmt bei ungerader Zahl zuerst den Springer
+(`SpringerErmittlung`, ersetzt `AuswechselErmittlung`; `Springerwahl` ersetzt `Bankkandidat` und
+`Bankentscheid`), rechnet die übrigen ohne ihn und setzt ihn ins schwächere Team; gespeichert in
+`team_zuteilung.springer`, gelesen ohne Modus und ohne Seed (`Generierungskopf` ohne `seed`,
+`Zuteilungszeile` ohne Stärke und Meldezeit); `BilanzRepository` mit `NOT tz.springer` auf beiden
+Ebenen. **`V017`** schreibt `SCHWAECHSTER_UEBERZAHL` zu `ZUFAELLIG` um (mit `version + 1`), setzt die
+neue Vorgabe und Constraint und legt `team_zuteilung.springer` samt `uq_team_zuteilung_springer` an.
+**Vertrag:** brechend nur über den Enumwert (4.1); Beschreibungen nachgezogen, weiter 46 Endpunkte.
+Bruno nachgezogen. Regeln: `AGENT_SERVER.md`, A20a, A20b, A21 und „Teamgenerator" samt neuem Abschnitt
+„Springer"; Datenmodell Punkt 25; Messungen und Herleitung in `harness/tmp/springer/HERLEITUNG.md`
+(gitignoriert, wie die übrigen Anleitungen).
+**Verifiziert:** `TeamverfahrenTests` und `TeamrechnerTests` (28 Fälle) **mit JDK 21 übersetzt und
+ausgeführt** – gegen Stubs für JUnit, AssertJ, Spring-Annotationen und SLF4J –, 28 grün, zwei
+Mutationsproben schlagen an. `V001`–`V017` und das neue SQL liefen gegen PGlite. **Nicht übersetzt und
+nicht gelaufen:** alles mit Spring-Kontext. Erwartet: **590 Fälle in 37 Klassen** (571 + 19,
+nachgezählt). Erster Lauf bei Denis: 589 grün, eine veraltete Testerwartung (Seed-Version nach `V017`),
+behoben; **der Wiederholungslauf war grün (590/37)**. Auf `dev` committet (vier Commits, nicht gepusht).
 
 **Neu am 31.10.2026 – abgesagte Termine entfernen, auch mit Rückmeldungen und Teams (A19).**
 Anforderung von Denis: Der Admin soll abgesagte Termine entfernen können, unabhängig davon, ob schon
@@ -68,7 +96,8 @@ frei, Protokollzahlen; abgeschlossen mit Teilnahme → weiter `409`), `TeamGener
 Lauf, nach der Absage `204`; Lauf, Zuteilungen und Kontingent weg, Zuteilungen anderer Termine bleiben).
 Erwartet: **571 Fälle in 36 Klassen** (568 + 3). **Nicht kompiliert, nicht gelaufen** – derselbe Grund wie
 zuvor (kein JDK 25, Maven Central gesperrt, kein Docker); geprüft wurden nur Klammerbilanz, Vertrag
-(JSON lädt, kein `nullable`) und die Testzahl. Nicht committet. `harness/tmp/S4_UMSETZUNG.md` (Herleitung
+(JSON lädt, kein `nullable`) und die Testzahl. **Am 01.11.2026 von Denis committet** (`39a64fe`, `39e13a7`,
+`09b4784`, nicht gepusht); ein Ergebnis des Laufs ist hier nicht festgehalten. `harness/tmp/S4_UMSETZUNG.md` (Herleitung
 vom 30.08.2026) trägt die alte Regel weiter und ist bewusst unverändert. Zu „Gast absagen" (`3425c20`, nicht
 gepusht): Denis meldete die Verifikation danach als erfolgreich.
 
@@ -222,11 +251,11 @@ einem nicht eingeteilten Gast und ist jetzt `eingeteilterGastDarfErfassen`). Erw
 | Gegenstand | Stand |
 |---|---|
 | Vertrag `fubo-api.json` | **46 Endpunkte** (S8 brachte sechs, die Namensbestätigung einen, „Gast absagen" einen) |
-| Datenmodell | **20 Tabellen**, `V001`–`V016` (`V016`: `termin.kontingent_version`, 22.10.2026) |
+| Datenmodell | **20 Tabellen**, `V001`–`V017` (`V016`: `termin.kontingent_version`, 22.10.2026; `V017`: `team_zuteilung.springer` und `ZUFAELLIG`, 03.11.2026) |
 | Konfiguration | **14 Pflichtfelder** im Voll-Update |
 | `Fehlercode` | **39** Werte (neu: `NICHT_EINGETEILT`, davor `KEINE_ZUSAGE`) |
 | `AuditAktion` | **32** Werte (neu: `GAST_ABGESAGT`) |
-| Tests | **483 Fälle in 34 Klassen** zuletzt grün dokumentiert; nach Namensbestätigung, A18- und A15-Änderung nachgezählt **513 in 35**, mit dem Restkontingent **528 in 35**, mit der Durchmischung **538 in 35**, mit der Erfassungsberechtigung **548 in 35**, mit der CORS-Prüfung **554 in 36**, mit „Gast absagen" **568 in 36** (laut Denis grün), mit dem Entfernen abgesagter Termine **571 in 36**, der Lauf steht aus; **sieben Klassen ohne Spring-Kontext** (6.3) |
+| Tests | **483 Fälle in 34 Klassen** zuletzt grün dokumentiert; nach Namensbestätigung, A18- und A15-Änderung nachgezählt **513 in 35**, mit dem Restkontingent **528 in 35**, mit der Durchmischung **538 in 35**, mit der Erfassungsberechtigung **548 in 35**, mit der CORS-Prüfung **554 in 36**, mit „Gast absagen" **568 in 36** (laut Denis grün), mit dem Entfernen abgesagter Termine **571 in 36**, mit dem Springer **590 in 37, grün am 03.11.2026** – der erste Lauf über alle Zwischenstände seit dem 03.10.2026, sie sind damit verifiziert; **acht Klassen ohne Spring-Kontext** (6.3) |
 | Bruno-Collection | alle 46 Endpunkte, acht Ordner (`~/Documents/bruno/fubo_server`, unversioniert; am 24.10.2026 um „Gast absagen" ergänzt – die frühere Angabe „99 Requests" liess sich nicht nachzählen, es liegen 78 Request-Dateien vor) |
 | Plattform | **Spring Boot 4.1.1**, Tomcat 11.0.26 und Jackson 3.1.7 per Override (S9, 03.10.2026) |
 
@@ -247,7 +276,7 @@ erst recht nicht gegen die Antwort des Dienstes.
 
 **Offen sind der Testlauf, Handarbeit und S9:**
 
-1. **Testlauf und Commit der A18- und A15-Änderung** – `./mvnw clean verify`, erwartet **571/36** (568 davon vor dem Entfernen abgesagter Termine, 554 davon vor „Gast absagen", 548 davon vor der CORS-Prüfung, 538 vor der Erfassungsberechtigung, 528 vor der Durchmischung, 513 vor dem Restkontingent; **die Integrationsfälle der Durchmischung sind nie gelaufen**)
+1. ~~**Testlauf und Commit der A18- und A15-Änderung**~~ – **erledigt am 03.11.2026: 590/37 grün**, alles committet; die Integrationsfälle der Durchmischung sind damit erstmals gelaufen. Ursprünglich erwartet **590/37** (571 davon vor dem Springer, 568 davon vor dem Entfernen abgesagter Termine, 554 davon vor „Gast absagen", 548 davon vor der CORS-Prüfung, 538 vor der Erfassungsberechtigung, 528 vor der Durchmischung, 513 vor dem Restkontingent; **die Integrationsfälle der Durchmischung sind nie gelaufen**)
    (Namensbestätigung, automatische Absage und Teilnahmeprüfung zusammen; die neue Migration
    `V016` läuft dabei gegen PostgreSQL 17 im Testcontainer – dort ist sie noch nicht gelaufen). Danach für die Namensbestätigung
    eine Handprüfung mit echter Mail (Bruno: „Anmeldenamen aendern" → PIN nach `namePin` →
@@ -272,6 +301,10 @@ erst recht nicht gegen die Antwort des Dienstes.
    (`403`) an `POST /teams/generieren`; die Schaltfläche nur für Teilnehmer mit Zusage und den
    Admin zeigen; nach einer Absage steht kein neuer Lauf offen. Auch `Fehlercode` im Client-Enum
    um `KEINE_ZUSAGE` ergänzen.
+   **Dazu die brechende Änderung am Springer (03.11.2026):** `AuswechselModus` kennt
+   `ZUFAELLIG` statt `SCHWAECHSTER_UEBERZAHL` (Client-Enum und Konfigurationsformular); in den Teams
+   ist `auswechselspieler` jetzt der Springer, das Team mit ihm ist das in Überzahl, und Einteilungen von
+   vor dem 03.11.2026 zeigen keinen.
 
 **Zwei Dinge vor jedem Lauf:** Docker muss laufen (`docker info`), und es ist `./mvnw clean verify`,
 nicht nur `verify` – `target/classes` vergisst nichts.
@@ -353,7 +386,7 @@ naheliegende Annahme falsch ist. Wann sie dazukam, steht in Git.
 
 | Punkt | Bedeutung für den Client |
 |---|---|
-| **Sieben brechende Änderungen** | `anmeldename` in `AdminLoginRequest`, vollständige `skills` in `SpielerAnlegenRequest`, `auswechselModus`, `hallenModusAktiv` (13.09.), – seit S8 – `pushAktiv` und `pushErinnerungStunden` im Konfigurations-Voll-Update und – seit dem 04.10.2026 – der **zweistufige Namenswechsel**. Die ersten sechs liefern sonst `400`. **Der siebte scheitert nicht laut:** `/admin/name/aendern` antwortet weiter mit einem Erfolgscode (`202`), ändert aber nichts mehr – ein Client ohne zweiten Schritt zeigt „gespeichert", und der alte Name bleibt |
+| **Acht brechende Änderungen** | `anmeldename` in `AdminLoginRequest`, vollständige `skills` in `SpielerAnlegenRequest`, `auswechselModus`, `hallenModusAktiv` (13.09.), – seit S8 – `pushAktiv` und `pushErinnerungStunden` im Konfigurations-Voll-Update, – seit dem 04.10.2026 – der **zweistufige Namenswechsel** und – seit dem 03.11.2026 – der Enumwert **`ZUFAELLIG` statt `SCHWAECHSTER_UEBERZAHL`** in `auswechselModus` (der alte Wert liefert `400`). Die ersten sechs und der achte liefern sonst `400`. **Der siebte scheitert nicht laut:** `/admin/name/aendern` antwortet weiter mit einem Erfolgscode (`202`), ändert aber nichts mehr – ein Client ohne zweiten Schritt zeigt „gespeichert", und der alte Name bleibt |
 | `hallenModusAktiv`, `pushAktiv` | **Pflichtfelder, kein stillschweigendes `false`.** Wer sie weglässt, bekommt `400` mit dem Schlüssel im Block `felder` – sonst schaltete ein Client, der das Feld nicht kennt, die Funktion bei jedem Speichern ab. Beide sind deshalb `Boolean` und nicht `boolean`; bei Zahlenfeldern übernimmt das `@Min` dieselbe Aufgabe |
 | `/admin/config/aendern` | **Voll-Update**: vorher `lesen`, dann alle **vierzehn** änderbaren Felder samt `version` zurückschicken. `halleAbsageVorlageEffektiv` gehört **nicht** dazu – nur lesbar |
 | `/admin/ergebnis/korrigieren` | ebenfalls **Voll-Update** mit `version` – auch das unveränderte Feld mitschicken. Grund ist `deutlich`: Bei einem `boolean` wäre „weggelassen" nicht von `false` zu unterscheiden |
@@ -374,7 +407,7 @@ naheliegende Annahme falsch ist. Wann sie dazukam, steht in Git.
 | `korrigiertAm` im `Ergebnis` | `null` heisst „nie korrigiert". Es führt **keine Historie** – jede weitere Korrektur überschreibt den Wert |
 | `halleAbgesagtAm` in `TerminDetails` | `null` heisst „noch keine Absage an den Hallenbetreiber" – der Normalzustand. Gesetzt heisst: **Knopf ausblenden**, Zeitpunkt anzeigen. Der Wert belegt den Versand, nicht die Zustellung |
 | `kontingentGenerierung` in `TerminDetails` | **Neu seit 22.10.2026.** `{ erlaubt, uebrig }` oder `null`; ein Pflichtfeld, der Schlüssel fehlt nie. **`null` ist nicht `uebrig = 0`:** `null` heisst „diese Sitzung darf hier nicht generieren" (weder Admin noch Zusage) oder „Termin nicht `GEPLANT`" – Schaltfläche ausblenden. `uebrig = 0` heisst „Kontingent verbraucht" – **Schaltfläche sperren**; eine neue Zusage, Skill-Änderung oder Gast-Stufen-Änderung öffnet es wieder, eine Absage nicht. „Noch x von y Generierungen" ist `uebrig` von `erlaubt`. **Eine Anzeige, keine Sicherung:** Der Stand kann sich bis zum Klick ändern, der Server antwortet dann weiter mit `409 KONTINGENT_ERSCHOEPFT`. Nur in der Einzelansicht, **nicht** in der Termin-Liste. **Das Feld heisst im Vertrag `kontingentGenerierung`** – ein Client-Name wie `generierung.uebrig` ist dessen eigene Benennung |
-| Ergebnisformular nur für Eingeteilte und Admin | **Seit 22.10.2026, ohne neues Feld.** Eingeteilt ist genau, wer in `teams.teamA` oder `teams.teamB` der Einzelansicht steht; der Auswechselspieler ist dort Teil einer der beiden Listen (`auswechselspieler: true`). Der Client sucht den Eintrag mit **eigenem Namen und passendem `gast`-Wert** – die Kombination ist je Termin eindeutig. Der Admin braucht keinen Eintrag. Alle anderen sehen statt des Formulars einen Hinweis. Eine Anzeige, keine Sicherung: Durchgesetzt wird beim Eintrag. Fiele die Zusicherung (etwa durch Namenskollisionen), wäre ein boolesches `darfErgebnisErfassen` in `TerminDetails` der vorgesehene Ersatz |
+| Ergebnisformular nur für Eingeteilte und Admin | **Seit 22.10.2026, ohne neues Feld.** Eingeteilt ist genau, wer in `teams.teamA` oder `teams.teamB` der Einzelansicht steht; der Springer ist dort Teil einer der beiden Listen (`auswechselspieler: true`). Der Client sucht den Eintrag mit **eigenem Namen und passendem `gast`-Wert** – die Kombination ist je Termin eindeutig. Der Admin braucht keinen Eintrag. Alle anderen sehen statt des Formulars einen Hinweis. Eine Anzeige, keine Sicherung: Durchgesetzt wird beim Eintrag. Fiele die Zusicherung (etwa durch Namenskollisionen), wäre ein boolesches `darfErgebnisErfassen` in `TerminDetails` der vorgesehene Ersatz |
 | Wiederholtes Generieren | **Seit 22.10.2026 keine Feldänderung, aber anderes Verhalten:** Ein neuer Lauf mischt die Teams durch und liefert nie die bisherige Einteilung des Termins (A/B vertauscht zählt als gleich), solange der Teilnehmerkreis gleich bleibt. Die Auswahl ist klein – bei wenigen Spielern wechseln sich oft nur zwei bis drei Einteilungen ab. `differenzTeamstaerke` (Admin) ist nicht mehr zwingend das Minimum |
 
 **Sitzung und Fehlerbehandlung**
@@ -459,10 +492,10 @@ naheliegende Annahme falsch ist. Wann sie dazukam, steht in Git.
 |---|---|
 | Antwort des manuellen Laufs (A24) | **`200`, nicht `201`**, und **ohne `seed`** – es entsteht nichts. Das Ergebnis wird **nirgends gespeichert** und ist nach dem Verlassen der Seite weg. **Das gehört sichtbar auf den Bildschirm** |
 | `algorithmType` / `auswechselModus` in der Antwort | können von der Konfiguration **abweichen** (Rückfall bei zu vielen Teilnehmern bzw. fehlender Meldezeit). Anzeigen, nicht ignorieren |
-| `differenzTeamstaerke` | die **Kosten der Zielfunktion**, nicht die Differenz der Gesamtstärken. `0` = perfekt ausgeglichen. Nur im Adminbildschirm |
+| `differenzTeamstaerke` | die **Summe der Kategorieabweichungen**, nicht die Differenz der Gesamtstärken; bei ungerader Zahl ohne den Springer. `0` = perfekt ausgeglichen. Seit dem 03.11.2026 wird zuerst nach der grössten Einzelabweichung gewählt – der Wert ist also nicht zwingend die kleinstmögliche Summe. Nur im Adminbildschirm |
 | `maxTeilnehmer` im manuellen Lauf | **begrenzt, schneidet nicht ab** (`409 ZU_VIELE_TEILNEHMER`) |
 | `deutlich` im `Ergebnis` | beschreibt die **Höhe, nicht den Ausgang** – ohne jeden Einfluss auf die Bilanz. Bei `sieger: "U"` unzulässig (`400`, Schlüssel `deutlichNurBeiSieg`); der Haken gehört dort ausgeblendet |
-| `auswechselModus` ändern | ändert die **Einteilung** nicht, wohl aber den angezeigten Auswechselspieler bereits gespeicherter Läufe (A20b) |
+| `auswechselModus` ändern | wirkt ab dem **nächsten Lauf**; gespeicherte Einteilungen behalten ihren Springer (seit 03.11.2026; vorher änderte sich der angezeigte Auswechselspieler rückwirkend) |
 | `empfaenger` im `Probeversand` | zählt **Geräte, nicht Personen** – es sind ja alle dieselbe. `0` heisst „auf diesem Konto ist kein Gerät angemeldet" |
 | `zugestellt` im `Probeversand` | **keine Zustellbestätigung.** Web Push kennt keine; die Zahl sagt nur, wie viele Push-Dienste die Nachricht angenommen haben |
 
@@ -662,7 +695,7 @@ und Herleitung steht in `…_v14_S4-abgeschlossen.md`.
 | **Ein abgesagter Termin lässt sich immer entfernen, alle anderen nur ohne Verweise** (`409 TERMIN_IN_VERWENDUNG`), und die **Absage bleibt endgültig** (31.10.2026, Anforderung von Denis) | Fünf Tabellen hängen mit `ON DELETE CASCADE` am Termin, ein ungeprüftes Löschen räumte bei geplanten und abgeschlossenen Terminen den halben Spieltag ab. Bei `ABGESAGT` ist die Kaskade ungefährlich, weil es dort kein Ergebnis gibt; das Entfernen ist der Weg zurück aus einer versehentlichen Absage, weil ein abgesagter Termin seinen Zeitpunkt weiter belegt. Die Zahlen für das Protokoll werden vor dem `DELETE` gelesen |
 | Die A18-Frist ist eine **Konstante im Dienst**, der Auftrag läuft alle fünf Minuten | ein weiteres Pflichtfeld wäre brechend; der Takt genügt, weil keine fachliche Regel an der Pünktlichkeit hängt – ob gemeldet werden darf, entscheidet die Uhrzeit, nicht der Status |
 | **Das Adminprofil kann nicht zusagen** (`409 PROFIL_GESCHUETZT`) | der Rückmeldeendpunkt liegt ausserhalb von `/admin/`, das Adminprofil trägt aber eine `spielerId` – ohne die Prüfung stünde das technische Konto mit Skillwerten von 0 in der Teameinteilung |
-| „Schwächster Auswechselspieler" nach dem **Skill-Snapshot des Laufs**, nicht nach dem aktuellen Profilstand | sonst wechselte der Auswechselspieler einer gespeicherten Einteilung rückwirkend, sobald ein Skillwert korrigiert wird |
+| **Springer statt Auswechselspieler** (03.11.2026, Anforderung von Denis) | Der Springer wechselt nach jedem Tor seines Teams und gehört in keine Balance; deshalb wird er **vor** der Einteilung bestimmt, die übrigen bilden zwei gleich grosse Teams. Vorher wurde nach der Einteilung der Schwächste des grösseren Teams ausgewiesen (nach dem Skill-Snapshot des Laufs) |
 | `TERMIN_GESCHLOSSEN` ist **allgemein** formuliert | der Code deckt drei Fälle ab: abgesagt, abgeschlossen, Beginn vorbei. Für den Aufrufer ist die Wirkung dieselbe; Genaueres steht in `detail` und darf sich ohne Vertragsänderung ändern |
 | **Der manuelle Lauf (A24) wird nicht gespeichert** | `team_generierung.termin_id` ist `NOT NULL` und `team_zuteilung.teilnahme_id` hängt am Fremdschlüssel auf `spieltag.teilnahme`. Ein Phantom-Termin machte aus einer Adminrechnung einen Spieltag; eine Migration müsste `team_zuteilung` polymorph machen, und von da an kennt **jeder** Lesepfad zwei Formen. Die Historie ersetzt der Audit-Eintrag mit Teilnehmern und Seed |
 | **A24 kostet kein Kontingent** | A15 zählt Läufe **je Termin und Kontingentstand**; beides gibt es nicht, und die Kontingentzeile trägt `termin_id NOT NULL`. Schutz sind der Zugang (admin-only) und `MAX_EXHAUSTIV` |
@@ -670,7 +703,7 @@ und Herleitung steht in `…_v14_S4-abgeschlossen.md`.
 | Im manuellen Lauf **begrenzt** `max_teilnehmer`, es schneidet nicht ab | am Termin ergibt sich die Menge und der Rest wartet; hier hat der Admin jeden Einzelnen benannt. Wer eine genannte Id still fallen lässt, liefert Teams, die niemand angefordert hat – und es fällt erst auf, wenn jemand vor Ort ohne Team dasteht |
 | **`MAX_EXHAUSTIV = 24` heisst „24 ist erlaubt, 25 nicht"** | Die Anleitung lässt sich in beide Richtungen lesen. Maßgeblich ist die Begründung, und die nennt `C(24,12) ≈ 2,7 Mio.` ausdrücklich als noch tragbar |
 | **Der Rückfall auf `HEURISTIK` liegt in `ExhaustivVerfahren`**, nicht im aufrufenden Dienst | Die Grenze ist die Regel von `EXHAUSTIV` selbst – es weiß als Einziges, wann es nicht mehr kann. Im Dienst müsste sie ein zweites Mal geführt werden, und jeder künftige Aufrufer müsste sie kennen |
-| **Der Seed vergibt A und B, in *beiden* Verfahren** | Sonst stünde bei ungerader Zahl immer dieselbe Hälfte in Überzahl und damit Woche für Woche derselbe Spieler auf der Bank. Auf die Kosten wirkt der Tausch nicht – sie sind ein Betrag und damit symmetrisch |
+| **Der Seed vergibt A und B, in *beiden* Verfahren** | Sonst hiesse dieselbe Hälfte Woche für Woche „Team A" (bis 03.11.2026 auch: dieselbe Hälfte in Überzahl). Auf die Kosten wirkt der Tausch nicht – sie sind ein Betrag und damit symmetrisch |
 | **`HEURISTIK` wertet den Tie-Break aus, aber nur beim Merken der besten Lösung** | Ohne ihn hätten die beiden Verfahren **nicht** dieselbe Zielfunktion, und genau das verlangt `AGENT_SERVER.md`. Die Annahme eines Tauschs richtet sich weiterhin nach den Primärkosten |
 | **`HEURISTIK` setzt acht Mal neu an, und der Abkühlfaktor kommt aus der Schrittzahl** | Mit dem vorgeschlagenen einen Lauf und festem `0.9995` verfehlten **13 von 100 Seeds** das Optimum des Vergleichstests – die Temperatur ist nach einem Drittel der Schritte bei null, die Suche friert im ersten lokalen Minimum ein. Mit Neustarts: 0 von 300, bei gleichem Rechenbudget. **Wer die Konstanten anfasst, misst nach** – sie sind gemessen, nicht gesetzt |
 | **Die wirksame Untergrenze der Aufstellung ist `max(min_teilnehmer, 2)`** | `ck_app_config_teilnehmer` verlangt nur `min_teilnehmer > 0`, und das DTO lässt `1` zu. Ohne die zweite Grenze käme eine Aufstellung mit einem Spieler durch und scheiterte erst im Generator mit einem `500` statt einer Meldung |
@@ -683,8 +716,8 @@ und Herleitung steht in `…_v14_S4-abgeschlossen.md`.
 | **Restkontingent nur in der Einzelansicht, `null` statt `0`** (22.10.2026) | In der Liste wäre es eine Abfrage je Eintrag; ein eigener Endpunkt wären zwei Aufrufe für eine Ansicht. `null` und `0` sind verschieden zu behandeln: Bei `0` hilft eine neue Zusage, bei `null` (keine Berechtigung, Termin nicht `GEPLANT`) nicht – `0` zeigte einem Nicht-Teilnehmer einen falschen Weg. Alternative „immer eine Zahl": verworfen aus demselben Grund |
 | **Das Restkontingent ist eine Anzeige** (22.10.2026) | Durchgesetzt wird allein vom bedingten `UPDATE` in `KontingentRepository#verbrauche`. Wer die Anzeige zur Sicherung machte, öffnete ein Fenster zwischen Lesen und Verbuchen. `teams_fixiert` fliesst bewusst nicht ein – der Lauf meldet `409 TEAMS_FIXIERT` selbst |
 | **Der Schreibpfad liest den Termin nativ** (`TerminRepository#zustand`), nie über `findById` | Der Lauf merkt sich `teilnehmer_version` und prüft sie am Ende gegen. Eine geladene Entity lieferte den Zähler aus dem Persistence-Context – also genau den Wert, gegen den geprüft werden soll. **Ohne diese Umstellung fiele der Fall „nach einer Absage erneut generieren" durch** |
-| **Der Termin-Lauf liest sein eigenes Ergebnis zurück** | Der Auswechselspieler wird nicht gespeichert, sondern beim Lesen erneut bestimmt. Weichen Lauf und Ableitung voneinander ab, fällt es sofort auf – sonst erst, wenn jemand den Termin das nächste Mal öffnet. Preis: zwei zusätzliche Leseabfragen je Lauf |
-| **Die Bankwahl zieht mit einem frischen `new Random(seed)`** | Der Generator des Verfahrens hat bis dahin unterschiedlich viele Zahlen verbraucht; sein Zustand ist ohne Wiederholung des ganzen Laufs nicht rekonstruierbar, der Seed dagegen steht in der Tabelle. **Das ist die Bedingung, unter der die Ableitung beim Lesen dasselbe liefert wie der Lauf** |
+| **Der Termin-Lauf liest sein eigenes Ergebnis zurück** | Wer gerade generiert hat, sieht dasselbe wie der, der den Termin danach öffnet; ein Fehler beim Schreiben fällt sofort auf. Bis 03.11.2026 kam hinzu, dass der Auswechselspieler beim Lesen neu bestimmt wurde. Preis: zwei zusätzliche Leseabfragen je Lauf |
+| **Der Springer zieht aus einem eigenen Strom** (`new Random(seed · 0x9E3779B97F4A7C15)`, 03.11.2026) | Mit demselben Seed wie das Verfahren liefen zwei Ströme mit derselben Zahlenfolge. Reproduzierbar bleibt beides aus dem gespeicherten Seed; nachgerechnet werden muss der Springer beim Lesen nicht mehr |
 | **Auswahl aus einem Band um das Optimum, nicht nur aus den Optima** (22.10.2026) | Bei eindeutigem Optimum wählte der Seed unter *einer* Aufteilung, jeder Lauf gab dieselben Teams – `anz_team_generator > 1` war wirkungslos. Alternativen: festes Band in Prozent (verworfen: ohne Bezug zu den Gewichten), Auswahl nach Rang (verworfen: ein Rang sagt nichts über den Abstand). Das Band ist ein Punkt der höchstgewichteten Kategorie |
 | **Ausgeschlossen ist nur die aktuelle Einteilung** (22.10.2026) | Eine Historie über alle Läufe leerte bei kleinen Kreisen die Auswahl. A/B vertauscht zählt als gleich, weil es dieselben Menschen sind. Fehlt eine Alternative im Band, gilt die beste ausserhalb; bei n = 2 entfällt der Ausschluss |
 | **Der erste und der manuelle Lauf ziehen ebenfalls aus dem Band** (22.10.2026) | Sonst wäre die erste Einteilung stets das Optimum, und erst der zweite Lauf wiche ab. Der manuelle Lauf (A24) speichert nichts und meidet deshalb nichts |
@@ -693,7 +726,12 @@ und Herleitung steht in `…_v14_S4-abgeschlossen.md`.
 | **`NICHT_EINGETEILT` ist ein eigener Code, `403`** (22.10.2026) | `KEINE_ZUSAGE` rät zum Zusagen, hier hilft keine Zusage. `409` wäre ein Zustand, der sich ändert; ein abgeschlossener Termin bekommt keine neue Einteilung. `KEINE_BERECHTIGUNG` meint „Rolle fehlt" |
 | **Prüfung nach `KEINE_EINTEILUNG`, vor dem Eintrag** (22.10.2026) | Ohne Einteilung gibt es niemanden, der eingeteilt war; der Status ist für alle sichtbar; ein Nicht-Eingeteilter soll über `ERGEBNIS_VORHANDEN` nichts erfahren |
 | **Kein Feld `darfErgebnisErfassen`, sondern die Zusicherung an `teams`** (22.10.2026) | Entscheidung des Entwicklers: Der Client kennt `teams` und die Rolle. Die Zusicherung trägt, weil `(anzeigeName, gast)` je Termin eindeutig ist (Profilnamen und Gastnamen je für sich eindeutig, `GastService#pruefeNameFrei` lehnt Profilnamen ab). Das Feld ist der Ausweg, falls das einmal nicht mehr gilt |
-| **Der Auswechselspieler wird nach dem *heute* eingestellten Modus abgeleitet** | Der Modus wird nirgends gespeichert, und A20b führt ihn als Anzeigeregel. **Folge:** Stellt der Admin um, kann ein bestehender Lauf einen anderen Auswechselspieler zeigen |
+| **Der Springer wird gespeichert** (`team_zuteilung.springer`, `V017`, 03.11.2026 – Weggabelung „Speicherung") | Die Einteilung hängt jetzt an ihm; ein beim Lesen nach dem heutigen Modus bestimmter Springer passte nach einem Moduswechsel nicht mehr zu seinen Teams. Verworfen: ihn über die Schreibreihenfolge zu erkennen (keine Spalte, aber eine unsichtbare Bedeutung). Läufe von vor `V017` zeigen keinen Springer |
+| **Zielfunktion: Engpass zuerst, dann Summe** (03.11.2026, Weggabelung „Balance") | Die Summe allein liess eine Kategorie die ganze Abweichung tragen; gemessen an den 30 realen Profilen bei zehn Spielern in 10 % der gezogenen Einteilungen drei Punkte in einer Kategorie, seither keine. Verworfen: Band schliessen (keine Durchmischung mehr), quadrierte Abweichungen (bestraft, schliesst nicht aus) |
+| **Startteam: das schwächere Grundteam** (03.11.2026) | Die Überzahl gleicht dort mehr aus; bei Gleichstand der Seed. Verworfen: rein per Seed |
+| **Vertragsnamen bleiben** (`auswechselspieler`, `auswechselModus`; 03.11.2026) | Ein Umbenennen wäre brechend, ohne dem Client etwas zu sagen; brechend ist nur der Enumwert |
+| **Springer ohne Bilanz** (03.11.2026) | Er steht am Ende bei dem Team, das das letzte Tor kassiert hat; Sieg oder Niederlage wären eine Behauptung ohne Grundlage. Erfassen darf er als Eingeteilter trotzdem. Verworfen: mit dem Startteam werten (willkürlich), als Unentschieden werten (verfälscht) |
+| **Eine Migration war unvermeidbar** (03.11.2026) | Denis wollte Datenbankänderungen nach Möglichkeit vermeiden. `ck_app_config_auswechsel` lehnt `ZUFAELLIG` ab; die einzige migrationsfreie Alternative wäre der alte Name mit neuer Bedeutung gewesen. Die Spalte kam im selben Zug hinzu |
 | **Die eigene Bilanz liest ein Endpunkt ohne Id im Pfad** (`GET /bilanz/lesen`) | Die Identität kommt aus der Sitzung. Mit einer Id wäre es „fremde Bilanz lesen", über das niemand entschieden hat. Ein `GAST` bekommt die leere Bilanz statt eines Fehlers – ununterscheidbar von einem Spieler ohne gewertete Termine, und das ist Absicht |
 | **Die Bilanz ist ein geschachteltes Schema, nicht drei flache Zähler** | `SpielerDetails.bilanz` und `GET /bilanz/lesen` liefern dieselbe Form. Zwei Darstellungen derselben drei Zahlen liefen auseinander, sobald eine ein Feld bekommt |
 | **`dto.spieltag.Ergebnis` und `domain.spieltag.Ergebnis` heissen gleich** | Der Vertrag führt das Schema als `Ergebnis`, die Entity heisst nach ihrer Tabelle. Sie treffen sich ausschliesslich in `Ergebnis#von` |
@@ -706,7 +744,8 @@ und Herleitung steht in `…_v14_S4-abgeschlossen.md`.
 berühren und ihre Herleitung in `S5_ALGORITHMUS.md` und den Klassenkommentaren steht. Der Grund
 ist bei allen fünf derselbe – *eine* Stelle statt zweier: `Teamaufteilung` trägt **Indizes**, nicht
 Spieler · die Zuteilungen werden in Laufreihenfolge geschrieben und über `ORDER BY id` gelesen,
-weil bei Gleichstand der Seed über die *Position* entscheidet · `AufstellungService` liefert
+damit die Antwort stabil bleibt (bis 03.11.2026 entschied dort bei Gleichstand der Seed über die
+*Position* des Auswechselspielers) · `AufstellungService` liefert
 `Aufstellung` samt aktiven Kategorien statt einer Spielerliste · die Umrechnung Hundertstel →
 `NUMERIC(6,2)` liegt in `Teamergebnis` (`domain`), damit kein DTO auf die Service-Schicht
 zugreift · die Reihenfolge beim Sperren (erst `teilnehmer_version`, dann die Zusagen) liegt im
@@ -903,8 +942,20 @@ Jeder Punkt hat schon mindestens einmal Zeit gekostet.
   `EXHAUSTIV` vermisst, hat die Auswahl gemeint, nicht die Zielfunktion.
 - **Ein Test auf „liefert das Optimum" prüft das Optimum, nicht den Lauf.** Die Verfahren liefern
   jetzt *aus dem Band*; ein Fall, der das exakte Minimum erwartet, scheitert zufällig – je nach
-  Seed. Geprüft wird `Kosten ≤ Optimum + Band` (Vorbild: `TeamverfahrenTests`). Das Optimum selbst
-  liefern `ExhaustivVerfahren#optimum` und `HeuristikVerfahren#suchoptimum` (paketsichtbar).
+  Seed. Geprüft wird `Bewertung ≤ Optimum + Band` (Vorbild: `TeamverfahrenTests#bewertungVon`). Das
+  Optimum selbst liefern `ExhaustivVerfahren#optimum` und `HeuristikVerfahren#suchoptimum`
+  (paketsichtbar).
+- **`Teamaufteilung#kosten` ist seit dem 03.11.2026 nicht mehr die Zahl, nach der gewählt wird.**
+  Sie ist die Summe (gespeichert als `differenz_teamstaerke`); gewählt wird nach
+  `Zielfunktion#bewertung` (Engpass, dann Summe), und `optimum`/`suchoptimum` liefern die Bewertung.
+  Wer `kosten()` gegen `optimum()` vergleicht, vergleicht zwei Einheiten – der Fall ist dann zufällig grün.
+- **Eine Migration, die `configs.app_config` per SQL ändert und `version` fortschreibt, verschiebt den
+  Seed-Stand** (03.11.2026). `ConfigServiceTests#seedDefaultsWerdenVollstaendigGelesen` prüft die Version
+  einer frischen Datenbank wörtlich (seit `V017`: 1). Wer eine solche Migration schreibt, zieht die
+  Erwartung im selben Zug nach; die Strukturprüfung findet das nicht, nur der Lauf.
+- **Die Verfahren bekommen am Termin nur noch gerade Zahlen** (03.11.2026). Der `Teamrechner` nimmt den
+  Springer vorher heraus. Fälle in `TeamverfahrenTests` mit ungerader Zahl prüfen das Verfahren, nicht
+  den Lauf; der Lauf steht in `TeamrechnerTests`.
 - **Tests, die ein Ergebnis erfassen, brauchen einen Eingeteilten (22.10.2026).** In
   `ErgebnisControllerTests` sind das bei `terminBereitFuerErgebnis(8)` die Positionen 0 bis 7;
   **Position 8 und 9 sind bewusst nicht eingeteilt**. Wer einen neuen Fall mit einem Gast oder
@@ -1098,11 +1149,28 @@ docker compose -f compose.dev.yml --env-file .env up -d
 ./mvnw clean verify
 ```
 
-**Zuletzt grün am 03.10.2026 – 483 Fälle in 34 Klassen** (S9 Paket 1 mit Spring Boot 4.1.1 und
+**Zuletzt grün am 03.11.2026 – 590 Fälle in 37 Klassen** (Springer; zugleich der erste Lauf über alle
+Änderungen seit dem 03.10.2026 – Namensbestätigung, A18, A15, Restkontingent, Durchmischung,
+Erfassungsberechtigung, CORS, Gast absagen, Entfernen abgesagter Termine).
+
+**Davor grün am 03.10.2026 – 483 Fälle in 34 Klassen** (S9 Paket 1 mit Spring Boot 4.1.1 und
 den beiden Overrides, 0 Fehlschläge, 0 Fehler, nichts übersprungen). Verlauf: 148/16 (22.08.),
 184 (23.08.), 244/22 (29.08.), 300/25 und 331/26 (S4, 30./31.08.), 385/29 (S5, 06.09.), 411/30
 (S6, 12.09.), 431/31 und 434/31 (S7 samt Nachtrag, 13.09.), 483/34 (S8, 15.09.), **483/34
 (S9 Paket 1, 03.10.)**.
+
+**Erwartet nach dem Springer (03.11.2026): 590 Fälle in 37 Klassen** – nachgezählt (571 + 19):
+`TeamverfahrenTests` +3 (jetzt 19), neue `TeamrechnerTests` 9, `TeamGeneratorTests` +4 (jetzt 59; zwei
+Auswechselfälle durch sechs Springerfälle ersetzt), `MigrationTests` +2, `KonfigurationControllerTests`
++1; umgeschrieben ohne Zahländerung `ErgebnisControllerTests`, `ManuelleGenerierungTests`,
+`ConfigServiceTests`. **Teilweise ausgeführt:** Die 28 Fälle der beiden kontextfreien Klassen liefen
+mit JDK 21 gegen Stubs, 28 grün; Mutationsproben (Bewertung = Summe: 4 rot; Startteam vertauscht: 1
+rot). `V001`–`V017` und das geänderte SQL (Bilanz, Zuteilungen, Springer-Index) liefen gegen PGlite.
+Alles mit Spring-Kontext ist **nicht übersetzt und nicht ausgeführt**.
+**Erster Lauf bei Denis (03.11.2026): 590 Fälle in 37 Klassen, 589 grün, einer rot** –
+`ConfigServiceTests#seedDefaultsWerdenVollstaendigGelesen` erwartete `version = 0`; `V017` zählt die
+Seed-Zeile beim Umschreiben auf 1 fort. Die Erwartung ist nachgezogen (siehe 6.3), **der Wiederholungslauf
+am 03.11.2026 war grün: 590/37**. Zahlen und Klassen stimmten mit der Vorabzählung exakt überein.
 
 **Erwartet nach der Namensbestätigung (04.10.2026): 493 Fälle in 35 Klassen** – vorab gezählt:
 sechs Fälle aus `ZugangsdatenControllerTests` verlegt, 16 in der neuen `AdminNamensaenderungTests`.
@@ -1174,12 +1242,12 @@ die *geschätzten* Zahlen dagegen nie: 377 statt 385 in S5, und für S8 nannte d
 statt der tatsächlichen 483. **Deshalb wird unmittelbar vor dem Lauf gezählt, nicht
 fortgeschrieben.**
 
-**Sieben Klassen laufen ohne Spring-Kontext** – `SessionAuthFilterTests`,
+**Acht Klassen laufen ohne Spring-Kontext** – `SessionAuthFilterTests`,
 `SessionCookieFactoryTests`, `BruteForceServiceTests`, `TeamverfahrenTests`, seit S8
 `PushVerschluesselungTests`, dazu `MailConfigTests` (seit 29.08.2026, bis zum 24.10.2026 hier nicht
-genannt) und seit dem 24.10.2026 `CorsConfigTests`. Sie brauchen zusammen unter einer Sekunde und
-machen die Gegenprobe belastbar: **Sind alle sieben grün und der Rest rot, liegt ein Kontextfehler
-vor und kein Anwendungsfehler.**
+genannt), seit dem 24.10.2026 `CorsConfigTests` und seit dem 03.11.2026 `TeamrechnerTests`. Sie
+brauchen zusammen wenige Sekunden und machen die Gegenprobe belastbar: **Sind alle acht grün und der
+Rest rot, liegt ein Kontextfehler vor und kein Anwendungsfehler.**
 
 **`SecurityConfigTests` bleibt bei 26 Fällen**, obwohl mit jedem Meilenstein Pfade dazukommen: Sie
 stehen als Zusicherungen *innerhalb* der bestehenden Bündelfälle. **Wer die Fallzahl als Mass für
@@ -1215,7 +1283,7 @@ und die Prüfschritte beim Nachziehen stehen in ihrer `README.md`.
 
 ## 7. Nächste Schritte
 
-0. **Testlauf abschliessen** (22.10.2026): `./mvnw clean verify` (erwartet 554/36 seit der CORS-Prüfung vom 24.10.2026), die A18- und
+0. **Testlauf abschliessen** – **erledigt am 03.11.2026 (590/37 grün, `V017` gegen PostgreSQL 17)**. Offen bleibt daraus nur die Handprüfung: Ursprünglich (22.10.2026) hiess der Punkt: `./mvnw clean verify`, die A18- und
    A15-Änderung committen (**Reihenfolge nach `AGENT_SERVER.md`: Vertrag, Code, Anleitungen – alles
    ungepusht; `V016` läuft erstmals gegen PostgreSQL 17**) und für die Namensbestätigung eine Handprüfung mit echter Mail über Bruno – Umlaute und Name in der Nachricht,
    `202`/`204`, danach `ADMIN_NAME` in der `.env` und `adminName` in den Bruno-Umgebungen nachziehen.
@@ -1275,8 +1343,13 @@ und die Prüfschritte beim Nachziehen stehen in ihrer `README.md`.
   und nicht der Nachvollziehbarkeit von Rechnungen.
 - **`configs.app_config.anz_guests` gilt im manuellen Lauf nicht.** Der Wert begrenzt gleichzeitige
   Gastsitzungen, nicht Mitspieler auf dem Platz; die Summe begrenzt `max_teilnehmer`.
-- **Ein Wechsel von `auswechsel_modus` ändert den angezeigten Auswechselspieler bestehender
-  Läufe.** Die Einteilung bleibt unberührt (A20b führt den Modus als Anzeigeregel).
+- **Läufe von vor `V017` zeigen keinen Springer** (03.11.2026), auch bei ungerader Zahl; ihr damaliger
+  Auswechselspieler zählt in der Bilanz weiter mit. Ein Wechsel von `auswechsel_modus` wirkt nur auf
+  künftige Läufe.
+- **Die Handprüfung des Springers** gehört zu den Handprüflisten: ungerade Zahl zusagen lassen, Bruno
+  „Teams generieren" (Springer genannt, im grösseren Team markiert), die SQL-Gegenprobe aus der
+  Beschreibung (Startteam ohne Springer nicht stärker), Ergebnis erfassen und die Bilanz des Springers
+  prüfen (unverändert).
 - **Die Zeitzone der Datenbanksitzung ist nicht gesetzt.** Ohne Folge, solange alle Zeitvergleiche
   über die `Clock`-Bean laufen und jeden Zeitpunkt als Parameter übergeben – S5, S7 und S8 halten
   das durchgängig ein. Sobald eine Abfrage `current_date` oder `current_time` benutzt, gehört

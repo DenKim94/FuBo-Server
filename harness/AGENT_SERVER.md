@@ -12,7 +12,7 @@
 > dort noch aus.** Am 04.10.2026 um die Bestätigung der Namensänderung per E-Mail-PIN (A22)
 > ergänzt, am 18.10.2026 um den automatischen Wechsel auf `ABGESAGT` bei unterschrittener
 > Mindestzahl (A18); am 22.10.2026 um die Teilnahmeprüfung am Team-Generator und die Trennung von
-> Veraltet-Kennzeichen und Kontingent (A15, `V016`) sowie um das Restkontingent in der Termin-Einzelansicht und um die Durchmischung neuer Läufe (Band um das Optimum, A15) sowie um die Berechtigung zum Erfassen eines Ergebnisses (A21) erweitert. Jede Regel steht hier mit dem *einen* Grund, der sie trägt – wer
+> Veraltet-Kennzeichen und Kontingent (A15, `V016`) sowie um das Restkontingent in der Termin-Einzelansicht und um die Durchmischung neuer Läufe (Band um das Optimum, A15) sowie um die Berechtigung zum Erfassen eines Ergebnisses (A21) erweitert; am 03.11.2026 um den Springer (A20b, `V017`) und den Ausgleich je Kategorie (Engpass vor Summe, A20a). Jede Regel steht hier mit dem *einen* Grund, der sie trägt – wer
 > sie ändern will, muss den Grund entkräften, nicht die Zeile löschen. **Vorfälle, Daten und
 > ausführliche Herleitungen stehen nicht mehr hier**, sondern in `CONTEXT_HANDOFF_SERVER.md`
 > (6.2 Festlegungen, 6.3 Fallstricke), in `harness/tmp/S<n>_UMSETZUNG.md` und in
@@ -142,14 +142,19 @@ Ergänzungen des Entwicklers sind als *Ergänzung* gekennzeichnet.
     guten, und bei einem eindeutigen Optimum lieferte jeder Lauf dieselben Teams – der Zweck von
     `anz_team_generator > 1` war damit leer.
 - **A20a** Teamgrössen unterscheiden sich um höchstens eins; Ausgleich über die Teamstärke
-  (Optimierung auf **Summen**), das Team in Unterzahl bekommt tendenziell die stärkeren Spieler;
-  kein Torwart-Zwang.
-- **A20b** Bei ungerader Zahl weist das grössere Team einen **Auswechselspieler** aus. Modus in
-  `configs.app_config.auswechsel_modus` (`V009`), im Vertrag `auswechselModus`:
-  `SCHWAECHSTER_UEBERZAHL` (Vorgabe) oder `ZULETZT_ANGEMELDET`. **Die Einstellung ändert die
-  Einteilung nicht** – A20a bleibt unberührt. „Schwächster" meint den **Skill-Snapshot des Laufs**
-  (sonst wechselte er rückwirkend bei jeder Skillkorrektur); „zuletzt angemeldet" den **Zeitpunkt
-  der Zusage**, nicht die Warteschlangenposition.
+  (Optimierung auf **Summen**), kein Torwart-Zwang. **Seit dem 03.11.2026 für jede Kategorie:** Zuerst
+  zählt die grösste gewichtete Einzelabweichung einer Kategorie (Engpass), erst dann die Summe
+  (Einzelheiten unter „Teamgenerator"). Der frühere Satz „das Team in Unterzahl bekommt tendenziell die
+  stärkeren Spieler" entfällt: Bei ungerader Zahl werden die Spieler ohne den Springer zu zwei gleich
+  grossen Teams ausgeglichen.
+- **A20b** Bei ungerader Zahl gibt es einen **Springer** (seit 03.11.2026, vorher Auswechselspieler).
+  Modus in `configs.app_config.auswechsel_modus`, im Vertrag `auswechselModus`: `ZUFAELLIG`
+  (Vorgabe, `V017`) oder `ZULETZT_ANGEMELDET`; `SCHWAECHSTER_UEBERZAHL` gibt es nicht mehr. Der
+  Springer wechselt zum Gegner, sobald sein aktuelles Team ein Tor erzielt; trifft das Team in
+  Unterzahl, bleibt er – eine Spielregel auf dem Platz, der Server verfolgt keine Tore. **Die Einstellung
+  ändert die Einteilung**, weil die Teams ohne den Springer gerechnet werden; der Springer wird deshalb
+  mit dem Lauf gespeichert (`team_zuteilung.springer`). Regeln unter „Teamgenerator", Abschnitt
+  „Springer".
 - Zwei austauschbare Algorithmen (`configs.algorithm_type`: `EXHAUSTIV`, `HEURISTIK`) mit
   identischer Zielfunktion und Datengrundlage.
 - **A24** Der Admin kann die Teamgenerierung auch **manuell und unabhängig vom Termin** ausführen
@@ -188,8 +193,12 @@ Ergänzungen des Entwicklers sind als *Ergänzung* gekennzeichnet.
     hat keine beteiligten Spieler und ist abzulehnen, nicht still zu speichern.
   - **Gäste haben keine Bilanz** – ein Zähler an `gast_slot` summierte verschiedene Personen, weil
     der Platz wiederverwendet wird.
-  - **Der Auswechselspieler zählt mit** (er hat gespielt); **`deutlich` ändert nichts** (Höhe, nicht
-    Ausgang); **A16 bleibt unberührt** – die Bilanz ist Statistik, kein Skillwert.
+  - **Der Springer zählt nicht** (seit 03.11.2026): Er wechselt nach jedem Tor seines Teams die Seite
+    und steht am Ende bei dem Team, das das letzte Tor kassiert hat – Sieg oder Niederlage wären eine
+    Behauptung ohne Grundlage. `NOT tz.springer` steht in `BilanzRepository` auf **beiden** Ebenen
+    (Betroffene und Zählung). Für Läufe von vor `V017` ist die Spalte `false`; der damalige
+    Auswechselspieler zählt dort weiter mit. **`deutlich` ändert nichts** (Höhe, nicht Ausgang);
+    **A16 bleibt unberührt** – die Bilanz ist Statistik, kein Skillwert.
   - **Erfasst wird nur für einen `ABGESCHLOSSEN`-Termin**, und dafür gibt es einen eigenen Code
     `TERMIN_NICHT_ABGESCHLOSSEN`. **`TERMIN_GESCHLOSSEN` wird nicht wiederverwendet:** Es bedeutet
     „nimmt keine Änderung mehr an" – hier ist die Polarität umgekehrt, der Termin ist *noch nicht*
@@ -200,7 +209,7 @@ Ergänzungen des Entwicklers sind als *Ergänzung* gekennzeichnet.
     Einteilung bekommen und sinken die Zusagen später unter die Grenze, wird er trotzdem `ABGESAGT`;
     die Einteilung bleibt stehen, ein Ergebnis lässt sich nicht erfassen.
   - **Erfassen dürfen der Admin und die Eingeteilten der aktuellen Einteilung (22.10.2026)** –
-    Team A, Team B und der Auswechselspieler, `USER` wie `GAST`. Der Endpunkt liegt weiter
+    Team A, Team B und der Springer, `USER` wie `GAST`. Der Endpunkt liegt weiter
     ausserhalb von `/admin/`: „Der erste Eintrag gilt" ergibt nur einen Sinn, wenn mehrere es
     versuchen dürfen. Vorher durfte es jede angemeldete Sitzung, auch ein Gast, der nicht
     mitgespielt hat; weil der erste Eintrag gilt und nur der Admin korrigiert, setzte ein
@@ -227,7 +236,7 @@ Ergänzungen des Entwicklers sind als *Ergänzung* gekennzeichnet.
       ist eine Berechtigung, kein Zustand, der sich ändert; und anders als bei `KEINE_ZUSAGE`
       hilft hier keine Zusage – die Oberfläche soll nicht dazu raten.
     - **Kein neues Feld in `TerminDetails`.** Der Client leitet die Berechtigung aus `teams` ab:
-      Eingeteilt ist, wer in `teams.teamA`/`teams.teamB` steht (der Auswechselspieler ist dort
+      Eingeteilt ist, wer in `teams.teamA`/`teams.teamB` steht (der Springer ist dort
       markiert, nicht daneben). Das ist im Vertrag zugesichert; die Kombination aus `anzeigeName`
       und `gast` ist je Termin eindeutig, weil Profilnamen und Gastnamen je für sich eindeutig
       sind und ein Gast sich nicht unter einem Profilnamen anmelden kann (`GastService`). Fiele
@@ -1186,10 +1195,19 @@ BCrypt-Hash in einer Migration wäre ein Geheimnis in der unveränderlichen Git-
 
 Zielfunktion für beide Verfahren identisch:
 
-- Primär: `cost = Σ_kat gewicht_kat · |Summe_A(kat) − Summe_B(kat)|` über alle aktiven Kategorien;
-  vier Feldkategorien mit `gewicht = 1.00`, **Torwart mit `0.30`** (Wertebereich 0–3).
-- Sekundär (Tie-Break): minimiere `|Gesamtstärke_A − Gesamtstärke_B|`. **Er entscheidet nur noch in
-  der `HEURISTIK`, was als bestes Ergebnis gemerkt wird; die Auswahl in `EXHAUSTIV` kennt ihn nicht mehr**
+- **Lexikografisch (seit 03.11.2026, A20a):** Je Kategorie `abw_kat = gewicht_kat · |Summe_A(kat) −
+  Summe_B(kat)|` über alle aktiven Kategorien; vier Feldkategorien mit `gewicht = 1.00`, **Torwart mit
+  `0.30`** (Wertebereich 0–3). **Zuerst** zählt der Engpass `max_kat abw_kat`, **dann** die Summe
+  `Σ_kat abw_kat`. Die Summe allein liess zu, dass eine Kategorie die ganze Abweichung trägt; an den 30
+  realen Profilen lag bei zehn Spielern in 10 % der gezogenen Einteilungen eine Kategorie um drei Punkte
+  auseinander, seither in keiner.
+- **Eine Zahl für beide Kriterien:** `Zielfunktion#bewertung = engpass · faktor + summe`, mit
+  `faktor = Σ_kat gewicht_kat · Gesamtsumme_kat + Band + 1`. Damit ist der Vergleich zweier
+  Bewertungen genau der lexikografische, und beide Verfahren behalten Optimum, Band, Reservoir und
+  Kandidatenliste unverändert. **Gespeichert wird die Bewertung nie** (bis knapp 10⁹, ohne
+  anschauliche Bedeutung); `differenz_teamstaerke` trägt die Summe.
+- Danach (Tie-Break): minimiere `|Gesamtstärke_A − Gesamtstärke_B|`. **Er entscheidet nur in der
+  `HEURISTIK`, was als bestes Ergebnis gemerkt wird; die Auswahl in `EXHAUSTIV` kennt ihn nicht**
   (alle Aufteilungen im Band sind gleichberechtigt).
 - Optimierung auf **Summen**, nicht Durchschnitte; Teamgrössen-Differenz höchstens 1.
 - **Gewichte aus `skill_kategorie.gewicht` lesen, nie als Konstante führen** – eine `0.30` im Code
@@ -1197,14 +1215,15 @@ Zielfunktion für beide Verfahren identisch:
 - **Ganzzahlig rechnen**, Gewichte in Hundertsteln (`1.00` → `100`, `0.30` → `30`) – `0.30` ist in
   `double` nicht exakt darstellbar, zwei gleich teure Aufteilungen unterschieden sich im letzten
   Bit, und eine fiele aus der Menge der Aufteilungen, aus der der Seed wählt (Optimum und Band).
-- **`team_generierung.differenz_teamstaerke` trägt die Primärkosten, nicht den Tie-Break.** Also
-  `Σ_kat gewicht_kat · |Summe_A(kat) − Summe_B(kat)|`, in `NUMERIC(6,2)` (intern Hundertstel,
-  beim Schreiben durch 100 geteilt); `0` heisst perfekt ausgeglichen. **Seit der Durchmischung ist
-  der Wert die Kosten der *gewählten* Einteilung, nicht zwingend das Minimum.** **Der Spaltenname legt das
-  Gegenteil nahe und bleibt trotzdem:** `|Gesamtstärke_A − Gesamtstärke_B|` kann `0` sein,
-  während die Teams kategorieweise weit auseinanderliegen – gespeichert würde die Zahl, die den
-  Fehler verdeckt. Und nur die Primärkosten erlauben den Vergleich zweier Läufe derselben
-  Aufstellung, wofür es `anz_team_generator > 1` gibt.
+- **`team_generierung.differenz_teamstaerke` trägt die Summe, nicht den Tie-Break und nicht die
+  Bewertung.** Also `Σ_kat gewicht_kat · |Summe_A(kat) − Summe_B(kat)|`, in `NUMERIC(6,2)` (intern
+  Hundertstel, beim Schreiben durch 100 geteilt); `0` heisst perfekt ausgeglichen; bei ungerader Zahl
+  ohne den Springer. **Seit der Durchmischung ist der Wert die Summe der *gewählten* Einteilung, und seit
+  dem Engpass nicht einmal mehr die kleinstmögliche Summe** – gewählt wird nach dem Engpass zuerst.
+  **Der Spaltenname legt das Gegenteil nahe und bleibt trotzdem:** `|Gesamtstärke_A − Gesamtstärke_B|`
+  kann `0` sein, während die Teams kategorieweise weit auseinanderliegen – gespeichert würde die Zahl,
+  die den Fehler verdeckt. Und nur die Summe erlaubt den Vergleich zweier Läufe derselben Aufstellung,
+  wofür es `anz_team_generator > 1` gibt.
 
 `EXHAUSTIV` (Default, exakt): vollständige Enumeration aller Splits der Grösse `⌊n/2⌋`, bestimmt
 das globale Optimum, bei bis zu 22 Teilnehmern beherrschbar (`C(22,11) ≈ 705.000`), skaliert nicht
@@ -1223,6 +1242,11 @@ nach derselben Bandregel unter den besten Ergebnissen der Läufe und ihren Einze
 Tausch, nie Verschiebung** – ein Tausch lässt beide Teamgrössen unverändert, damit hält A20a
 ohne eigene Prüfung.
 
+- **Angenommen wird nach der Summe, gemerkt und ausgewählt nach der Bewertung (03.11.2026).** Wer nach
+  der Bewertung annimmt, lässt die Temperatur gegen Sprünge um den Engpass-Faktor laufen – jede
+  Verschlechterung des Engpasses wäre unannehmbar, und die Suche friert ein: gemessen 3 von 60 Läufen
+  (16 und 20 Spieler) neben dem Optimum, mit der Summe 0 von 105 (16, 20, 22). **Wer das umstellt, misst
+  nach** (`harness/tmp/springer/HERLEITUNG.md`).
 - **Iterationszahl, Neustarts und Abkühlfaktor sind gemessen, nicht gesetzt.** Gebaut sind acht
   unabhängige Läufe, die sich das Budget teilen, mit einem Abkühlfaktor, der aus der Schrittzahl
   je Lauf abgeleitet wird. Ein einzelner Lauf mit festem Faktor `0.9995` – der naheliegende
@@ -1245,7 +1269,9 @@ Ein neuer Lauf soll die Teams neu mischen und trotzdem ausgeglichen bleiben. Die
 Grund:
 
 - **Auswahl:** Der Seed zieht gleichverteilt unter allen Aufteilungen mit
-  `Kosten ≤ Optimum + Zielfunktion#durchmischungsband()`. Das Band ist **ein Punkt der am höchsten
+  `Bewertung ≤ Optimum + Zielfunktion#durchmischungsband()` – seit dem 03.11.2026 heisst das: **gleicher
+  Engpass wie das Optimum** und eine Summe höchstens ein Band darüber. Kein Band reicht über einen
+  Engpass hinweg (`faktor`), keine gezogene Einteilung hat eine schlechtere Kategorie als das Optimum. Das Band ist **ein Punkt der am höchsten
   gewichteten Kategorie** (`BAND_PUNKTE = 1`, Konstante im Code, **ein Regler**). Es folgt aus den
   Gewichten und ist keine zweite Zahl neben ihnen. Wer es ändert, misst nach: Bei `+1` liegen in
   zehn Läufen im Mittel nur 2,5 bis 2,9 verschiedene Einteilungen vor, bei `+3` 3,7 bis 5,9, dann
@@ -1301,27 +1327,49 @@ Grund:
   eingeschlossen. Das Kontingent selbst läuft über `kontingent_version`; Status, `teams_fixiert`
   und beide Zähler kommen aus *einer* Abfrage.
 - **Der Termin-Lauf liest sein eigenes Ergebnis zurück, statt die Antwort aus der Rechnung zu
-  bauen.** Der Auswechselspieler wird nirgends gespeichert (unten), also zweimal bestimmt –
-  weichen Lauf und Ableitung voneinander ab, fällt es sofort auf und nicht erst beim nächsten
-  Öffnen des Termins.
-- **Die Zuteilungen werden in Laufreihenfolge geschrieben** (erst Team A, dann Team B, je in
-  der Reihenfolge der Aufteilung) und über `ORDER BY id` wieder gelesen. **Das ist keine
-  Kosmetik:** Bei Gleichstand entscheidet der Seed über die Position in der Kandidatenliste des
-  Auswechselspielers – nur bei gleicher Ordnung fällt die Wahl genauso aus.
-- **Der Auswechselspieler wird nicht gespeichert, sondern beim Lesen erneut bestimmt** – aus
-  Teamgrössen, `score_snapshot`, `gemeldet_am`, dem gespeicherten Seed und dem *heute*
-  eingestellten Modus. Eine Spalte kostete die Migration `V012` und nähme S5 die
-  Migrationsfreiheit. **Die Wahl läuft mit einem frischen `new Random(seed)`**, nicht mit dem
-  Generator des Verfahrens: Dessen Zustand ist ohne Wiederholung des ganzen Laufs nicht
-  rekonstruierbar. Folge, die man kennen muss: Ändert der Admin `auswechsel_modus`, kann sich
-  der angezeigte Auswechselspieler eines bestehenden Laufs ändern – die *Einteilung* bleibt
-  unberührt (A20b).
+  bauen.** So sieht, wer gerade generiert hat, Byte für Byte dasselbe wie der, der den Termin danach
+  öffnet – und ein Fehler beim Schreiben fällt sofort auf.
+- **Die Zuteilungen werden in Laufreihenfolge geschrieben** (erst Team A, dann Team B, je in der
+  Reihenfolge der Aufteilung; der Springer als letzter seines Startteams) und über `ORDER BY id`
+  wieder gelesen. Seit dem 03.11.2026 hält das nur noch die Antwort stabil – **eine Bedeutung trägt die
+  Position nicht mehr**; wer Springer ist, sagt die Spalte.
+- **Der Springer wird gespeichert** (`team_zuteilung.springer`, `V017`), nicht beim Lesen bestimmt. Bis
+  zum 03.11.2026 wurde der Auswechselspieler beim Lesen mit dem *heute* eingestellten Modus neu
+  bestimmt; das ging, solange die Wahl die Einteilung nicht beeinflusste. Ein neu bestimmter Springer
+  passte nach einem Moduswechsel nicht mehr zu Teams, die ohne ihn gerechnet wurden. **Läufe von vor
+  `V017` zeigen keinen Springer** – er wird bewusst nicht nachträglich geraten.
 - **Die gewichtete Gesamtstärke wird je Lauf einmal gerechnet** und wandert im Ergebnis mit:
-  Snake-Draft, `score_snapshot` und Auswechselspieler benutzen dieselbe Zahl. Drei Rechnungen
-  wären drei Gelegenheiten, „schwächster Spieler" verschieden zu meinen.
+  Snake-Draft, `score_snapshot` und das Startteam des Springers benutzen dieselbe Zahl. Drei Rechnungen
+  wären drei Gelegenheiten, „schwächer" verschieden zu meinen.
 - **Die Umrechnung Hundertstel → `NUMERIC(6,2)` steht genau an einer Stelle** (`Teamergebnis`).
   Sie liegt bewusst in `domain`: Sonst müsste ein DTO auf die Service-Schicht zugreifen, um
   seinen eigenen Wert zu bilden.
+
+### Springer (A20b, 03.11.2026)
+
+Jede Zeile mit ihrem Grund:
+
+- **Erst der Springer, dann die Teams** (`Teamrechner#rechne`). Er spielt für beide Seiten und gehört in
+  keine Balance; die übrigen `n − 1` teilt das Verfahren in zwei gleich grosse Teams. Die Verfahren
+  bekommen damit am Termin und im manuellen Lauf nur noch gerade Zahlen, bleiben aber für jede Grösse
+  korrekt – sie sollen nicht wissen müssen, wer sie aufruft.
+- **Kandidaten sind alle Teilnehmer der Aufstellung**, Spieler wie Gäste (`SpringerErmittlung`). Die
+  Warteschlange spielt nicht. `ZUFAELLIG` zieht gleichverteilt, auch den Stärksten;
+  `ZULETZT_ANGEMELDET` nimmt die späteste Zusage, bei Gleichstand entscheidet der Seed.
+- **Ohne Meldezeit (A24) fällt `ZULETZT_ANGEMELDET` auf `ZUFAELLIG` zurück** und sagt es
+  (`verwendeterModus`).
+- **Er beginnt beim schwächeren Team** nach gewichteter Gesamtstärke ohne ihn, bei Gleichstand per Seed –
+  die Überzahl gleicht dort mehr aus. Das ist sein „ursprüngliches Überzahl-Team".
+- **Eigener Zufallsstrom:** `new Random(seed · 0x9E3779B97F4A7C15)`. Mit demselben Seed wie das Verfahren
+  liefen zwei Ströme mit derselben Zahlenfolge.
+- **Der Ausschluss der bisherigen Einteilung gilt nur mit demselben Springer.** Mit einem anderen stehen
+  andere Menschen zur Aufteilung, und jede Einteilung ist eine neue. `BisherigeAufteilung` trägt dafür
+  den bisherigen Springer; die Verfahren lesen ihn nicht.
+- **Gespeichert, höchstens einer je Lauf** (`uq_team_zuteilung_springer`), als gewöhnliche Zuteilung in
+  seinem Startteam. Er ist eingeteilt (A21: darf erfassen), wird aber nicht gewertet (Bilanz).
+- **Im Vertrag bleiben die Namen** `auswechselspieler` und `auswechselModus` (Entscheidung vom
+  03.11.2026): Ein Umbenennen wäre brechend, ohne dem Client etwas zu sagen. Brechend ist allein der
+  Enumwert.
 
 ---
 
@@ -1398,8 +1446,8 @@ Sicherheitsmerkmal** – Missbrauch verkürzt nur die eigene Sitzung.
 `/beenden`) – nach einem Seitenneuladen zwischen PIN-Eingabe und Namenswahl muss das Frontend
 seine Stufe erfahren, und einen angefangenen Login abzubrechen muss möglich sein.
 
-**Datenschutz in DTOs:** Team-Antworten für USER/GAST enthalten nur Name, Team (A/B) und
-Auswechselspieler-Flag.
+**Datenschutz in DTOs:** Team-Antworten für USER/GAST enthalten nur Name, Team (A/B) und das
+Springer-Kennzeichen (`auswechselspieler`).
 
 ---
 
