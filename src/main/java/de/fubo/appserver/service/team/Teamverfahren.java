@@ -26,8 +26,9 @@ public interface Teamverfahren {
      * <h2>Gewaehlt wird aus einem Band, nicht das Optimum</h2>
      * Die Teams sollen bei jedem Lauf neu durchmischt werden und trotzdem ausgeglichen sein
      * (Aenderung vom 22.10.2026). Das Verfahren bestimmt deshalb das Optimum und waehlt per Seed
-     * <b>zufaellig unter allen Aufteilungen, die hoechstens
-     * {@link Zielfunktion#durchmischungsband()} schlechter sind</b>. Gibt es neben der
+     * <b>zufaellig unter allen Aufteilungen, deren {@link Zielfunktion#bewertung} hoechstens
+     * {@link Zielfunktion#durchmischungsband()} schlechter ist</b> - seit dem 03.11.2026 heisst
+     * das: gleicher Engpass wie das Optimum, Summe hoechstens ein Band darueber. Gibt es neben der
      * {@code bisherige} keine weitere im Band, weicht es auf die beste Alternative aus -
      * "neu durchmischt" geht vor "noch ein Hundertstel besser".
      *
@@ -45,7 +46,8 @@ public interface Teamverfahren {
      *                    (erster Lauf, anderer Teilnehmerkreis, manueller Lauf). Bei zwei
      *                    Teilnehmern gibt es nur eine Aufteilung; sie wird dann trotzdem
      *                    geliefert
-     * @return die Einteilung samt Kosten und tatsaechlich verwendetem Verfahren
+     * @return die Einteilung samt Kosten ({@link Zielfunktion#kosten}, nicht die Bewertung) und
+     *         tatsaechlich verwendetem Verfahren
      */
     Teamaufteilung berechne(Aufstellung aufstellung, long seed, BisherigeAufteilung bisherige);
 

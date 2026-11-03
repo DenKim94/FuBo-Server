@@ -9,14 +9,37 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * Die Zielfunktion beider Teamverfahren ({@code S5_ALGORITHMUS.md}, Abschnitt 3).
+ * Die Zielfunktion beider Teamverfahren ({@code S5_ALGORITHMUS.md}, Abschnitt 3; seit dem
+ * 03.11.2026 lexikografisch).
  *
  * <pre>
- * cost = SUMME_kat  gewicht_kat * |Summe_A(kat) - Summe_B(kat)|
+ * abweichung_kat = gewicht_kat * |Summe_A(kat) - Summe_B(kat)|
+ * engpass        = MAX_kat   abweichung_kat        (zuerst)
+ * kosten         = SUMME_kat abweichung_kat        (dann)
  * </pre>
  *
- * Sekundaer, nur bei Gleichstand: {@code |Gesamtstaerke_A - Gesamtstaerke_B|}, ebenfalls
- * gewichtet summiert.
+ * Tertiaer, nur in {@code HEURISTIK} beim Merken des Bestwerts:
+ * {@code |Gesamtstaerke_A - Gesamtstaerke_B|}, ebenfalls gewichtet summiert.
+ *
+ * <h2>Warum der Engpass vor der Summe steht (03.11.2026)</h2>
+ * Die Anforderung lautet, jede Kategorie moeglichst auszugleichen. Die Summe allein laesst
+ * zu, dass eine Kategorie die ganze Abweichung traegt: Drei Punkte im Angriff kosten dort
+ * dasselbe wie je ein Punkt in drei Kategorien. Gemessen an den 30 realen Profilen lag bei
+ * zehn Spielern in 10 % der gezogenen Einteilungen eine Kategorie um drei Punkte
+ * auseinander; mit dem Engpass zuerst in keiner. Die Summe bleibt das zweite Kriterium - ohne
+ * sie waeren alle Aufteilungen mit gleichem Engpass gleich gut, auch eine, die in allen
+ * uebrigen Kategorien schlechter ist. Verworfen: quadrierte Abweichungen (bestraft
+ * Ungleichgewichte nur staerker, schliesst sie nicht aus, und das Band verloere seine
+ * Einheit "Skillpunkt").
+ *
+ * <h2>Eine Zahl fuer zwei Kriterien</h2>
+ * {@link #bewertung} fasst beide in einen {@code long}: {@code engpass * faktor + kosten}, mit
+ * einem {@code faktor}, der groesser ist als jede moegliche Summe plus Band. <b>Damit ist der
+ * Vergleich zweier Bewertungen exakt der lexikografische Vergleich</b>, und beide Verfahren
+ * behalten ihre Mechanik (Optimum, Band, Reservoir, Kandidatenliste) unveraendert - nur die
+ * Zahl, die sie vergleichen, ist eine andere. Gespeichert wird sie nicht: Sie ist bei 24
+ * Spielern bis knapp 10^9 gross und hat keine anschauliche Bedeutung.
+ * {@code team_generierung.differenz_teamstaerke} traegt weiter {@link #kosten}.
  *
  * <h2>Eine Klasse, nicht zwei Kopien</h2>
  * {@code EXHAUSTIV} und {@code HEURISTIK} rechnen ueber dieselbe Instanz. <b>Nur so traegt der
@@ -59,6 +82,18 @@ public final class Zielfunktion {
      * 1,3 bis 1,6 Punkten gegenueber dem Optimum (Messung in {@code CONTEXT_HANDOFF_SERVER.md}).
      */
     private static final int BAND_PUNKTE = 1;
+
+    /**
+     * Multiplikator des Engpasses in {@link #bewertung}: groesser als jede moegliche Summe
+     * zuzueglich Band.
+     *
+     * <p>Warum genau diese Grenze: Zwei Aufteilungen mit verschiedenem Engpass liegen damit
+     * mindestens {@code faktor} auseinander, und das ist mehr als jede Summe und mehr als das
+     * Band. Kein Band kann deshalb eine Aufteilung mit schlechterem Engpass einschliessen, und
+     * keine noch so kleine Summe macht einen schlechteren Engpass wett. Die groesste Summe ist
+     * {@code SUMME_kat gewicht_kat * gesamtsumme_kat} - dann steht ein Team bei null.
+     */
+    private final long faktor;
 
     /** {@code werte[spielerIndex][kategorieIndex]}, einmal aufgebaut. */
     private final int[][] werte;
@@ -112,6 +147,12 @@ public final class Zielfunktion {
                 gesamtsumme[k] += wert;
             }
         }
+
+        long hoechsteSumme = 0;
+        for (int k = 0; k < anzahlKategorien; k++) {
+            hoechsteSumme += (long) gewichte[k] * gesamtsumme[k];
+        }
+        this.faktor = hoechsteSumme + durchmischungsband() + 1;
     }
 
     /**
@@ -189,8 +230,14 @@ public final class Zielfunktion {
     }
 
     /**
-     * Die Primaerkosten einer Aufteilung, in Hundertsteln. {@code 0} heisst perfekt
+     * Die Summe der gewichteten Kategorieabweichungen einer Aufteilung, in Hundertsteln -
+     * das <b>zweite</b> Kriterium nach {@link #engpass}. {@code 0} heisst perfekt
      * ausgeglichen, groesser heisst schlechter.
+     *
+     * <p><b>Annehmen eines Tauschs in {@code HEURISTIK} richtet sich nach diesem Wert</b>, nicht
+     * nach {@link #bewertung}: Deren Spruenge um {@code faktor} liessen die Temperatur nie
+     * wirken, und die Suche fror ein (gemessen 03.11.2026: 3 von 60 Laeufen verfehlten das
+     * Optimum, mit der Summe 0 von 105).
      *
      * <p>{@code Summe_B = gesamtsumme - Summe_A}, die Differenz also
      * {@code |2 * Summe_A - gesamtsumme|}. Das spart den zweiten Puffer und ist dieselbe Zahl.
@@ -207,6 +254,39 @@ public final class Zielfunktion {
             kosten += (long) gewichte[k] * Math.abs(2 * summeA[k] - gesamtsumme[k]);
         }
         return kosten;
+    }
+
+    /**
+     * Die groesste gewichtete Abweichung einer einzelnen Kategorie, in Hundertsteln - das
+     * <b>erste</b> Kriterium.
+     *
+     * <p>Gewichtet wie die Summe: Ein Punkt Torwart zaehlt {@code 30}, ein Punkt Angriff
+     * {@code 100}. Der Torwart wird damit erst ab vier Punkten Differenz zum Engpass - bei
+     * einem Wertebereich von 0 bis 3 genau dann, wenn mehrere Torhueter auf einer Seite stehen.
+     *
+     * @param summeA Kategoriesummen des Teams A
+     */
+    public long engpass(long[] summeA) {
+        long engpass = 0;
+        for (int k = 0; k < anzahlKategorien; k++) {
+            engpass = Math.max(engpass,
+                    (long) gewichte[k] * Math.abs(2 * summeA[k] - gesamtsumme[k]));
+        }
+        return engpass;
+    }
+
+    /**
+     * Engpass und Summe in einer Zahl: <b>kleiner heisst besser, und der Vergleich zweier
+     * Werte ist der lexikografische Vergleich von (Engpass, Summe)</b>.
+     *
+     * <p>Diese Zahl vergleichen beide Verfahren bei der Auswahl, und gegen sie wird das Band
+     * gelegt: {@code bewertung <= optimum + durchmischungsband()} heisst <i>gleicher Engpass
+     * wie das Optimum und eine Summe hoechstens ein Band darueber</i> - siehe {@link #faktor}.
+     *
+     * @param summeA Kategoriesummen des Teams A
+     */
+    public long bewertung(long[] summeA) {
+        return engpass(summeA) * faktor + kosten(summeA);
     }
 
     /**
@@ -241,6 +321,11 @@ public final class Zielfunktion {
      * Band erlaubt also etwa <i>eine</i> Kategorie, die um einen Punkt schlechter ausgeglichen
      * ist als im Optimum, nicht mehr.
      *
+     * <p><b>Seit dem 03.11.2026 wirkt es auf die Summe, nicht auf den Engpass</b>: Gelegt wird
+     * es an {@link #bewertung}, und dort trennt {@link #faktor} verschiedene Engpaesse weiter
+     * als jedes Band. Im Band liegt also nur, was in keiner Kategorie weiter auseinanderliegt
+     * als die schlechteste Kategorie des Optimums.
+     *
      * <p>Beide Verfahren waehlen aus diesem Band; siehe {@link Teamverfahren}.
      */
     public long durchmischungsband() {
@@ -255,10 +340,10 @@ public final class Zielfunktion {
      * Die gewichtete Gesamtstaerke eines einzelnen Spielers, in Hundertsteln.
      *
      * <p>Gebraucht an drei Stellen: als Sortierschluessel des Snake-Drafts (5.1), als
-     * {@code score_snapshot} der Zuteilung (7.2) und als Kriterium des Auswechselspielers im
-     * Modus {@code SCHWAECHSTER_UEBERZAHL} (8.1). <b>Dieselbe Rechnung an drei Stellen heisst
-     * dieselbe Methode</b> - sonst waere "schwaechster Spieler" beim Draft etwas anderes als
-     * auf der Bank.
+     * {@code score_snapshot} der Zuteilung (7.2) und fuer das Startteam des Springers (seit
+     * 03.11.2026: er beginnt beim schwaecheren Team).
+     * <b>Dieselbe Rechnung an drei Stellen heisst dieselbe Methode</b> - sonst waere
+     * "schwaecher" beim Draft etwas anderes als bei der Wahl des Startteams.
      *
      * @param spielerIndex Position in der Aufstellung
      */

@@ -51,6 +51,15 @@ import java.util.Random;
  * </ol>
  * Nachgerechnet: <b>0 von 300 Seeds</b> verfehlen das Optimum desselben Datensatzes, und ebenso
  * 0 von 40 bei drei weiteren zufaellig erzeugten Aufstellungen.
+ *
+ * <h2>Engpass zuerst, aber nicht beim Annehmen (03.11.2026)</h2>
+ * Gemerkt und ausgewaehlt wird nach {@link Zielfunktion#bewertung} (erst der Engpass, dann
+ * die Summe), <b>angenommen</b> wird ein Tausch weiter nach {@link Zielfunktion#kosten}. Wer
+ * nach der Bewertung annimmt, laesst die Temperatur gegen Spruenge in der Groessenordnung des
+ * Engpass-Faktors laufen - jede Verschlechterung des Engpasses waere dann unannehmbar, und die
+ * Suche friert ein. Gemessen an den 30 realen Profilen (16, 20 und 22 Spieler): <b>mit der
+ * Bewertung verfehlten 3 von 60 Laeufen das Optimum, mit der Summe 0 von 105.</b> Die
+ * Konstanten unten blieben unveraendert.
  */
 @Component
 public class HeuristikVerfahren implements Teamverfahren {
@@ -112,7 +121,7 @@ public class HeuristikVerfahren implements Teamverfahren {
      * gesehene Ergebnis {@code b}. Kandidaten sind die besten Aufteilungen der
      * {@link #NEUSTARTE} unabhaengigen Laeufe <b>und alle, die sich von ihnen durch einen
      * Tausch unterscheiden</b>; gewaehlt wird zufaellig unter allen mit
-     * {@code kosten <= b + band}, <b>ohne die bisherige Aufteilung</b>. Die Laeufe enden in
+     * {@code bewertung <= b + band}, <b>ohne die bisherige Aufteilung</b>. Die Laeufe enden in
      * verschiedenen Becken und liefern die Streuung; die Nachbarn garantieren, dass es ausser der
      * bisherigen immer eine Alternative gibt. Ist keine im Band, gilt die beste Alternative.
      *
@@ -134,9 +143,8 @@ public class HeuristikVerfahren implements Teamverfahren {
         }
         Kandidat gewaehlt = waehle(zielfunktion, kandidaten, bisherige, n, zufall);
 
-        // Der Seed vergibt A und B - sonst stuende bei ungerader Zahl immer dieselbe Haelfte
-        // in Ueberzahl. Auf die Kosten wirkt das nicht: Sie sind ein Betrag und damit
-        // symmetrisch.
+        // Der Seed vergibt A und B - sonst hiesse dieselbe Haelfte Woche fuer Woche "Team A".
+        // Auf die Kosten wirkt das nicht: Sie sind ein Betrag und damit symmetrisch.
         boolean tauschen = zufall.nextBoolean();
         return new Teamaufteilung(
                 alsListe(tauschen ? gewaehlt.teamB : gewaehlt.teamA),
@@ -146,8 +154,8 @@ public class HeuristikVerfahren implements Teamverfahren {
     }
 
     /**
-     * Die Kosten des besten Ergebnisses der Suche - das, was bis zum 22.10.2026 das Ergebnis
-     * war.
+     * Die {@link Zielfunktion#bewertung} des besten Ergebnisses der Suche - das, was bis zum
+     * 22.10.2026 das Ergebnis war.
      *
      * <p>Paketsichtbar, weil der Vergleichstest daran misst, ob die Suche das Optimum findet:
      * {@link #berechne} liefert seither eine Aufteilung aus dem Band, und die Kosten einer
@@ -155,7 +163,7 @@ public class HeuristikVerfahren implements Teamverfahren {
      */
     long suchoptimum(Aufstellung aufstellung, long seed) {
         return suche(new Zielfunktion(aufstellung), aufstellung.groesse(), new Random(seed))
-                .gesamt().kosten;
+                .gesamt().bewertung;
     }
 
     /**
@@ -175,7 +183,8 @@ public class HeuristikVerfahren implements Teamverfahren {
             Bestwert dieserLauf = new Bestwert();
             einLauf(zielfunktion, n, zufall, jeLauf, abkuehlfaktor, dieserLauf);
             laeufe.add(dieserLauf);
-            gesamt.merke(dieserLauf.kosten, dieserLauf.zweitkosten, dieserLauf.teamA, dieserLauf.teamB);
+            gesamt.merke(dieserLauf.bewertung, dieserLauf.tieBreak,
+                    dieserLauf.teamA, dieserLauf.teamB);
         }
         return new Suche(gesamt, laeufe);
     }
@@ -183,16 +192,23 @@ public class HeuristikVerfahren implements Teamverfahren {
     private record Suche(Bestwert gesamt, List<Bestwert> laeufe) {
     }
 
-    /** Eine Aufteilung der Kandidatenmenge; beide Teams aufsteigend sortiert. */
+    /**
+     * Eine Aufteilung der Kandidatenmenge; beide Teams aufsteigend sortiert.
+     *
+     * <p>Zwei Zahlen: nach der {@code bewertung} wird gewaehlt, die {@code kosten} gehen in
+     * das Ergebnis und von dort nach {@code differenz_teamstaerke}.
+     */
     private static final class Kandidat {
 
         private final int[] teamA;
         private final int[] teamB;
+        private final long bewertung;
         private final long kosten;
 
-        Kandidat(int[] teamA, int[] teamB, long kosten) {
+        Kandidat(int[] teamA, int[] teamB, long bewertung, long kosten) {
             this.teamA = teamA;
             this.teamB = teamB;
+            this.bewertung = bewertung;
             this.kosten = kosten;
         }
     }
@@ -213,19 +229,20 @@ public class HeuristikVerfahren implements Teamverfahren {
 
         long[] summeA = zielfunktion.neuerPuffer();
         zielfunktion.summiere(a, a.length, summeA);
-        aufnehmen(ziel, a, b, zielfunktion.kosten(summeA));
+        aufnehmen(ziel, a, b, zielfunktion.bewertung(summeA), zielfunktion.kosten(summeA));
 
         for (int i = 0; i < a.length; i++) {
             for (int j = 0; j < b.length; j++) {
                 zielfunktion.verschiebe(summeA, a[i], -1);
                 zielfunktion.verschiebe(summeA, b[j], +1);
+                long bewertung = zielfunktion.bewertung(summeA);
                 long kosten = zielfunktion.kosten(summeA);
 
                 int[] neuA = a.clone();
                 int[] neuB = b.clone();
                 neuA[i] = b[j];
                 neuB[j] = a[i];
-                aufnehmen(ziel, neuA, neuB, kosten);
+                aufnehmen(ziel, neuA, neuB, bewertung, kosten);
 
                 zielfunktion.verschiebe(summeA, b[j], -1);
                 zielfunktion.verschiebe(summeA, a[i], +1);
@@ -233,12 +250,14 @@ public class HeuristikVerfahren implements Teamverfahren {
         }
     }
 
-    private static void aufnehmen(Map<List<Integer>, Kandidat> ziel, int[] a, int[] b, long kosten) {
+    private static void aufnehmen(Map<List<Integer>, Kandidat> ziel, int[] a, int[] b,
+                                  long bewertung, long kosten) {
         int[] sortiertA = a.clone();
         int[] sortiertB = b.clone();
         Arrays.sort(sortiertA);
         Arrays.sort(sortiertB);
-        ziel.putIfAbsent(schluessel(sortiertA, sortiertB), new Kandidat(sortiertA, sortiertB, kosten));
+        ziel.putIfAbsent(schluessel(sortiertA, sortiertB),
+                new Kandidat(sortiertA, sortiertB, bewertung, kosten));
     }
 
     /**
@@ -282,10 +301,10 @@ public class HeuristikVerfahren implements Teamverfahren {
         long bester = Long.MAX_VALUE;
         long alternative = Long.MAX_VALUE;
         for (Map.Entry<List<Integer>, Kandidat> eintrag : kandidaten.entrySet()) {
-            long kosten = eintrag.getValue().kosten;
-            bester = Math.min(bester, kosten);
+            long bewertung = eintrag.getValue().bewertung;
+            bester = Math.min(bester, bewertung);
             if (!eintrag.getKey().equals(verboten)) {
-                alternative = Math.min(alternative, kosten);
+                alternative = Math.min(alternative, bewertung);
             }
         }
 
@@ -298,7 +317,7 @@ public class HeuristikVerfahren implements Teamverfahren {
         List<Kandidat> infrage = new ArrayList<>();
         for (Map.Entry<List<Integer>, Kandidat> eintrag : kandidaten.entrySet()) {
             boolean verbotene = ausschliessen && eintrag.getKey().equals(verboten);
-            if (eintrag.getValue().kosten <= grenze && !verbotene) {
+            if (eintrag.getValue().bewertung <= grenze && !verbotene) {
                 infrage.add(eintrag.getValue());
             }
         }
@@ -324,10 +343,12 @@ public class HeuristikVerfahren implements Teamverfahren {
      *       ohne dass A20a irgendwo geprueft werden muesste.</li>
      * </ol>
      *
-     * <p><b>Der Tie-Break entscheidet nur, was gemerkt wird, nicht was angenommen wird.</b> Die
-     * Annahme richtet sich nach den Primaerkosten, wie in der Anleitung; ohne den Tie-Break
-     * beim Merken haetten die beiden Verfahren aber nicht dieselbe Zielfunktion, und genau das
-     * verlangt {@code AGENT_SERVER.md}.
+     * <p><b>Bewertung und Tie-Break entscheiden nur, was gemerkt wird, nicht was angenommen
+     * wird.</b> Die Annahme richtet sich nach der Summe ({@link Zielfunktion#kosten}), wie in
+     * der Anleitung; gemerkt wird nach Bewertung (Engpass, Summe) und danach nach dem Tie-Break.
+     * Ohne beides beim Merken haetten die beiden Verfahren nicht dieselbe Zielfunktion, und
+     * genau das verlangt {@code AGENT_SERVER.md}. Warum nicht nach der Bewertung angenommen
+     * wird, steht im Klassenkommentar.
      */
     private static void einLauf(Zielfunktion zielfunktion, int n, Random zufall,
                                 int schritte, double abkuehlfaktor, Bestwert bestwert) {
@@ -338,7 +359,7 @@ public class HeuristikVerfahren implements Teamverfahren {
         long[] summeA = zielfunktion.neuerPuffer();
         zielfunktion.summiere(teamA, teamA.length, summeA);
         long aktuell = zielfunktion.kosten(summeA);
-        bestwert.merke(aktuell, zielfunktion.tieBreak(summeA), teamA, teamB);
+        bestwert.merke(zielfunktion.bewertung(summeA), zielfunktion.tieBreak(summeA), teamA, teamB);
 
         double temperatur = START_TEMPERATUR;
         for (int schritt = 0; schritt < schritte; schritt++) {
@@ -355,7 +376,8 @@ public class HeuristikVerfahren implements Teamverfahren {
                 teamA[a] = teamB[b];
                 teamB[b] = gemerkt;
                 aktuell = neu;
-                bestwert.merke(aktuell, zielfunktion.tieBreak(summeA), teamA, teamB);
+                bestwert.merke(zielfunktion.bewertung(summeA), zielfunktion.tieBreak(summeA),
+                        teamA, teamB);
             } else {
                 // Zuruecknehmen: teamA[a] und teamB[b] tragen noch die alten Werte.
                 zielfunktion.verschiebe(summeA, teamB[b], -1);
@@ -440,16 +462,16 @@ public class HeuristikVerfahren implements Teamverfahren {
      */
     private static final class Bestwert {
 
-        private long kosten = Long.MAX_VALUE;
-        private long zweitkosten = Long.MAX_VALUE;
+        private long bewertung = Long.MAX_VALUE;
+        private long tieBreak = Long.MAX_VALUE;
         private int[] teamA;
         private int[] teamB;
 
-        void merke(long kosten, long zweitkosten, int[] teamA, int[] teamB) {
-            if (kosten < this.kosten
-                    || (kosten == this.kosten && zweitkosten < this.zweitkosten)) {
-                this.kosten = kosten;
-                this.zweitkosten = zweitkosten;
+        void merke(long bewertung, long tieBreak, int[] teamA, int[] teamB) {
+            if (bewertung < this.bewertung
+                    || (bewertung == this.bewertung && tieBreak < this.tieBreak)) {
+                this.bewertung = bewertung;
+                this.tieBreak = tieBreak;
                 this.teamA = teamA.clone();
                 this.teamB = teamB.clone();
             }

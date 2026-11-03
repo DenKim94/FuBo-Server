@@ -115,7 +115,12 @@ class TeamverfahrenTests {
     }
 
     /**
-     * Ungerade Zahl: Teams zu 2 und 3 - und das kleinere ist das staerkere (A20a).
+     * Ungerade Zahl: Teams zu 2 und 3 - und das kleinere ist das staerkere.
+     *
+     * <p><b>Eine Eigenschaft des Verfahrens, nicht mehr des Laufs (03.11.2026):</b> Am Termin
+     * nimmt der {@code Teamrechner} bei ungerader Zahl den Springer vorher heraus, und die
+     * Verfahren bekommen nur noch gerade Zahlen (siehe {@code TeamrechnerTests}). Das Verfahren
+     * soll trotzdem fuer jede Groesse richtig rechnen.
      *
      * <p>Das ist die Folge daraus, dass auf <b>Summen</b> optimiert wird und nicht auf
      * Durchschnitte: Sind die Summen nahezu gleich, muss die kleinere Haelfte je Spieler
@@ -239,7 +244,7 @@ class TeamverfahrenTests {
 
             Teamaufteilung genaehert = heuristik.berechne(aufstellung, seed);
             assertThat(genaehert.verwendetesVerfahren()).isEqualTo(AlgorithmType.HEURISTIK);
-            assertThat(genaehert.kosten()).isBetween(optimum,
+            assertThat(bewertungVon(aufstellung, genaehert)).isBetween(optimum,
                     optimum + new Zielfunktion(aufstellung).durchmischungsband());
         }
     }
@@ -359,7 +364,9 @@ class TeamverfahrenTests {
                     : new BisherigeAufteilung(vorige.teamA(), vorige.teamB());
             Teamaufteilung ergebnis = exhaustiv.berechne(aufstellung, seedQuelle.nextLong(), bisherige);
 
-            assertThat(ergebnis.kosten()).isBetween(optimum, optimum + band);
+            assertThat(bewertungVon(aufstellung, ergebnis)).isBetween(optimum, optimum + band);
+            assertThat(engpassVon(aufstellung, ergebnis)).as("keine Kategorie ueber 2 Punkte").isEqualTo(200L);
+            assertThat(ergebnis.kosten()).isEqualTo(560L);
             if (vorige != null) {
                 assertThat(gruppen(ergebnis)).isNotEqualTo(gruppen(vorige));
             }
@@ -367,8 +374,7 @@ class TeamverfahrenTests {
             vorige = ergebnis;
         }
 
-        assertThat(optimum).as("von Hand gerechnet: 11 Spieler, fuenf Kategorien").isEqualTo(500L);
-        assertThat(gesehen).as("alle drei Aufteilungen im Band kommen vor").hasSize(3);
+        assertThat(gesehen).as("beide Aufteilungen im Band kommen vor").hasSize(2);
     }
 
     /**
@@ -440,14 +446,94 @@ class TeamverfahrenTests {
 
         for (long seed = 1; seed <= 20; seed++) {
             Teamaufteilung erste = heuristik.berechne(aufstellung, seed);
-            assertThat(erste.kosten()).isBetween(optimum, heuristik.suchoptimum(aufstellung, seed) + band);
+            assertThat(bewertungVon(aufstellung, erste))
+                    .isBetween(optimum, heuristik.suchoptimum(aufstellung, seed) + band);
 
             BisherigeAufteilung bisherige = new BisherigeAufteilung(erste.teamA(), erste.teamB());
             Teamaufteilung zweite = heuristik.berechne(aufstellung, seed + 1000, bisherige);
 
             assertThat(gruppen(zweite)).isNotEqualTo(gruppen(erste));
-            assertThat(zweite.kosten()).isGreaterThanOrEqualTo(optimum);
+            assertThat(bewertungVon(aufstellung, zweite)).isGreaterThanOrEqualTo(optimum);
             assertThat(Math.abs(zweite.teamA().size() - zweite.teamB().size())).isLessThanOrEqualTo(1);
+        }
+    }
+
+    // ------------------------------------------------------------------ Engpass (03.11.2026)
+
+    /**
+     * Die groesste Einzelabweichung geht vor der Summe.
+     *
+     * <p>Bei {@code elfSpieler} hat die Aufteilung mit der kleinsten Summe (500) eine Kategorie,
+     * die um drei Punkte auseinanderliegt. Gewaehlt wird eine mit groesserer Summe (560), in der
+     * keine Kategorie mehr als zwei Punkte auseinanderliegt - genau die Lage, die die Anforderung
+     * "jede Kategorie moeglichst ausgeglichen" ausschliessen soll. Die Zahlen sind mit einem
+     * Nachbau der Zielfunktion ueber alle 462 Aufteilungen bestimmt.
+     */
+    @Test
+    void derEngpassGehtVorDerSumme() {
+        Aufstellung aufstellung = elfSpieler();
+        assertThat(kostenVon(aufstellung, 0, 1, 4, 8, 9)).as("kleinste Summe").isEqualTo(500L);
+        assertThat(engpassVon(aufstellung, 0, 1, 4, 8, 9)).as("mit drei Punkten Angriff").isEqualTo(300L);
+        assertThat(bewertungVon(aufstellung, 0, 1, 4, 8, 9))
+                .as("und deshalb schlechter bewertet")
+                .isGreaterThan(bewertungVon(aufstellung, 0, 1, 2, 8, 9));
+
+        for (long seed = 1; seed <= 20; seed++) {
+            Teamaufteilung ergebnis = exhaustiv.berechne(aufstellung, seed);
+            assertThat(ergebnis.kosten()).isEqualTo(560L);
+            assertThat(engpassVon(aufstellung, ergebnis)).isEqualTo(200L);
+        }
+    }
+
+    /**
+     * {@code HEURISTIK} findet das Optimum nach Engpass und Summe - obwohl sie Taeusche weiter
+     * nach der Summe annimmt.
+     *
+     * <p>Gemessen wird die Suche ({@code suchoptimum}), nicht die Auswahl. Genau hier lag die
+     * Gefahr: Bei {@code elfSpieler} ist das Summen-Optimum nicht das Engpass-Optimum, eine Suche,
+     * die sich nur das Summen-Beste merkte, scheiterte also bei jedem Seed.
+     */
+    @Test
+    void heuristikFindetDasEngpassOptimum() {
+        Aufstellung aufstellung = elfSpieler();
+        long optimum = exhaustiv.optimum(aufstellung);
+
+        for (long seed = 1; seed <= 20; seed++) {
+            assertThat(heuristik.suchoptimum(aufstellung, seed)).isEqualTo(optimum);
+            assertThat(engpassVon(aufstellung, heuristik.berechne(aufstellung, seed))).isEqualTo(200L);
+        }
+    }
+
+    /**
+     * Die Bewertung ist lexikografisch: Ein kleinerer Engpass gewinnt gegen eine kleinere Summe.
+     *
+     * <p>Drei Kategorien, vier Spieler, Summen je Kategorie {@code (2, 4, 5)}. Von Hand:
+     * {@code {0,1}} weicht um {@code (0, 0, 3)} ab - Engpass 300, Summe 300, die kleinste Summe.
+     * {@code {0,2}} um {@code (0, 2, 3)} - 300 und 500. {@code {0,3}} um {@code (2, 2, 1)} -
+     * Engpass 200, Summe 500. Gewaehlt wird {@code {0,3}}, und als einzige im Band: Kein Band
+     * reicht ueber einen Engpass hinweg. Gefunden per Zufallssuche ueber kleine Aufstellungen.
+     */
+    @Test
+    void dieBewertungIstLexikografisch() {
+        Aufstellung aufstellung = aufstellung(
+                List.of(kategorie("ANGRIFF", FELD, 1), kategorie("VERTEIDIGUNG", FELD, 2),
+                        kategorie("SPIELSTAERKE", FELD, 3)),
+                new int[]{1, 1, 1},
+                new int[]{0, 1, 0},
+                new int[]{0, 2, 3},
+                new int[]{1, 0, 1});
+
+        assertThat(kostenVon(aufstellung, 0, 1)).isEqualTo(300L);
+        assertThat(engpassVon(aufstellung, 0, 1)).isEqualTo(300L);
+        assertThat(kostenVon(aufstellung, 0, 3)).isEqualTo(500L);
+        assertThat(engpassVon(aufstellung, 0, 3)).isEqualTo(200L);
+        assertThat(bewertungVon(aufstellung, 0, 3)).isLessThan(bewertungVon(aufstellung, 0, 1));
+        assertThat(bewertungVon(aufstellung, 0, 1)).isLessThan(bewertungVon(aufstellung, 0, 2));
+
+        Random seedQuelle = new Random(20261103L);
+        for (int lauf = 0; lauf < 20; lauf++) {
+            assertThat(gruppen(exhaustiv.berechne(aufstellung, seedQuelle.nextLong())))
+                    .isEqualTo(Set.of(Set.of(0, 3), Set.of(1, 2)));
         }
     }
 
@@ -470,6 +556,33 @@ class TeamverfahrenTests {
         long[] puffer = zielfunktion.neuerPuffer();
         zielfunktion.summiere(teamA, teamA.length, puffer);
         return zielfunktion.kosten(puffer);
+    }
+
+    private static long engpassVon(Aufstellung aufstellung, int... teamA) {
+        Zielfunktion zielfunktion = new Zielfunktion(aufstellung);
+        long[] puffer = zielfunktion.neuerPuffer();
+        zielfunktion.summiere(teamA, teamA.length, puffer);
+        return zielfunktion.engpass(puffer);
+    }
+
+    private static long engpassVon(Aufstellung aufstellung, Teamaufteilung aufteilung) {
+        return engpassVon(aufstellung, alsArray(aufteilung.teamA()));
+    }
+
+    private static long bewertungVon(Aufstellung aufstellung, int... teamA) {
+        Zielfunktion zielfunktion = new Zielfunktion(aufstellung);
+        long[] puffer = zielfunktion.neuerPuffer();
+        zielfunktion.summiere(teamA, teamA.length, puffer);
+        return zielfunktion.bewertung(puffer);
+    }
+
+    /** Die Bewertung, nach der gewaehlt wurde - {@code kosten()} ist seit 03.11.2026 nur die Summe. */
+    private static long bewertungVon(Aufstellung aufstellung, Teamaufteilung aufteilung) {
+        return bewertungVon(aufstellung, alsArray(aufteilung.teamA()));
+    }
+
+    private static int[] alsArray(List<Integer> team) {
+        return team.stream().mapToInt(Integer::intValue).toArray();
     }
 
     /** Gewichtete Durchschnittsstaerke eines Teams, in Hundertsteln. */

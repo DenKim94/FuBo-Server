@@ -19,7 +19,13 @@ import java.util.Random;
  *
  * <p>Aufgezaehlt werden alle Teilmengen der Groesse {@code n / 2}; die uebrigen bilden das
  * andere Team. <b>Die Groessendifferenz ist damit bauartbedingt hoechstens 1</b> - A20a
- * braucht keine zusaetzliche Pruefung. Das Ergebnis ist das globale Optimum der Zielfunktion.
+ * braucht keine zusaetzliche Pruefung. Bestimmt wird das globale Optimum der Zielfunktion
+ * ({@link Zielfunktion#bewertung}: erst der Engpass, dann die Summe), gewaehlt aus dem Band
+ * darum.
+ *
+ * <p><b>Seit dem 03.11.2026 kommt am Termin und im manuellen Lauf nur noch eine gerade Zahl an</b>:
+ * Bei ungerader Zahl nimmt der {@code Teamrechner} den Springer vorher heraus. Das Verfahren
+ * bleibt trotzdem fuer jede Groesse korrekt - es soll nicht wissen muessen, wer es aufruft.
  *
  * <h2>Drei Abweichungen von {@code Algorithmus.py}</h2>
  * <ol>
@@ -93,7 +99,8 @@ public class ExhaustivVerfahren implements Teamverfahren {
      * Bis dahin waehlte der Seed unter den <i>exakt gleich guten</i> Aufteilungen. Bei
      * ganzzahligen Skills und wenigen Spielern gibt es oft nur eine - jeder Lauf lieferte dieselben
      * Teams, nur mit vertauschten Namen. Der Seed waehlt jetzt unter allen Aufteilungen mit
-     * {@code kosten <= optimum + band} ({@link Zielfunktion#durchmischungsband()}), und die
+     * {@code bewertung <= optimum + band} ({@link Zielfunktion#durchmischungsband()}) - also
+     * gleichem Engpass und einer Summe hoechstens ein Band ueber dem Optimum -, und die
      * <b>aktuelle Einteilung des Termins ist ausgeschlossen</b>. Hat das Band nur diese eine
      * Aufteilung, gilt die beste Alternative: "neu durchmischt" geht vor "ein Punkt besser".
      *
@@ -157,9 +164,9 @@ public class ExhaustivVerfahren implements Teamverfahren {
 
         Auswahl auswahl = new Auswahl(zufall);
         long grenze = obergrenze;
-        aufzaehlen(zielfunktion, n, k, fest, (kombination, kosten) -> {
-            if (kosten <= grenze && !gleich(kombination, verboten)) {
-                auswahl.biete(kombination, kosten);
+        aufzaehlen(zielfunktion, n, k, fest, (kombination, bewertung) -> {
+            if (bewertung <= grenze && !gleich(kombination, verboten)) {
+                auswahl.biete(kombination);
             }
         });
 
@@ -167,11 +174,28 @@ public class ExhaustivVerfahren implements Teamverfahren {
             throw new IllegalStateException(
                     "Das Band enthielt keine Aufteilung - das Optimum gehoert immer dazu.");
         }
-        return zusammenstellen(auswahl.teilmenge, n, zufall, auswahl.kosten);
+        return zusammenstellen(auswahl.teilmenge, n, zufall,
+                kostenVon(zielfunktion, auswahl.teilmenge));
     }
 
     /**
-     * Das Optimum der Zielfunktion ueber alle Aufteilungen - ohne Band, ohne Seed.
+     * Die Summe der Kategorieabweichungen der gewaehlten Teilmenge - der Wert, der als
+     * {@code differenz_teamstaerke} gespeichert wird.
+     *
+     * <p>Einmal nachgerechnet statt im Reservoir mitgefuehrt: Gewaehlt wird nach der
+     * {@link Zielfunktion#bewertung}, gespeichert die {@link Zielfunktion#kosten}; beide im
+     * Reservoir zu halten hiesse, zwei Zahlen synchron zu halten, von denen eine nur am Ende
+     * gebraucht wird.
+     */
+    private static long kostenVon(Zielfunktion zielfunktion, int[] teilmenge) {
+        long[] puffer = zielfunktion.neuerPuffer();
+        zielfunktion.summiere(teilmenge, teilmenge.length, puffer);
+        return zielfunktion.kosten(puffer);
+    }
+
+    /**
+     * Das Optimum der Zielfunktion ueber alle Aufteilungen - ohne Band, ohne Seed. Geliefert
+     * wird die {@link Zielfunktion#bewertung} (Engpass und Summe), nicht die Summe allein.
      *
      * <p>Paketsichtbar, weil die Tests daran messen, ob das Ergebnis im Band liegt und ob
      * {@code HEURISTIK} das Optimum findet. Der Wert ist die Wahrheit, gegen die
@@ -190,8 +214,8 @@ public class ExhaustivVerfahren implements Teamverfahren {
     /**
      * Der Rueckgabewert des ersten Durchlaufs.
      *
-     * @param optimum         kleinste Kosten ueber alle Aufteilungen
-     * @param besteAlternative kleinste Kosten ueber alle ausser der bisherigen;
+     * @param optimum         kleinste Bewertung ueber alle Aufteilungen
+     * @param besteAlternative kleinste Bewertung ueber alle ausser der bisherigen;
      *                        {@code Long.MAX_VALUE}, wenn es keine andere gibt
      */
     private record Eckwerte(long optimum, long besteAlternative) {
@@ -201,14 +225,14 @@ public class ExhaustivVerfahren implements Teamverfahren {
                                      int[] bisherige) {
         long[] optimum = {Long.MAX_VALUE};
         long[] alternative = {Long.MAX_VALUE};
-        aufzaehlen(zielfunktion, n, k, fest, (kombination, kosten) -> {
-            if (kosten < optimum[0]) {
-                optimum[0] = kosten;
+        aufzaehlen(zielfunktion, n, k, fest, (kombination, bewertung) -> {
+            if (bewertung < optimum[0]) {
+                optimum[0] = bewertung;
             }
             // Der Vergleich mit der bisherigen kostet O(k); er laeuft nur, wenn die Aufteilung
             // die beste Alternative ueberhaupt verbessern wuerde.
-            if (kosten < alternative[0] && !gleich(kombination, bisherige)) {
-                alternative[0] = kosten;
+            if (bewertung < alternative[0] && !gleich(kombination, bisherige)) {
+                alternative[0] = bewertung;
             }
         });
         return new Eckwerte(optimum[0], alternative[0]);
@@ -217,7 +241,7 @@ public class ExhaustivVerfahren implements Teamverfahren {
     /** Wird fuer jede aufgezaehlte Aufteilung einmal gerufen; {@code kombination} nicht behalten. */
     @FunctionalInterface
     private interface Besucher {
-        void besuche(int[] kombination, long kosten);
+        void besuche(int[] kombination, long bewertung);
     }
 
     /**
@@ -238,7 +262,7 @@ public class ExhaustivVerfahren implements Teamverfahren {
 
         while (true) {
             zielfunktion.summiere(kombination, k, puffer);
-            besucher.besuche(kombination, zielfunktion.kosten(puffer));
+            besucher.besuche(kombination, zielfunktion.bewertung(puffer));
 
             int i = k - 1;
             while (i >= fest && kombination[i] == n - k + i) {
@@ -291,17 +315,15 @@ public class ExhaustivVerfahren implements Teamverfahren {
         private final Random zufall;
         private int anzahl;
         private int[] teilmenge;
-        private long kosten;
 
         Auswahl(Random zufall) {
             this.zufall = zufall;
         }
 
-        void biete(int[] kombination, long kosten) {
+        void biete(int[] kombination) {
             anzahl++;
             if (zufall.nextInt(anzahl) == 0) {
                 this.teilmenge = kombination.clone();
-                this.kosten = kosten;
             }
         }
     }
@@ -309,9 +331,9 @@ public class ExhaustivVerfahren implements Teamverfahren {
     /**
      * Macht aus der gewaehlten Teilmenge zwei Teams.
      *
-     * <p><b>Der Seed vergibt A und B</b> - sonst stuende bei ungerader Zahl immer dieselbe
-     * Haelfte in Ueberzahl und damit Woche fuer Woche derselbe Spieler auf der Bank. Auf die
-     * Kosten wirkt der Tausch nicht: Sie sind ein Betrag und damit symmetrisch.
+     * <p><b>Der Seed vergibt A und B</b> - sonst hiesse dieselbe Haelfte Woche fuer Woche
+     * "Team A". Auf die Kosten wirkt der Tausch nicht: Sie sind ein Betrag und damit
+     * symmetrisch.
      */
     private static Teamaufteilung zusammenstellen(int[] teilmenge, int n, Random zufall,
                                                   long kosten) {
