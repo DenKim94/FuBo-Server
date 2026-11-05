@@ -50,6 +50,8 @@ ohne Fehlschlag. Der Probebau des Images lief durch; das JAR (`app-server-1.0.0.
 Zielversionen nachweislich. Denis' Versionsanhebung `0.0.1-SNAPSHOT` → `1.0.0` steht als eigener
 Commit davor. **Nächster Schritt liegt bei Denis:** `dev` nach `main` mergen – der Pi baut `main`.
 
+**Neu am 05.11.2026 – Releasenummer 1.0.0 (Denis, `d9f530d`).** `pom.xml` und `info.version` in `fubo-api.json` stehen auf 1.0.0, auf dem Pi läuft bis zum nächsten Deployment `fubo-backend:1.1.0` – die Nummer sinkt. Für Build, Laufzeit und Flyway ohne Folgen; für die Tags auf dem Pi gelten drei Regeln (vorhandenes altes `1.0.0` entfernen, Klon vor dem Bau prüfen, **1.1.0 nie wieder vergeben**), festgehalten in `harness/tmp/S9_DEPLOYMENT.md`, Abschnitt 10, „Sinkende Versionsnummer".
+
 **Neu am 05.11.2026 – Punktsummen je Team und Kategorie im manuellen Lauf (A24).** Anforderung von
 Denis: `POST /admin/teams/generieren` soll je Kategorie die Gesamtpunkte jedes Teams zeigen,
 `differenzTeamstaerke` darf entfallen. **Zwei Weggabelungen**, beide am 05.11.2026 entlang der Empfehlung
