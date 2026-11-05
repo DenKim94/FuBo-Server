@@ -2,10 +2,14 @@ package de.fubo.appserver.domain.team;
 
 import de.fubo.appserver.domain.config.AlgorithmType;
 import de.fubo.appserver.domain.config.AuswechselModus;
+import de.fubo.appserver.domain.profil.SkillKategorie;
 import de.fubo.appserver.domain.spieltag.Aufstellungsspieler;
 
 import java.math.BigDecimal;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Ein fertig gerechneter Generierungslauf, bevor irgendetwas mit ihm geschieht
@@ -57,9 +61,10 @@ public record Teamergebnis(Aufstellung aufstellung,
     }
 
     /**
-     * Die Kosten der Zielfunktion in der Darstellung, in der sie die Grenze verlassen:
-     * {@code team_generierung.differenz_teamstaerke} und
-     * {@code ManuelleEinteilung.differenzTeamstaerke}, beide {@code NUMERIC(6,2)}.
+     * Die Kosten der Zielfunktion in der Darstellung, in der sie gespeichert werden:
+     * {@code team_generierung.differenz_teamstaerke}, {@code NUMERIC(6,2)}. Bis zum 05.11.2026
+     * gingen sie auch als {@code ManuelleEinteilung.differenzTeamstaerke} nach aussen; dort
+     * stehen seither die Punktsummen je Team ({@link #gesamtpunkte}).
      *
      * <h2>Warum die Umrechnung hier steht</h2>
      * Gerechnet wird ganzzahlig in Hundertsteln - sonst bestimmte das letzte Bit eines
@@ -71,6 +76,41 @@ public record Teamergebnis(Aufstellung aufstellung,
      */
     public BigDecimal kostenAlsDezimal() {
         return alsDezimal(aufteilung.kosten());
+    }
+
+    /**
+     * Die ungewichteten Punktsummen eines Teams je aktiver Kategorie (A24, 05.11.2026) - fuer
+     * {@code ManuelleEinteilung.gesamtpunkteTeamA}/{@code B}.
+     *
+     * <h2>Ohne den Springer</h2>
+     * Er steht in der Liste seines Startteams, gehoert aber in keine Balance: Er wechselt nach
+     * jedem Tor seines Teams die Seite, und ausgeglichen wurden die Teams ohne ihn. Mit ihm
+     * laege eine Kategorie bis zu sechs Punkte auseinander, obwohl die Einteilung ausgeglichen
+     * ist (Entscheidung vom 05.11.2026).
+     *
+     * <h2>Ungewichtet, und jede aktive Kategorie</h2>
+     * Gezeigt werden die Punkte, wie sie im Profil stehen - auch beim Torwart mit 0 bis 3. Die
+     * Gewichte wirken in der Zielfunktion, nicht in der Anzeige. Jede aktive Kategorie steht
+     * im Ergebnis, auch mit Summe {@code 0}, und zwar in der Reihenfolge aus
+     * {@code skill_kategorie.reihenfolge}; die Schluessel sind die Kategorieschluessel, wie bei
+     * den Skillwerten eines Profils.
+     *
+     * @param team Indizes eines Teams aus {@link #aufteilung}
+     * @return Kategorieschluessel auf Punktsumme, unveraenderlich und in Kategorienreihenfolge
+     */
+    public Map<String, Integer> gesamtpunkte(List<Integer> team) {
+        Map<String, Integer> summen = new LinkedHashMap<>();
+        for (SkillKategorie kategorie : aufstellung.kategorien()) {
+            summen.put(kategorie.schluessel(), 0);
+        }
+        for (Integer index : team) {
+            if (istSpringer(index)) {
+                continue;
+            }
+            Map<String, Integer> werte = spieler(index).werte();
+            summen.replaceAll((schluessel, summe) -> summe + werte.get(schluessel));
+        }
+        return Collections.unmodifiableMap(summen);
     }
 
     /** Die Staerke eines Teilnehmers als {@code score_snapshot} der Zuteilung (7.2). */

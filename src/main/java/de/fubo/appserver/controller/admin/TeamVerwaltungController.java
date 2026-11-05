@@ -37,9 +37,9 @@ import org.springframework.web.bind.annotation.RestController;
  * Der Controller liegt in {@code controller/admin}, seine DTOs ausnahmsweise ebenfalls in
  * {@code dto/admin} - anders als beim {@link TerminVerwaltungController}, dessen DTOs in
  * {@code dto/spieltag} stehen. Der Grund ist kein anderer Zugriff, sondern anderer Inhalt:
- * {@code ManuelleEinteilung} traegt {@code differenzTeamstaerke}, eine abgeleitete Kennzahl
- * der Teamstaerke, und A12 laesst solche Werte ausschliesslich unterhalb von
- * {@code /api/*&#47;admin/**} nach aussen.
+ * {@code ManuelleEinteilung} traegt die Punktsummen je Team und Kategorie
+ * ({@code gesamtpunkteTeamA}/{@code B}), also Skillsummen, und A12 laesst solche Werte
+ * ausschliesslich unterhalb von {@code /api/*&#47;admin/**} nach aussen.
  */
 @RestController
 @RequestMapping(ApiVersionConfig.API_PRAEFIX + "/admin/teams")

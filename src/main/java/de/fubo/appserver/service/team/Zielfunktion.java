@@ -242,9 +242,9 @@ public final class Zielfunktion {
      * <p>{@code Summe_B = gesamtsumme - Summe_A}, die Differenz also
      * {@code |2 * Summe_A - gesamtsumme|}. Das spart den zweiten Puffer und ist dieselbe Zahl.
      *
-     * <p><b>Dieser Wert wird gespeichert und nach aussen gegeben</b>
-     * ({@code team_generierung.differenz_teamstaerke}, {@code ManuelleEinteilung
-     * .differenzTeamstaerke}) - nicht der Tie-Break, den der Spaltenname nahelegt.
+     * <p><b>Dieser Wert wird gespeichert</b> ({@code team_generierung.differenz_teamstaerke}) -
+     * nicht der Tie-Break, den der Spaltenname nahelegt. Nach aussen geht er seit dem
+     * 05.11.2026 nicht mehr; der manuelle Lauf zeigt stattdessen die Punktsummen je Team.
      *
      * @param summeA Kategoriesummen des Teams A
      */

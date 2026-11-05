@@ -13,14 +13,14 @@ import java.util.List;
  * {@code POST /api/v1/teams/generieren}. Beide Male dieselbe Form - wer gerade generiert hat,
  * sieht dasselbe wie der, der den Termin oeffnet.
  *
- * <h2>Ohne {@code differenzTeamstaerke}</h2>
+ * <h2>Ohne Kennzahlen der Teamstaerke</h2>
  * Weggabelung C, entschieden entlang der Empfehlung: Der Wert ist die gewichtete Summe der
  * Kategoriedifferenzen und damit eine Aussage ueber Skillsummen. Wer ihn ueber viele Laeufe
  * sammelt und die wechselnden Aufstellungen kennt, kann auf einzelne Werte schliessen; der
  * Nutzen fuer den Spieler - eine Zahl, die er nicht einordnen kann - wiegt das nicht auf.
- * <b>Unterhalb von {@code /admin/} ist er erlaubt</b> und steht dort in
- * {@code ManuelleEinteilung}. Die Weggabelung ist damit nicht umgangen, sondern entlang der
- * Pfadregel entschieden.
+ * <b>Unterhalb von {@code /admin/} sind solche Werte erlaubt</b>; dort traegt
+ * {@code ManuelleEinteilung} seit dem 05.11.2026 sogar die Punktsummen je Team und Kategorie.
+ * Fuer diese Antwort, die jede Rolle erreicht, gilt die Weggabelung unveraendert.
  *
  * @param erzeugtAm         Zeitpunkt des Laufs
  * @param erzeugtVon        Anzeigename des Aufrufers zum Zeitpunkt des Laufs

@@ -22,6 +22,7 @@ import org.springframework.web.context.WebApplicationContext;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -298,18 +299,25 @@ class ManuelleGenerierungTests {
     // --------------------------------------------------------------------- Antwort und Protokoll
 
     /**
-     * Die Antwort traegt genau sechs Felder - und <b>keinen {@code seed}</b>.
+     * Die Antwort traegt genau sieben Felder - <b>keinen {@code seed}</b> und seit dem
+     * 05.11.2026 kein {@code differenzTeamstaerke} mehr.
      *
-     * <p>Er waere ohne die Skillwerte daneben eine Zahl ohne Verwendung, und die stehen hier
-     * bewusst nicht. Taucht dort einer auf, ist er stehen geblieben.
+     * <p>Der Seed waere ohne die Skillwerte jedes Einzelnen eine Zahl ohne Verwendung, und die
+     * stehen hier bewusst nicht. Taucht er auf, ist er stehen geblieben; taucht
+     * {@code differenzTeamstaerke} auf, ist die alte Fassung zurueck. Die beiden Punktkarten
+     * tragen genau die aktiven Kategorien.
      */
     @Test
-    void dieAntwortTraegtSechsFelderUndKeinenSeed() throws Exception {
+    void dieAntwortTraegtSiebenFelderUndKeinenSeed() throws Exception {
         Map<String, Object> antwort = alsKarte(
                 manuell(spielerIds(8), "[]").andExpect(status().isOk()));
 
         assertThat(antwort).containsOnlyKeys("algorithmType", "auswechselModus",
-                "auswechselspieler", "differenzTeamstaerke", "teamA", "teamB");
+                "auswechselspieler", "gesamtpunkteTeamA", "gesamtpunkteTeamB", "teamA", "teamB");
+        for (String feld : List.of("gesamtpunkteTeamA", "gesamtpunkteTeamB")) {
+            assertThat(alsPunkte(antwort.get(feld))).as(feld)
+                    .containsOnlyKeys(aktiveKategorien());
+        }
         assertThat(alleEintraege(antwort)).allSatisfy(eintrag ->
                 assertThat(eintrag).containsOnlyKeys("anzeigeName", "gast", "auswechselspieler"));
     }
@@ -342,24 +350,55 @@ class ManuelleGenerierungTests {
     }
 
     /**
-     * Zwei gleich starke Gruppen ergeben Kosten von {@code 0} - und nicht {@code null}.
+     * Gleich starke Gruppen haben gleiche Punktsummen - und jede aktive Kategorie steht darin,
+     * auch der Torwart mit {@code 0}.
      *
-     * <p>Sechs Gaeste derselben Stufe sind bauartbedingt gleich stark; jede Aufteilung ist
-     * damit optimal. Der Fall prueft zugleich, dass {@code differenzTeamstaerke} die
-     * <b>Kosten der Zielfunktion</b> traegt: Waere es der Tie-Break, stuende hier ebenfalls
-     * {@code 0} - deshalb steht daneben die Feldliste aus dem vorigen Fall.
+     * <p>Sechs Gaeste der Stufe {@code MITTEL} sind bauartbedingt gleich stark (Vorlage je drei
+     * Punkte in den Feldkategorien, {@code 0} im Tor): drei je Team, also {@code 9} je
+     * Feldkategorie. Geprueft wird die <b>vollstaendige</b> Karte, nicht einzelne Eintraege -
+     * eine fehlende Kategorie fiele sonst nicht auf. Die Werte sind ungewichtet: Mit Gewichten
+     * stuende dort {@code 900} bzw. eine Kommazahl.
      */
     @Test
-    void gleichStarkeGruppenErgebenKostenNull() throws Exception {
+    void gleichStarkeGruppenHabenGleicheGesamtpunkte() throws Exception {
         String gaeste = IntStream.range(0, 6)
                 .mapToObj(i -> "{\"stufe\":\"MITTEL\"}")
                 .collect(Collectors.joining(",", "[", "]"));
 
         Map<String, Object> antwort = alsKarte(manuell("[]", gaeste).andExpect(status().isOk()));
 
-        assertThat(antwort.get("differenzTeamstaerke")).isNotNull();
-        assertThat(((Number) antwort.get("differenzTeamstaerke")).doubleValue()).isZero();
+        Map<String, Object> erwartet = Map.of("ANGRIFF", 9, "VERTEIDIGUNG", 9,
+                "SPIELSTAERKE", 9, "LAUFSTAERKE", 9, "TORWART", 0);
+        assertThat(antwort.get("gesamtpunkteTeamA")).isEqualTo(erwartet);
+        assertThat(antwort.get("gesamtpunkteTeamB")).isEqualTo(erwartet);
         assertThat(antwort).containsEntry("auswechselspieler", null);
+    }
+
+    /**
+     * Die Punktsummen zaehlen den Springer nicht mit (Entscheidung vom 05.11.2026) - und jede
+     * Summe ist genau die ihrer uebrigen Teammitglieder.
+     *
+     * <p>Erwartet wird gegen {@code profil.spieler_skill} und nicht gegen eine im Test
+     * nachgebaute Rechnung: Die Datenbank ist die Quelle, aus der die Aufstellung entsteht. Der
+     * Springer steht markiert in der Liste seines Startteams; zaehlte er mit, laege dessen Summe
+     * genau um seine Werte zu hoch.
+     */
+    @Test
+    void dieGesamtpunkteZaehlenDenSpringerNicht() throws Exception {
+        Map<String, Object> antwort = alsKarte(
+                manuell(spielerIds(7), "[]").andExpect(status().isOk()));
+        String springer = (String) antwort.get("auswechselspieler");
+        assertThat(springer).isNotNull();
+
+        for (String team : List.of("teamA", "teamB")) {
+            List<String> ohneSpringer = namen(antwort, team).stream()
+                    .filter(name -> !name.equals(springer))
+                    .toList();
+            assertThat(antwort.get("gesamtpunkte" + team.substring(0, 1).toUpperCase()
+                    + team.substring(1)))
+                    .as("%s ohne Springer", team)
+                    .isEqualTo(punkteAusDerDatenbank(ohneSpringer));
+        }
     }
 
     /**
@@ -479,6 +518,35 @@ class ManuelleGenerierungTests {
 
     private String detail(ResultActions ergebnis) throws Exception {
         return (String) alsKarte(ergebnis).get("detail");
+    }
+
+    /** Die aktiven Kategorieschluessel aus der Datenbank, in Kategorienreihenfolge. */
+    private List<String> aktiveKategorien() {
+        return jdbc.queryForList(
+                "SELECT schluessel FROM profil.skill_kategorie WHERE aktiv ORDER BY reihenfolge",
+                String.class);
+    }
+
+    /** Erwartete Punktsummen je aktiver Kategorie fuer die genannten Profile. */
+    private Map<String, Object> punkteAusDerDatenbank(List<String> namen) {
+        Map<String, Object> summen = new LinkedHashMap<>();
+        for (String kategorie : aktiveKategorien()) {
+            int summe = 0;
+            for (String name : namen) {
+                summe += jdbc.queryForObject("""
+                        SELECT sk.wert FROM profil.spieler_skill sk
+                          JOIN profil.spieler s ON s.id = sk.spieler_id
+                         WHERE s.name = ? AND sk.kategorie = ?
+                        """, Integer.class, name, kategorie);
+            }
+            summen.put(kategorie, summe);
+        }
+        return summen;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> alsPunkte(Object feld) {
+        return (Map<String, Object>) feld;
     }
 
     private int anzahl(String tabelle) {
