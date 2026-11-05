@@ -174,6 +174,20 @@ Ergänzungen des Entwicklers sind als *Ergänzung* gekennzeichnet.
     deshalb namentlich in `SecurityConfigTests`.
   - **Er antwortet `200` und ohne Seed** – es entsteht keine Ressource, und der Seed wäre eine
     Zahl ohne Verwendung, solange die Skillwerte nicht danebenstehen. Er steht im Audit-Eintrag.
+  - **Die Antwort zeigt die Punktsummen je Team und Kategorie** (seit 05.11.2026,
+    `gesamtpunkteTeamA`/`gesamtpunkteTeamB`, Schema `Kategoriepunkte`) und **nicht mehr
+    `differenzTeamstaerke`**. Die eine Zahl sagte nur, *dass* die Teams ausgeglichen sind, nicht *wo*
+    sie auseinanderliegen. Regeln:
+    - **Ohne den Springer** – ausgeglichen wird ohne ihn; mitgezählt läge eine Kategorie bis zu sechs
+      Punkte auseinander, obwohl die Einteilung ausgeglichen ist.
+    - **Schlüssel sind die Kategorieschlüssel** (`skill_kategorie.schluessel`, z. B. `ANGRIFF`), jede
+      aktive Kategorie steht darin, auch mit `0`. Eine neue Kategorie braucht keine Vertragsänderung.
+    - **Ungewichtet** – ein Torwartpunkt zählt 1; die Gewichte gehören in die Zielfunktion, nicht in
+      die Anzeige.
+    - Gerechnet in `Teamergebnis#gesamtpunkte` aus der Aufstellung des Laufs, nicht neu aus der
+      Datenbank gelesen – sonst könnte eine zwischenzeitliche Skilländerung Summen zeigen, die der
+      Lauf nie gesehen hat.
+    - Zulässig nur, weil der Endpunkt unter `/admin/` liegt (A12); für `Teameinteilung` gilt das nicht.
   - **Genannte, aber ungültige Auswahl wird abgelehnt, nicht still gefiltert**, und
     `max_teilnehmer` **begrenzt dort, es schneidet nicht ab** – am Termin ergibt sich die Menge,
     hier hat der Admin jeden Einzelnen benannt.
@@ -1220,6 +1234,8 @@ Zielfunktion für beide Verfahren identisch:
   Hundertstel, beim Schreiben durch 100 geteilt); `0` heisst perfekt ausgeglichen; bei ungerader Zahl
   ohne den Springer. **Seit der Durchmischung ist der Wert die Summe der *gewählten* Einteilung, und seit
   dem Engpass nicht einmal mehr die kleinstmögliche Summe** – gewählt wird nach dem Engpass zuerst.
+  **Seit dem 05.11.2026 steht der Wert in keiner Antwort mehr**, auch nicht im manuellen Lauf (dort
+  zeigen die Punktsummen je Kategorie mehr); er bleibt Gütemaß in der Datenbank.
   **Der Spaltenname legt das Gegenteil nahe und bleibt trotzdem:** `|Gesamtstärke_A − Gesamtstärke_B|`
   kann `0` sein, während die Teams kategorieweise weit auseinanderliegen – gespeichert würde die Zahl,
   die den Fehler verdeckt. Und nur die Summe erlaubt den Vergleich zweier Läufe derselben Aufstellung,
@@ -1447,7 +1463,8 @@ Sicherheitsmerkmal** – Missbrauch verkürzt nur die eigene Sitzung.
 seine Stufe erfahren, und einen angefangenen Login abzubrechen muss möglich sein.
 
 **Datenschutz in DTOs:** Team-Antworten für USER/GAST enthalten nur Name, Team (A/B) und das
-Springer-Kennzeichen (`auswechselspieler`).
+Springer-Kennzeichen (`auswechselspieler`). Punktsummen je Team und Kategorie trägt allein
+`ManuelleEinteilung` unter `/admin/` (A24).
 
 ---
 

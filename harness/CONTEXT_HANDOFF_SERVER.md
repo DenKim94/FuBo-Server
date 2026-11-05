@@ -15,6 +15,7 @@
 > - **Herleitung und Schritt für Schritt** → `harness/tmp/S<n>_UMSETZUNG.md`, für den
 >   Algorithmusteil von S5 zusätzlich `harness/tmp/S5_ALGORITHMUS.md`
 > - **Historie** → Git und `harness/archive/`. Vorfassung:
+>   `CONTEXT_HANDOFF_SERVER_2026-11-05_v30_Springer.md` (Stand vor den Punktsummen im manuellen Lauf), davor
 >   `CONTEXT_HANDOFF_SERVER_2026-11-03_v29_Entfernen-abgesagter.md` (Stand vor dem Springer), davor
 >   `CONTEXT_HANDOFF_SERVER_2026-10-31_v28_Gast-absagen.md` (Stand vor dem Entfernen abgesagter Termine), davor
 >   `CONTEXT_HANDOFF_SERVER_2026-10-24_v27_Pi-Dateien.md` (Stand vor „Gast absagen"), davor
@@ -35,7 +36,7 @@
 > Was hier steht, steht **nur** hier. Wird eine Festlegung zur Architekturregel, wandert sie
 > nach `AGENT_SERVER.md` und **verschwindet hier** – sonst laufen beide auseinander.
 
-## Stand: 03.11.2026
+## Stand: 05.11.2026
 
 **S0 bis S8 sind abgeschlossen und verifiziert.** Alles bis S8 ist auf `dev` committet (18 Commits
 für S8), **nicht gepusht**.
@@ -48,6 +49,22 @@ Commits, nicht gepusht):** Abhängigkeiten auf
 ohne Fehlschlag. Der Probebau des Images lief durch; das JAR (`app-server-1.0.0.jar`) trägt die
 Zielversionen nachweislich. Denis' Versionsanhebung `0.0.1-SNAPSHOT` → `1.0.0` steht als eigener
 Commit davor. **Nächster Schritt liegt bei Denis:** `dev` nach `main` mergen – der Pi baut `main`.
+
+**Neu am 05.11.2026 – Punktsummen je Team und Kategorie im manuellen Lauf (A24).** Anforderung von
+Denis: `POST /admin/teams/generieren` soll je Kategorie die Gesamtpunkte jedes Teams zeigen,
+`differenzTeamstaerke` darf entfallen. **Zwei Weggabelungen**, beide am 05.11.2026 entlang der Empfehlung
+entschieden (6.2): Summen **ohne den Springer**; Schlüssel sind die **Kategorieschlüssel** als Map
+(`ANGRIFF`, …), ungewichtete Ganzzahlen. **Umsetzung:** `Teamergebnis#gesamtpunkte(team)` summiert
+die Skillwerte der Aufstellung je aktiver Kategorie (jede Kategorie mit `0` vorbelegt, Springer
+übersprungen); `ManuelleEinteilung` trägt `gesamtpunkteTeamA` und `gesamtpunkteTeamB` statt
+`differenzTeamstaerke`. Keine Migration, die Spalte `differenz_teamstaerke` bleibt Gütemaß in der
+Datenbank, steht aber in keiner Antwort mehr. **Vertrag:** brechend für den Adminbildschirm (Feld
+entfällt, zwei Pflichtfelder neu), neues Schema `Kategoriepunkte`, weiter 46 Endpunkte (4.1). Regeln:
+`AGENT_SERVER.md`, A24 und „Datenschutz in DTOs". Bruno nachgezogen.
+**Verifiziert:** nur Struktur und Zählung – `ManuelleGenerierungTests` hat Spring-Kontext und ist
+**nicht übersetzt und nicht ausgeführt** – vorab nur die kontextfreien Klassen mit JDK 21 übersetzt und
+`gesamtpunkte` mit Springer geprüft. Erwartet: **591 Fälle in 37 Klassen** (590 + 1, nachgezählt);
+**der Lauf bei Denis am 05.11.2026 war grün (591/37)**. Auf `dev` committet (drei Commits, nicht gepusht).
 
 **Neu am 03.11.2026 – Springer statt Auswechselspieler, Ausgleich je Kategorie (A20a, A20b).**
 Anforderung von Denis: (1) Das Balancing soll für jede Kategorie möglichst ausgeglichen sein. (2) Bei
@@ -74,7 +91,9 @@ ausgeführt** – gegen Stubs für JUnit, AssertJ, Spring-Annotationen und SLF4J
 Mutationsproben schlagen an. `V001`–`V017` und das neue SQL liefen gegen PGlite. **Nicht übersetzt und
 nicht gelaufen:** alles mit Spring-Kontext. Erwartet: **590 Fälle in 37 Klassen** (571 + 19,
 nachgezählt). Erster Lauf bei Denis: 589 grün, eine veraltete Testerwartung (Seed-Version nach `V017`),
-behoben; **der Wiederholungslauf war grün (590/37)**. Auf `dev` committet (vier Commits, nicht gepusht).
+behoben; **der Wiederholungslauf war grün (590/37)**. Auf `dev` committet (vier Commits), von Denis nach
+`main` gemergt und gepusht. *Nachtrag 05.11.2026:* `harness/tmp/springer/` liegt nach dem Umzug des
+Projektordners nicht mehr unter `server/harness/tmp/`.
 
 **Neu am 31.10.2026 – abgesagte Termine entfernen, auch mit Rückmeldungen und Teams (A19).**
 Anforderung von Denis: Der Admin soll abgesagte Termine entfernen können, unabhängig davon, ob schon
@@ -255,7 +274,7 @@ einem nicht eingeteilten Gast und ist jetzt `eingeteilterGastDarfErfassen`). Erw
 | Konfiguration | **14 Pflichtfelder** im Voll-Update |
 | `Fehlercode` | **39** Werte (neu: `NICHT_EINGETEILT`, davor `KEINE_ZUSAGE`) |
 | `AuditAktion` | **32** Werte (neu: `GAST_ABGESAGT`) |
-| Tests | **483 Fälle in 34 Klassen** zuletzt grün dokumentiert; nach Namensbestätigung, A18- und A15-Änderung nachgezählt **513 in 35**, mit dem Restkontingent **528 in 35**, mit der Durchmischung **538 in 35**, mit der Erfassungsberechtigung **548 in 35**, mit der CORS-Prüfung **554 in 36**, mit „Gast absagen" **568 in 36** (laut Denis grün), mit dem Entfernen abgesagter Termine **571 in 36**, mit dem Springer **590 in 37, grün am 03.11.2026** – der erste Lauf über alle Zwischenstände seit dem 03.10.2026, sie sind damit verifiziert; **acht Klassen ohne Spring-Kontext** (6.3) |
+| Tests | **483 Fälle in 34 Klassen** zuletzt grün dokumentiert; nach Namensbestätigung, A18- und A15-Änderung nachgezählt **513 in 35**, mit dem Restkontingent **528 in 35**, mit der Durchmischung **538 in 35**, mit der Erfassungsberechtigung **548 in 35**, mit der CORS-Prüfung **554 in 36**, mit „Gast absagen" **568 in 36** (laut Denis grün), mit dem Entfernen abgesagter Termine **571 in 36**, mit dem Springer **590 in 37, grün am 03.11.2026** – der erste Lauf über alle Zwischenstände seit dem 03.10.2026, sie sind damit verifiziert; mit den Punktsummen **591 in 37, grün am 05.11.2026**; **acht Klassen ohne Spring-Kontext** (6.3) |
 | Bruno-Collection | alle 46 Endpunkte, acht Ordner (`~/Documents/bruno/fubo_server`, unversioniert; am 24.10.2026 um „Gast absagen" ergänzt – die frühere Angabe „99 Requests" liess sich nicht nachzählen, es liegen 78 Request-Dateien vor) |
 | Plattform | **Spring Boot 4.1.1**, Tomcat 11.0.26 und Jackson 3.1.7 per Override (S9, 03.10.2026) |
 
@@ -305,6 +324,11 @@ erst recht nicht gegen die Antwort des Dienstes.
    `ZUFAELLIG` statt `SCHWAECHSTER_UEBERZAHL` (Client-Enum und Konfigurationsformular); in den Teams
    ist `auswechselspieler` jetzt der Springer, das Team mit ihm ist das in Überzahl, und Einteilungen von
    vor dem 03.11.2026 zeigen keinen.
+   **Dazu die brechende Änderung am manuellen Lauf (05.11.2026):** `ManuelleEinteilung` trägt
+   `gesamtpunkteTeamA` und `gesamtpunkteTeamB` (Schema `Kategoriepunkte`, Map Kategorieschlüssel →
+   Punkte) statt `differenzTeamstaerke`. Der Client zeigte das Feld seit dem 24.10.2026 ohnehin nicht an;
+   nach dem Kopieren des Vertrags den Typ neu erzeugen. Ob `AdminTeams` die Summen anzeigt, entscheidet
+   der Client (beschriften über `GET /admin/skills/lesen`).
 
 **Zwei Dinge vor jedem Lauf:** Docker muss laufen (`docker info`), und es ist `./mvnw clean verify`,
 nicht nur `verify` – `target/classes` vergisst nichts.
@@ -492,7 +516,7 @@ naheliegende Annahme falsch ist. Wann sie dazukam, steht in Git.
 |---|---|
 | Antwort des manuellen Laufs (A24) | **`200`, nicht `201`**, und **ohne `seed`** – es entsteht nichts. Das Ergebnis wird **nirgends gespeichert** und ist nach dem Verlassen der Seite weg. **Das gehört sichtbar auf den Bildschirm** |
 | `algorithmType` / `auswechselModus` in der Antwort | können von der Konfiguration **abweichen** (Rückfall bei zu vielen Teilnehmern bzw. fehlender Meldezeit). Anzeigen, nicht ignorieren |
-| `differenzTeamstaerke` | die **Summe der Kategorieabweichungen**, nicht die Differenz der Gesamtstärken; bei ungerader Zahl ohne den Springer. `0` = perfekt ausgeglichen. Seit dem 03.11.2026 wird zuerst nach der grössten Einzelabweichung gewählt – der Wert ist also nicht zwingend die kleinstmögliche Summe. Nur im Adminbildschirm |
+| `gesamtpunkteTeamA` / `gesamtpunkteTeamB` (seit 05.11.2026, ersetzen `differenzTeamstaerke`) | je **aktiver Kategorie** die **ungewichtete** Punktsumme des Teams, **ohne den Springer** – der steht zwar markiert in der Liste seines Startteams, ausgeglichen wurde aber ohne ihn. Schlüssel sind die Kategorieschlüssel (`ANGRIFF`, …), jede aktive Kategorie steht darin, auch mit `0`. Beschriften und sortieren über `GET /admin/skills/lesen`. Nur im Adminbildschirm |
 | `maxTeilnehmer` im manuellen Lauf | **begrenzt, schneidet nicht ab** (`409 ZU_VIELE_TEILNEHMER`) |
 | `deutlich` im `Ergebnis` | beschreibt die **Höhe, nicht den Ausgang** – ohne jeden Einfluss auf die Bilanz. Bei `sieger: "U"` unzulässig (`400`, Schlüssel `deutlichNurBeiSieg`); der Haken gehört dort ausgeblendet |
 | `auswechselModus` ändern | wirkt ab dem **nächsten Lauf**; gespeicherte Einteilungen behalten ihren Springer (seit 03.11.2026; vorher änderte sich der angezeigte Auswechselspieler rückwirkend) |
@@ -730,6 +754,9 @@ und Herleitung steht in `…_v14_S4-abgeschlossen.md`.
 | **Zielfunktion: Engpass zuerst, dann Summe** (03.11.2026, Weggabelung „Balance") | Die Summe allein liess eine Kategorie die ganze Abweichung tragen; gemessen an den 30 realen Profilen bei zehn Spielern in 10 % der gezogenen Einteilungen drei Punkte in einer Kategorie, seither keine. Verworfen: Band schliessen (keine Durchmischung mehr), quadrierte Abweichungen (bestraft, schliesst nicht aus) |
 | **Startteam: das schwächere Grundteam** (03.11.2026) | Die Überzahl gleicht dort mehr aus; bei Gleichstand der Seed. Verworfen: rein per Seed |
 | **Vertragsnamen bleiben** (`auswechselspieler`, `auswechselModus`; 03.11.2026) | Ein Umbenennen wäre brechend, ohne dem Client etwas zu sagen; brechend ist nur der Enumwert |
+| **Punktsummen im manuellen Lauf ohne den Springer** (05.11.2026, Anforderung von Denis) | Ausgeglichen wird ohne ihn. Mitgezählt läge eine Kategorie bis zu sechs Punkte auseinander, obwohl die Einteilung ausgeglichen ist – der Admin hielte eine gute Einteilung für schief. Wer den Springer sehen will, sieht ihn markiert in der Teamliste |
+| **Punktsummen als Map mit Kategorieschlüssel, ungewichtet** (05.11.2026) | Feste Felder (`angriff`, …) bräuchten bei jeder neuen Kategorie eine Vertragsänderung; die Skillkarte eines Profils ist bereits so aufgebaut. Gewichtet wären es keine Punkte mehr, sondern Zwischenwerte der Zielfunktion – ein Torwartwert von `0.9` hätte keine anschauliche Bedeutung |
+| **`differenzTeamstaerke` entfällt ersatzlos** (05.11.2026) | Die Summe aller Abweichungen sagte nur, *dass* die Teams ausgeglichen sind; aus den beiden Karten liest der Admin ab, *wo* sie auseinanderliegen. Die Spalte `differenz_teamstaerke` bleibt (keine Migration) |
 | **Springer ohne Bilanz** (03.11.2026) | Er steht am Ende bei dem Team, das das letzte Tor kassiert hat; Sieg oder Niederlage wären eine Behauptung ohne Grundlage. Erfassen darf er als Eingeteilter trotzdem. Verworfen: mit dem Startteam werten (willkürlich), als Unentschieden werten (verfälscht) |
 | **Eine Migration war unvermeidbar** (03.11.2026) | Denis wollte Datenbankänderungen nach Möglichkeit vermeiden. `ck_app_config_auswechsel` lehnt `ZUFAELLIG` ab; die einzige migrationsfreie Alternative wäre der alte Name mit neuer Bedeutung gewesen. Die Spalte kam im selben Zug hinzu |
 | **Die eigene Bilanz liest ein Endpunkt ohne Id im Pfad** (`GET /bilanz/lesen`) | Die Identität kommt aus der Sitzung. Mit einer Id wäre es „fremde Bilanz lesen", über das niemand entschieden hat. Ein `GAST` bekommt die leere Bilanz statt eines Fehlers – ununterscheidbar von einem Spieler ohne gewertete Termine, und das ist Absicht |
@@ -1149,7 +1176,15 @@ docker compose -f compose.dev.yml --env-file .env up -d
 ./mvnw clean verify
 ```
 
-**Zuletzt grün am 03.11.2026 – 590 Fälle in 37 Klassen** (Springer; zugleich der erste Lauf über alle
+**Erwartet nach den Punktsummen (05.11.2026): 591 Fälle in 37 Klassen** – nachgezählt (590 + 1):
+`ManuelleGenerierungTests` +1 (jetzt 21, neu `dieGesamtpunkteZaehlenDenSpringerNicht`; umgeschrieben
+`dieAntwortTraegtSiebenFelderUndKeinenSeed` und `gleichStarkeGruppenHabenGleicheGesamtpunkte`). Die Klasse
+hat Spring-Kontext und war vorab **nicht übersetzt und nicht ausgeführt**. **Lauf bei Denis am 05.11.2026:
+grün, 591/37** – Zahlen und Klassen wie vorab gezählt.
+
+**Zuletzt grün am 05.11.2026 – 591 Fälle in 37 Klassen** (Punktsummen im manuellen Lauf).
+
+**Davor grün am 03.11.2026 – 590 Fälle in 37 Klassen** (Springer; zugleich der erste Lauf über alle
 Änderungen seit dem 03.10.2026 – Namensbestätigung, A18, A15, Restkontingent, Durchmischung,
 Erfassungsberechtigung, CORS, Gast absagen, Entfernen abgesagter Termine).
 
@@ -1283,7 +1318,9 @@ und die Prüfschritte beim Nachziehen stehen in ihrer `README.md`.
 
 ## 7. Nächste Schritte
 
-0. **Testlauf abschliessen** – **erledigt am 03.11.2026 (590/37 grün, `V017` gegen PostgreSQL 17)**. Offen bleibt daraus nur die Handprüfung: Ursprünglich (22.10.2026) hiess der Punkt: `./mvnw clean verify`, die A18- und
+0. **Testlauf der Punktsummen (05.11.2026)** – **erledigt: 591/37 grün, auf `dev` committet** (Vertrag,
+   Code, Anleitungen; nicht gepusht).
+   *Vorheriger Punkt 0:* **Testlauf abschliessen** – **erledigt am 03.11.2026 (590/37 grün, `V017` gegen PostgreSQL 17)**. Offen bleibt daraus nur die Handprüfung: Ursprünglich (22.10.2026) hiess der Punkt: `./mvnw clean verify`, die A18- und
    A15-Änderung committen (**Reihenfolge nach `AGENT_SERVER.md`: Vertrag, Code, Anleitungen – alles
    ungepusht; `V016` läuft erstmals gegen PostgreSQL 17**) und für die Namensbestätigung eine Handprüfung mit echter Mail über Bruno – Umlaute und Name in der Nachricht,
    `202`/`204`, danach `ADMIN_NAME` in der `.env` und `adminName` in den Bruno-Umgebungen nachziehen.
