@@ -15,6 +15,7 @@
 > - **Herleitung und Schritt für Schritt** → `harness/tmp/S<n>_UMSETZUNG.md`, für den
 >   Algorithmusteil von S5 zusätzlich `harness/tmp/S5_ALGORITHMUS.md`
 > - **Historie** → Git und `harness/archive/`. Vorfassung:
+>   `CONTEXT_HANDOFF_SERVER_2026-11-06_v31_Punktsummen.md` (Stand vor den Absagen), davor
 >   `CONTEXT_HANDOFF_SERVER_2026-11-05_v30_Springer.md` (Stand vor den Punktsummen im manuellen Lauf), davor
 >   `CONTEXT_HANDOFF_SERVER_2026-11-03_v29_Entfernen-abgesagter.md` (Stand vor dem Springer), davor
 >   `CONTEXT_HANDOFF_SERVER_2026-10-31_v28_Gast-absagen.md` (Stand vor dem Entfernen abgesagter Termine), davor
@@ -36,7 +37,7 @@
 > Was hier steht, steht **nur** hier. Wird eine Festlegung zur Architekturregel, wandert sie
 > nach `AGENT_SERVER.md` und **verschwindet hier** – sonst laufen beide auseinander.
 
-## Stand: 05.11.2026
+## Stand: 06.11.2026
 
 **S0 bis S8 sind abgeschlossen und verifiziert.** Alles bis S8 ist auf `dev` committet (18 Commits
 für S8), **nicht gepusht**.
@@ -50,7 +51,32 @@ ohne Fehlschlag. Der Probebau des Images lief durch; das JAR (`app-server-1.0.0.
 Zielversionen nachweislich. Denis' Versionsanhebung `0.0.1-SNAPSHOT` → `1.0.0` steht als eigener
 Commit davor. **Nächster Schritt liegt bei Denis:** `dev` nach `main` mergen – der Pi baut `main`.
 
+**Neu am 06.11.2026 – Absagen an den Client (A10).** Anforderung von Denis: Neben der Zahl der Zusagen
+sollen auch die Absagen samt Namen an den Client gehen, äquivalent zu den Zusagen; der Client zeigt sie auf
+Admin- und User-Dashboard in der Terminansicht. **Vier Weggabelungen**, alle am 06.11.2026 entlang der
+Empfehlung entschieden (6.2): Zahl `absagen` in jedem Termin, Namen nur in der Einzelansicht
+(`teilnehmerliste.absagen`); alphabetisch; gesperrte Profile ausgeblendet; Gäste mit Kennzeichen.
+**Umsetzung:** Rumpf der Terminabfragen in `TerminRepositoryImpl` mit `LEFT JOIN profil.spieler` und
+`count(*) FILTER (WHERE NOT tn.zusage AND (tn.spieler_id IS NULL OR s.aktiv))`; `TerminEintrag`,
+`TerminUebersicht` und `TerminDetails` mit `absagen`; `TeilnahmeRepository#findeAbsagen` (gleiche Bedingung,
+`ORDER BY anzeige_name, tn.id`); neue Typen `Absageeintrag` (Domäne) und `AbsageEintrag` (DTO);
+`Teilnehmeruebersicht` und `Teilnehmerliste` um `absagen` erweitert. **Keine Migration.** **Vertrag:** additiv,
+zwei neue Pflichtfelder und das Schema `AbsageEintrag`, weiter 46 Endpunkte (4.1). Regeln: `AGENT_SERVER.md`,
+A10 sowie Punkte 8 und 9. Bruno nachgezogen.
+**Verifiziert:** Die drei Abfragen (Liste, Einzelansicht, Absagen) liefen mit `V001`–`V017` gegen PGlite: Zahl
+gleich Listenlänge, gesperrtes Profil fehlt, alphabetisch, kein Termin doppelt durch den zweiten Join, leerer
+Termin `0` und leere Liste. Domänentypen, DTOs und beide Repositorys sind mit JDK 21 gegen Stubs **übersetzt**;
+`TeilnahmeService` und die Tests nur bis auf fehlende Bibliotheken geprüft (keine eigenen Symbol- oder
+Typfehler). **Ausgeführt ist nichts mit Spring-Kontext.** Fallstrick dabei: zwei Hilfsdateien, die sich nur in
+der Gross-/Kleinschreibung unterschieden, überschrieben sich auf dem macOS-Dateisystem – die Übersetzung fand
+es. Erwartet: **596 Fälle in 37 Klassen** (591 + 5, nachgezählt); **der Lauf bei Denis am 06.11.2026 war
+grün (596/37)**. Auf `dev` committet zusammen mit der Version **1.0.1** (Denis), nicht gepusht.
+
 **Neu am 05.11.2026 – Releasenummer 1.0.0 (Denis, `d9f530d`).** `pom.xml` und `info.version` in `fubo-api.json` stehen auf 1.0.0, auf dem Pi läuft bis zum nächsten Deployment `fubo-backend:1.1.0` – die Nummer sinkt. Für Build, Laufzeit und Flyway ohne Folgen; für die Tags auf dem Pi gelten drei Regeln (vorhandenes altes `1.0.0` entfernen, Klon vor dem Bau prüfen, **1.1.0 nie wieder vergeben**), festgehalten in `harness/tmp/S9_DEPLOYMENT.md`, Abschnitt 10, „Sinkende Versionsnummer".
+*Nachtrag 06.11.2026:* Das Deployment vom 05.11. lief mit dem alten Tag in der Compose-Datei und baute den
+neuen Stand unter `fubo-backend:1.1.0`; das Image vom 31.10. existiert nicht mehr. Ein Rollback geht damit nur
+über einen Neubau eines älteren Commits plus Sicherung. **Nächster Release: 1.0.1** (06.11.2026, mit den
+Absagen) – die Nummer 1.1.0 bleibt ausgelassen. Ablauf in S9, Abschnitt 10, „Verlauf am 05.11.2026".
 
 **Neu am 05.11.2026 – Punktsummen je Team und Kategorie im manuellen Lauf (A24).** Anforderung von
 Denis: `POST /admin/teams/generieren` soll je Kategorie die Gesamtpunkte jedes Teams zeigen,
@@ -276,7 +302,7 @@ einem nicht eingeteilten Gast und ist jetzt `eingeteilterGastDarfErfassen`). Erw
 | Konfiguration | **14 Pflichtfelder** im Voll-Update |
 | `Fehlercode` | **39** Werte (neu: `NICHT_EINGETEILT`, davor `KEINE_ZUSAGE`) |
 | `AuditAktion` | **32** Werte (neu: `GAST_ABGESAGT`) |
-| Tests | **483 Fälle in 34 Klassen** zuletzt grün dokumentiert; nach Namensbestätigung, A18- und A15-Änderung nachgezählt **513 in 35**, mit dem Restkontingent **528 in 35**, mit der Durchmischung **538 in 35**, mit der Erfassungsberechtigung **548 in 35**, mit der CORS-Prüfung **554 in 36**, mit „Gast absagen" **568 in 36** (laut Denis grün), mit dem Entfernen abgesagter Termine **571 in 36**, mit dem Springer **590 in 37, grün am 03.11.2026** – der erste Lauf über alle Zwischenstände seit dem 03.10.2026, sie sind damit verifiziert; mit den Punktsummen **591 in 37, grün am 05.11.2026**; **acht Klassen ohne Spring-Kontext** (6.3) |
+| Tests | **483 Fälle in 34 Klassen** zuletzt grün dokumentiert; nach Namensbestätigung, A18- und A15-Änderung nachgezählt **513 in 35**, mit dem Restkontingent **528 in 35**, mit der Durchmischung **538 in 35**, mit der Erfassungsberechtigung **548 in 35**, mit der CORS-Prüfung **554 in 36**, mit „Gast absagen" **568 in 36** (laut Denis grün), mit dem Entfernen abgesagter Termine **571 in 36**, mit dem Springer **590 in 37, grün am 03.11.2026** – der erste Lauf über alle Zwischenstände seit dem 03.10.2026, sie sind damit verifiziert; mit den Punktsummen **591 in 37, grün am 05.11.2026**; mit den Absagen **596 in 37, grün am 06.11.2026**; **acht Klassen ohne Spring-Kontext** (6.3) |
 | Bruno-Collection | alle 46 Endpunkte, acht Ordner (`~/Documents/bruno/fubo_server`, unversioniert; am 24.10.2026 um „Gast absagen" ergänzt – die frühere Angabe „99 Requests" liess sich nicht nachzählen, es liegen 78 Request-Dateien vor) |
 | Plattform | **Spring Boot 4.1.1**, Tomcat 11.0.26 und Jackson 3.1.7 per Override (S9, 03.10.2026) |
 
@@ -331,6 +357,10 @@ erst recht nicht gegen die Antwort des Dienstes.
    Punkte) statt `differenzTeamstaerke`. Der Client zeigte das Feld seit dem 24.10.2026 ohnehin nicht an;
    nach dem Kopieren des Vertrags den Typ neu erzeugen. Ob `AdminTeams` die Summen anzeigt, entscheidet
    der Client (beschriften über `GET /admin/skills/lesen`).
+   **Dazu die Absagen (06.11.2026, additiv):** `absagen` (Zahl) in `TerminUebersicht`/`TerminDetails` und
+   `teilnehmerliste.absagen` (Schema `AbsageEintrag`: `anzeigeName`, `gast`) in der Einzelansicht. Anzeige auf
+   Admin- und User-Dashboard in der Terminansicht (Anforderung von Denis). Beide Felder sind Pflicht – Mocks
+   und Testdaten im Client brauchen sie.
 
 **Zwei Dinge vor jedem Lauf:** Docker muss laufen (`docker info`), und es ist `./mvnw clean verify`,
 nicht nur `verify` – `target/classes` vergisst nichts.
@@ -469,6 +499,7 @@ naheliegende Annahme falsch ist. Wann sie dazukam, steht in Git.
 | Punkt | Bedeutung für den Client |
 |---|---|
 | `teilnehmerliste` | Feld von `TerminDetails`, **kein eigener Endpunkt**. Bereits sortiert – **im Frontend nicht umsortieren**, sonst passt `position` nicht zur Anzeige |
+| `absagen` / `teilnehmerliste.absagen` (seit 06.11.2026) | Zahl in jedem Termin, Namen nur in der Einzelansicht, **alphabetisch** (einen Absagezeitpunkt gibt es nicht). Aktive Spieler und Gäste (`gast: true`), **ohne gesperrte Profile**; die Liste ist so lang wie die Zahl. Kein `position`, kein `wartet`, keine `gastStufe` – auch nicht für den Admin. Wer erneut zusagt, steht beim nächsten Abruf in `teilnehmer` und reiht sich hinten ein |
 | Warteschlange | **Eine erneute Zusage stellt hinten an.** Eine Absage lässt die Meldezeit unberührt |
 | `teamA`/`teamB` | **keine Rangfolge**, darf frei sortiert werden |
 | `SerieAngelegt` | nennt die erzeugten **und** die übersprungenen Zeitpunkte. Kollisionen lassen die Serie nicht scheitern; die zweite Liste muss angezeigt werden |
@@ -756,6 +787,10 @@ und Herleitung steht in `…_v14_S4-abgeschlossen.md`.
 | **Zielfunktion: Engpass zuerst, dann Summe** (03.11.2026, Weggabelung „Balance") | Die Summe allein liess eine Kategorie die ganze Abweichung tragen; gemessen an den 30 realen Profilen bei zehn Spielern in 10 % der gezogenen Einteilungen drei Punkte in einer Kategorie, seither keine. Verworfen: Band schliessen (keine Durchmischung mehr), quadrierte Abweichungen (bestraft, schliesst nicht aus) |
 | **Startteam: das schwächere Grundteam** (03.11.2026) | Die Überzahl gleicht dort mehr aus; bei Gleichstand der Seed. Verworfen: rein per Seed |
 | **Vertragsnamen bleiben** (`auswechselspieler`, `auswechselModus`; 03.11.2026) | Ein Umbenennen wäre brechend, ohne dem Client etwas zu sagen; brechend ist nur der Enumwert |
+| **Absagen: Zahl im Termin, Namen nur in der Einzelansicht** (06.11.2026, Anforderung von Denis) | Äquivalent zu den Zusagen. Namen in der Liste vergrösserten jede Listenantwort für eine Anzeige, die erst die Terminansicht braucht |
+| **Absagen alphabetisch** (06.11.2026) | Es gibt keinen Absagezeitpunkt: `gemeldet_am` bleibt bei einer Absage unberührt und trägt die letzte Zusage. Danach sortiert sähe die Liste chronologisch aus und wäre es nicht; eine eigene Spalte hätte eine Migration gebraucht, und bestehende Absagen hätten keinen Wert |
+| **Gesperrte Profile fehlen in den Absagen** (06.11.2026) | Beim Sperren werden ihre künftigen Zusagen zu Absagen; der Spieler hat nie abgesagt. Zahl und Liste filtern gleich, `zusagen` bleibt ungefiltert |
+| **Gäste in den Absagen, mit Kennzeichen** (06.11.2026) | Wie bei den Zusagen. Auch die Absage, die der Admin für einen Gast gesetzt hat – die Zeile sagt dasselbe |
 | **Punktsummen im manuellen Lauf ohne den Springer** (05.11.2026, Anforderung von Denis) | Ausgeglichen wird ohne ihn. Mitgezählt läge eine Kategorie bis zu sechs Punkte auseinander, obwohl die Einteilung ausgeglichen ist – der Admin hielte eine gute Einteilung für schief. Wer den Springer sehen will, sieht ihn markiert in der Teamliste |
 | **Punktsummen als Map mit Kategorieschlüssel, ungewichtet** (05.11.2026) | Feste Felder (`angriff`, …) bräuchten bei jeder neuen Kategorie eine Vertragsänderung; die Skillkarte eines Profils ist bereits so aufgebaut. Gewichtet wären es keine Punkte mehr, sondern Zwischenwerte der Zielfunktion – ein Torwartwert von `0.9` hätte keine anschauliche Bedeutung |
 | **`differenzTeamstaerke` entfällt ersatzlos** (05.11.2026) | Die Summe aller Abweichungen sagte nur, *dass* die Teams ausgeglichen sind; aus den beiden Karten liest der Admin ab, *wo* sie auseinanderliegen. Die Spalte `differenz_teamstaerke` bleibt (keine Migration) |
@@ -1178,13 +1213,24 @@ docker compose -f compose.dev.yml --env-file .env up -d
 ./mvnw clean verify
 ```
 
+**Erwartet nach den Absagen (06.11.2026): 596 Fälle in 37 Klassen** – nachgezählt (591 + 5):
+`TerminControllerTests` +1 (jetzt 28, neu `listeZaehltAbsagenVonSpielernUndGaesten`; Feldmengen von Liste
+und Teilnehmerliste um `absagen` erweitert), `TeilnehmerlisteTests` +4 (jetzt 14, neu
+`absagenStehenAlphabetisch`, `spielerUndGaesteStehenMitKennzeichenInDenAbsagen`,
+`gesperrteProfileFehlenInDenAbsagen`, `dieAbsagenTragenKeineBewertung`; erweitert
+`absagenErscheinenNichtInDerListe` und `eineGastAbsageNimmtDenGastAusDerListe`). Vorab liefen die drei
+Abfragen gegen PGlite, und die Klassen ohne Spring-Annotationen sind übersetzt. **Lauf bei Denis am
+06.11.2026: grün, 596/37** – Zahlen und Klassen wie vorab gezählt.
+
+**Zuletzt grün am 06.11.2026 – 596 Fälle in 37 Klassen** (Absagen, Version 1.0.1).
+
 **Erwartet nach den Punktsummen (05.11.2026): 591 Fälle in 37 Klassen** – nachgezählt (590 + 1):
 `ManuelleGenerierungTests` +1 (jetzt 21, neu `dieGesamtpunkteZaehlenDenSpringerNicht`; umgeschrieben
 `dieAntwortTraegtSiebenFelderUndKeinenSeed` und `gleichStarkeGruppenHabenGleicheGesamtpunkte`). Die Klasse
 hat Spring-Kontext und war vorab **nicht übersetzt und nicht ausgeführt**. **Lauf bei Denis am 05.11.2026:
 grün, 591/37** – Zahlen und Klassen wie vorab gezählt.
 
-**Zuletzt grün am 05.11.2026 – 591 Fälle in 37 Klassen** (Punktsummen im manuellen Lauf).
+**Davor grün am 05.11.2026 – 591 Fälle in 37 Klassen** (Punktsummen im manuellen Lauf).
 
 **Davor grün am 03.11.2026 – 590 Fälle in 37 Klassen** (Springer; zugleich der erste Lauf über alle
 Änderungen seit dem 03.10.2026 – Namensbestätigung, A18, A15, Restkontingent, Durchmischung,
@@ -1320,7 +1366,10 @@ und die Prüfschritte beim Nachziehen stehen in ihrer `README.md`.
 
 ## 7. Nächste Schritte
 
-0. **Testlauf der Punktsummen (05.11.2026)** – **erledigt: 591/37 grün, auf `dev` committet** (Vertrag,
+0. **Testlauf der Absagen (06.11.2026)** – **erledigt: 596/37 grün, auf `dev` committet** (Vertrag, Code,
+   Anleitungen, Version 1.0.1; nicht gepusht). Für das Deployment: Tag in der Compose-Datei auf dem Pi **vor**
+   dem Bau auf `fubo-backend:1.0.1` (S9, Abschnitt 10).
+   *Davor:* **Testlauf der Punktsummen (05.11.2026)** – **erledigt: 591/37 grün, auf `dev` committet** (Vertrag,
    Code, Anleitungen; nicht gepusht).
    *Vorheriger Punkt 0:* **Testlauf abschliessen** – **erledigt am 03.11.2026 (590/37 grün, `V017` gegen PostgreSQL 17)**. Offen bleibt daraus nur die Handprüfung: Ursprünglich (22.10.2026) hiess der Punkt: `./mvnw clean verify`, die A18- und
    A15-Änderung committen (**Reihenfolge nach `AGENT_SERVER.md`: Vertrag, Code, Anleitungen – alles

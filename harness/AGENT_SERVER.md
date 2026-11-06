@@ -76,6 +76,19 @@ Ergänzungen des Entwicklers sind als *Ergänzung* gekennzeichnet.
   Status `GEPLANT`.
 - **A8** Gast-Anmeldung: temporärer Name, Selbsteinschätzung über Dummy-Profil, Gastsitzung.
 - **A11** Über der Maximalzahl in die Warteschlange; Reihenfolge serverseitig bestimmt.
+- **A10** *Ergänzung vom 06.11.2026:* Neben den Zusagen gehen auch die **Absagen** an den Client –
+  als Zahl `absagen` in jedem Termin (Liste und Einzelansicht) und als Namensliste
+  `teilnehmerliste.absagen` nur in der Einzelansicht, wie bei den Zusagen.
+  - **Alphabetisch nach Anzeigename**, Gleichstand über `tn.id`. Einen Absagezeitpunkt gibt es nicht:
+    `gemeldet_am` bleibt bei einer Absage unberührt. Die Sortierung folgt der Collation der Datenbank.
+  - **Gesperrte Profile fehlen** – `(tn.spieler_id IS NULL OR s.aktiv)`. Beim Sperren werden ihre
+    künftigen Zusagen in Absagen umgewandelt (Punkt 8 unter „Rückmeldung und Warteschlange"); gezeigt würde eine
+    Absage, die der Spieler nie gegeben hat. **Dieselbe Bedingung steht an zwei Stellen**
+    (`TerminRepositoryImpl`, Rumpf der Terminabfragen, und `TeilnahmeRepository#findeAbsagen`) – Zahl
+    und Liste laufen sonst auseinander. `zusagen` bleibt ungefiltert.
+  - **Gäste stehen darin**, mit `gast: true` – auch ein Gast, für den der Admin abgesagt hat.
+  - **Eigener Typ `AbsageEintrag`** (`anzeigeName`, `gast`): `position` und `wartet` gehören zur
+    Warteschlange. Keine `gastStufe`, auch nicht für den Admin.
 - **A18** Einzeltermin oder befristete Serie (Enddatum Pflicht, Ort optional). *Ergänzung:* Status
   wechselt **30 Minuten nach Beginn** automatisch auf `ABGESCHLOSSEN`, sofern nicht abgesagt.
   *Ergänzung vom 18.10.2026:* Hat der Termin dann die Mindestzahl an Zusagen (A10) nicht erreicht
@@ -475,12 +488,14 @@ nicht mehr nur „liegt sie unter `/admin/`?".
    `EXISTS (… AND tn.zusage)`; falsch herum ist der Code lauffähig und **wirkungslos**.
    Beide Schritte mit derselben Uhrzeit, sonst könnte ein Termin dazwischen die Grenze
    „künftig" überschreiten. Die Zahl geht in den bestehenden `PROFIL_BLOCKIERT`-Eintrag –
-   es ist eine Folge des Sperrens, keine eigene Handlung.
+   es ist eine Folge des Sperrens, keine eigene Handlung. **In den Absagen erscheinen diese Zeilen
+   nicht** (06.11.2026): Gezählt und gelistet werden nur aktive Profile und Gäste (A10).
 9. **Die Teilnehmerliste trägt keine Bewertungen** – sie erreicht jede Rolle, auch `GAST` (A12).
    **Einzige Ausnahme seit 24.10.2026:** das optionale Feld `gastStufe` in der Antwort an eine
    Adminsitzung, mit dem Schlüssel fehlend für alle anderen (Regeln unter „Skill-Geheimhaltung").
    Wer die Liste um ein weiteres Feld erweitert, fragt zuerst, ob es bewertet – und wenn ja, ob es
-   hier hingehört.
+   hier hingehört. **Die Absagen (`teilnehmerliste.absagen`, seit 06.11.2026) haben die Ausnahme
+   nicht**: Sie tragen für keine Rolle eine Stufe.
 10. **Der Admin sagt nur für Gäste ab, nie für Spieler** (`POST /admin/teilnahme/gast-absagen`,
     24.10.2026). Die Suche läuft über `gast_name` – bei einem Spieler `NULL`, der Name eines
     Spielers trifft damit nie. Eine stellvertretende **Zusage** gibt es weiterhin nicht. Der Name
