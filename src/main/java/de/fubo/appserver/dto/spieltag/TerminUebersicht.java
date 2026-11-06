@@ -25,6 +25,9 @@ import java.time.LocalTime;
  * @param status             Zustand des Termins; abgesagte bleiben in der Liste
  * @param teilnehmerVersion  Zaehler der Teilnehmeraenderungen (A15); in S4 nur gefuehrt
  * @param zusagen            Anzahl der Zusagen; Absagen zaehlen nicht mit
+ * @param absagen            Anzahl der Absagen (06.11.2026) - Gegenstueck zu {@code zusagen};
+ *                           die Namen stehen in der Einzelansicht. Gesperrte Profile zaehlen
+ *                           nicht mit, Gaeste schon
  * @param eigeneRueckmeldung <b>dreiwertig:</b> {@code true} zugesagt, {@code false} abgesagt,
  *                           {@code null} noch nicht gemeldet. Ein {@code if} ueber diesem Feld
  *                           behandelt den dritten Fall wie den zweiten - genau davor warnt
@@ -38,6 +41,7 @@ public record TerminUebersicht(Long terminId,
                                TerminStatus status,
                                int teilnehmerVersion,
                                int zusagen,
+                               int absagen,
                                Boolean eigeneRueckmeldung) {
 
     /**
@@ -61,6 +65,7 @@ public record TerminUebersicht(Long terminId,
                 eintrag.status(),
                 eintrag.teilnehmerVersion(),
                 eintrag.zusagen(),
+                eintrag.absagen(),
                 eintrag.eigeneRueckmeldung());
     }
 }

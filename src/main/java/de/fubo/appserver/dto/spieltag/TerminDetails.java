@@ -61,10 +61,11 @@ import java.time.OffsetDateTime;
  * @param status             Zustand des Termins
  * @param teilnehmerVersion  Zaehler der Teilnehmeraenderungen (A15)
  * @param zusagen            Anzahl der Zusagen
+ * @param absagen            Anzahl der Absagen, siehe {@link TerminUebersicht}
  * @param eigeneRueckmeldung dreiwertig, siehe {@link TerminUebersicht}
  * @param version            Stand der Zeile fuer das Optimistic Locking
  * @param teilnehmerliste    die Zusagen in Warteschlangenreihenfolge samt der Grenzen aus
- *                           der Konfiguration
+ *                           der Konfiguration, dazu die Absagen alphabetisch
  * @param teams              die aktuelle Teameinteilung oder {@code null}, solange niemand
  *                           generiert hat. <b>{@code null} ist kein Fehler</b>, sondern der
  *                           Normalzustand - und die Antwort auf "gibt es schon eine
@@ -102,6 +103,7 @@ public record TerminDetails(Long terminId,
                             TerminStatus status,
                             int teilnehmerVersion,
                             int zusagen,
+                            int absagen,
                             Boolean eigeneRueckmeldung,
                             Long version,
                             Teilnehmerliste teilnehmerliste,
@@ -123,6 +125,7 @@ public record TerminDetails(Long terminId,
                 eintrag.status(),
                 eintrag.teilnehmerVersion(),
                 eintrag.zusagen(),
+                eintrag.absagen(),
                 eintrag.eigeneRueckmeldung(),
                 eintrag.version(),
                 Teilnehmerliste.von(gelesen.teilnehmer()),

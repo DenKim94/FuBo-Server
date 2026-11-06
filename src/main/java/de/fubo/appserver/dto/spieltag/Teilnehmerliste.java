@@ -26,11 +26,15 @@ import java.util.List;
  * @param teilnehmer          die Zusagen in Warteschlangenreihenfolge. <b>Im Frontend nicht
  *                            umsortieren</b> - sonst stimmt {@code position} nicht mehr mit
  *                            der Anzeige ueberein
+ * @param absagen             die Absagen alphabetisch nach Anzeigename (06.11.2026); aktive
+ *                            Spieler und Gaeste, gesperrte Profile fehlen. Ihre Zahl steht als
+ *                            {@code absagen} im umgebenden Termin
  */
 public record Teilnehmerliste(short minTeilnehmer,
                               short maxTeilnehmer,
                               boolean mindestzahlErreicht,
-                              List<TeilnehmerEintrag> teilnehmer) {
+                              List<TeilnehmerEintrag> teilnehmer,
+                              List<AbsageEintrag> absagen) {
 
     /** Bildet die Uebersicht des Dienstes auf den Vertrag ab. */
     public static Teilnehmerliste von(Teilnehmeruebersicht uebersicht) {
@@ -40,6 +44,9 @@ public record Teilnehmerliste(short minTeilnehmer,
                 uebersicht.mindestzahlErreicht(),
                 uebersicht.teilnehmer().stream()
                         .map(eintrag -> TeilnehmerEintrag.von(eintrag, uebersicht))
+                        .toList(),
+                uebersicht.absagen().stream()
+                        .map(AbsageEintrag::von)
                         .toList());
     }
 }

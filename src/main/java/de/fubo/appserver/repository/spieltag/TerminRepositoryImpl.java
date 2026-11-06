@@ -58,6 +58,19 @@ class TerminRepositoryImpl implements TerminRepositoryCustom {
      * Abfragezweig. <b>Wer {@code NULL} hier fuer "egal" haelt, dreht die Bedingung spaeter
      * versehentlich um</b> und liefert jedem Aufrufer die Rueckmeldung eines Fremden.
      *
+     * <h2>Die Absagen zaehlen nur aktive Profile und Gaeste (06.11.2026)</h2>
+     * {@code count(*) FILTER (WHERE NOT tn.zusage AND (tn.spieler_id IS NULL OR s.aktiv))}.
+     * Beim Sperren eines Profils werden seine kuenftigen Zusagen in Absagen umgewandelt
+     * ({@code TeilnahmeRepository#zusagenZuruecknehmen}); ohne den Filter stuende dort eine
+     * Absage, die der Spieler nie gegeben hat. <b>Dieselbe Bedingung steht in
+     * {@code TeilnahmeRepository#findeAbsagen}</b> - Zahl und Namensliste muessen
+     * uebereinstimmen. {@code zusagen} bleibt ungefiltert wie bisher. {@code NOT tn.zusage}
+     * ist bei einem Termin ohne Teilnahme {@code NULL} (die Zeile aus dem {@code LEFT JOIN}),
+     * der Filter trifft dann nicht - die Zahl ist {@code 0}.
+     *
+     * <p>Der {@code LEFT JOIN} auf {@code profil.spieler} vervielfacht nichts: Je Teilnahme
+     * gibt es hoechstens ein Profil.
+     *
      * <h2>{@code GROUP BY t.id}</h2>
      * Genuegt, weil {@code t.id} der Primaerschluessel ist: PostgreSQL leitet die uebrigen
      * Spalten von {@code termin} daraus funktional ab.
@@ -73,11 +86,15 @@ class TerminRepositoryImpl implements TerminRepositoryCustom {
                    t.version,
                    t.halle_abgesagt_am,
                    count(*) FILTER (WHERE tn.zusage)              AS zusagen,
+                   count(*) FILTER (WHERE NOT tn.zusage
+                                      AND (tn.spieler_id IS NULL OR s.aktiv))
+                                                                  AS absagen,
                    bool_or(tn.zusage) FILTER (WHERE tn.spieler_id = :spielerId
                                                  OR tn.gast_name  = :gastName)
                                                                   AS eigene_rueckmeldung
               FROM spieltag.termin t
               LEFT JOIN spieltag.teilnahme tn ON tn.termin_id = t.id
+              LEFT JOIN profil.spieler s     ON s.id = tn.spieler_id
             """;
 
     /**
@@ -612,6 +629,7 @@ class TerminRepositoryImpl implements TerminRepositoryCustom {
                 rs.getInt("teilnehmer_version"),
                 rs.getLong("version"),
                 rs.getInt("zusagen"),
+                rs.getInt("absagen"),
                 rs.getObject("eigene_rueckmeldung", Boolean.class),
                 rs.getObject("halle_abgesagt_am", OffsetDateTime.class));
     }

@@ -300,7 +300,8 @@ public class TeilnahmeService {
     // ------------------------------------------------------------------ Uebersicht
 
     /**
-     * Liefert die Zusagen eines Termins samt der geltenden Grenzen (A10, A11).
+     * Liefert die Zusagen eines Termins samt der geltenden Grenzen (A10, A11) und, seit dem
+     * 06.11.2026, die Absagen.
      *
      * <p><b>Die Grenzen werden bei jedem Abruf frisch gelesen.</b> {@code ConfigService} hat
      * bewusst keinen Zwischenspeicher; senkt der Admin {@code max_teilnehmer}, wandert die
@@ -313,7 +314,8 @@ public class TeilnahmeService {
      *
      * @param terminId     betroffener Termin
      * @param mitGastStufe {@code true} nur fuer eine Sitzung mit der Rolle {@code ADMIN}
-     * @return Zusagen in Meldereihenfolge, dazu Mindest- und Hoechstzahl
+     * @return Zusagen in Meldereihenfolge, dazu Mindest- und Hoechstzahl und die Absagen
+     *         alphabetisch
      */
     @Transactional(readOnly = true)
     public Teilnehmeruebersicht uebersicht(Long terminId, boolean mitGastStufe) {
@@ -321,7 +323,8 @@ public class TeilnahmeService {
         return new Teilnehmeruebersicht(
                 konfiguration.getMinTeilnehmer(),
                 konfiguration.getMaxTeilnehmer(),
-                teilnahmeRepository.findeZusagen(terminId, mitGastStufe));
+                teilnahmeRepository.findeZusagen(terminId, mitGastStufe),
+                teilnahmeRepository.findeAbsagen(terminId));
     }
 
     // ------------------------------------------------------------------ Hilfsmittel

@@ -1,6 +1,7 @@
 package de.fubo.appserver.repository.spieltag;
 
 import de.fubo.appserver.domain.auth.GastStufe;
+import de.fubo.appserver.domain.spieltag.Absageeintrag;
 import de.fubo.appserver.domain.spieltag.GastAbsageErgebnis;
 import de.fubo.appserver.domain.spieltag.Teilnehmereintrag;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -162,7 +163,7 @@ public class TeilnahmeRepository {
      * stimmte - die Liste kaeme dann durcheinander an.
      *
      * <p><b>Nur Zusagen</b> ({@code AND tn.zusage}). Wer abgesagt hat, gehoert nicht in die
-     * Teilnehmerliste; seine Absage sieht er an der eigenen Rueckmeldung des Termins.
+     * Warteschlange; die Absagen liefert seit dem 06.11.2026 {@link #SQL_ABSAGEN}.
      *
      * <p>{@code LEFT JOIN} auf {@code profil.spieler}: Bei einem Gast gibt es keine Zeile
      * dort, {@code s.name} ist dann {@code NULL} und {@code COALESCE} nimmt den Gastnamen.
@@ -194,6 +195,42 @@ public class TeilnahmeRepository {
              WHERE tn.termin_id = :terminId
                AND tn.zusage
              ORDER BY tn.gemeldet_am, tn.id
+            """;
+
+    /**
+     * Die Absagen eines Termins, alphabetisch (Ergaenzung vom 06.11.2026).
+     *
+     * <h2>Alphabetisch, weil es keinen Absagezeitpunkt gibt</h2>
+     * {@code gemeldet_am} bleibt bei einer Absage unberuehrt (siehe
+     * {@link #SQL_RUECKMELDUNG_SPIELER}) und traegt dann den Zeitpunkt der letzten Zusage oder,
+     * bei einer Absage ohne vorherige Zusage, den der Absage selbst. Eine Sortierung danach
+     * saehe chronologisch aus und waere es nicht. Eine eigene Spalte haette eine Migration
+     * gebraucht, und bestehende Absagen haetten keinen Wert. <b>Die Sortierung folgt der
+     * Collation der Datenbank</b> ({@code en_US.utf8} im Image {@code postgres:17}): Gross- und
+     * Kleinschreibung entscheiden erst bei sonst gleichen Namen. {@code tn.id} macht die
+     * Reihenfolge bei gleichen Namen eindeutig.
+     *
+     * <h2>Gesperrte Profile fehlen</h2>
+     * {@code (tn.spieler_id IS NULL OR s.aktiv)}: Beim Sperren werden die kuenftigen Zusagen
+     * eines Profils in Absagen umgewandelt ({@link #SQL_ZUSAGEN_ZURUECKNEHMEN}) - der Spieler
+     * hat sie nie gegeben. Dieselbe Bedingung steht in der Zahl {@code absagen} des Termins
+     * ({@code TerminRepositoryImpl}); laufen beide auseinander, zeigt der Client eine Zahl, die
+     * nicht zur Liste passt.
+     *
+     * <h2>Gaeste stehen darin</h2>
+     * Auch wenn der Admin fuer sie abgesagt hat ({@link #SQL_GAST_ABSAGEN}): Die Zeile sagt
+     * dasselbe, und wer abgesagt hat, ist keine Frage danach, wer gedrueckt hat. Die Stufe wird
+     * nicht gelesen - eine Absage rechnet niemand.
+     */
+    private static final String SQL_ABSAGEN = """
+            SELECT COALESCE(s.name, tn.gast_name) AS anzeige_name,
+                   tn.spieler_id IS NULL          AS gast
+              FROM spieltag.teilnahme tn
+              LEFT JOIN profil.spieler s ON s.id = tn.spieler_id
+             WHERE tn.termin_id = :terminId
+               AND NOT tn.zusage
+               AND (tn.spieler_id IS NULL OR s.aktiv)
+             ORDER BY anzeige_name, tn.id
             """;
 
     /**
@@ -418,6 +455,21 @@ public class TeilnahmeRepository {
                             rs.getInt("position"),
                             stufe == null ? null : GastStufe.valueOf(stufe));
                 })
+                .list();
+    }
+
+    /**
+     * Liefert die Absagen eines Termins, alphabetisch nach Anzeigename (06.11.2026).
+     *
+     * @param terminId betroffener Termin
+     * @return Absagen aktiver Spieler und von Gaesten; leere Liste, wenn niemand abgesagt hat
+     */
+    public List<Absageeintrag> findeAbsagen(Long terminId) {
+        return jdbc.sql(SQL_ABSAGEN)
+                .param("terminId", terminId)
+                .query((rs, zeile) -> new Absageeintrag(
+                        rs.getString("anzeige_name"),
+                        rs.getBoolean("gast")))
                 .list();
     }
 

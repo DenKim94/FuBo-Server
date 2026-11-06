@@ -25,6 +25,8 @@ import java.time.OffsetDateTime;
  * @param teilnehmerVersion Zaehler der Teilnehmeraenderungen (A15)
  * @param version           Stand der Zeile fuer das Optimistic Locking
  * @param zusagen           Anzahl der Zusagen; Absagen zaehlen nicht mit
+ * @param absagen           Anzahl der Absagen aktiver Spieler und von Gaesten (06.11.2026);
+ *                          gesperrte Profile zaehlen nicht mit
  * @param eigeneRueckmeldung {@code true} zugesagt, {@code false} abgesagt,
  *                           <b>{@code null} noch nicht gemeldet</b> - drei Zustaende, nicht zwei
  * @param halleAbgesagtAm    Zeitpunkt der versandten Absage an den Hallenbetreiber (A23) oder
@@ -42,6 +44,7 @@ public record TerminEintrag(Long id,
                             int teilnehmerVersion,
                             Long version,
                             int zusagen,
+                            int absagen,
                             Boolean eigeneRueckmeldung,
                             OffsetDateTime halleAbgesagtAm) {
 }

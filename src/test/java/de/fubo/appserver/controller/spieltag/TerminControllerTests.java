@@ -190,6 +190,26 @@ class TerminControllerTests {
     }
 
     /**
+     * Die Liste zaehlt die Absagen neben den Zusagen - von Spielern und von Gaesten
+     * (Ergaenzung vom 06.11.2026).
+     *
+     * <p>Zwei Absagen unterschiedlicher Art und eine Zusage: Zaehlte die Abfrage Gaeste nicht
+     * mit, stuende hier {@code 1}; zaehlte sie alle Rueckmeldungen, stuende {@code 3}.
+     */
+    @Test
+    void listeZaehltAbsagenVonSpielernUndGaesten() throws Exception {
+        Long terminId = terminAnlegen(LocalDate.now().plusDays(BASIS_TAGE + 19), null);
+        teilnahmeAnlegen(terminId, spielerId(0), true);
+        teilnahmeAnlegen(terminId, spielerId(1), false);
+        gastTeilnahmeAnlegen(terminId, "Testgast Lambda", false);
+
+        Map<String, Object> termin = ausListe(liste(spielerSitzung(), null), terminId);
+
+        assertThat(zahl(termin, "zusagen")).isEqualTo(1);
+        assertThat(zahl(termin, "absagen")).isEqualTo(2);
+    }
+
+    /**
      * Wer abgesagt hat, sieht {@code false}; wer gar nicht geantwortet hat, sieht
      * {@code null}.
      *
@@ -266,7 +286,7 @@ class TerminControllerTests {
         assertThat(termine).isNotEmpty();
         assertThat(termine.getFirst().keySet()).containsExactlyInAnyOrder(
                 "terminId", "serieId", "datum", "uhrzeit", "ort", "status",
-                "teilnehmerVersion", "zusagen", "eigeneRueckmeldung");
+                "teilnehmerVersion", "zusagen", "absagen", "eigeneRueckmeldung");
     }
 
     // --------------------------------------------------------------------- Einzelansicht
@@ -301,11 +321,12 @@ class TerminControllerTests {
         Map<String, Object> liste = teilnehmerliste(einzeln(spielerSitzung(), terminId));
 
         assertThat(liste.keySet()).containsExactlyInAnyOrder(
-                "minTeilnehmer", "maxTeilnehmer", "mindestzahlErreicht", "teilnehmer");
+                "minTeilnehmer", "maxTeilnehmer", "mindestzahlErreicht", "teilnehmer", "absagen");
         assertThat(zahl(liste, "minTeilnehmer")).isEqualTo(6);
         assertThat(zahl(liste, "maxTeilnehmer")).isEqualTo(22);
         assertThat(liste.get("mindestzahlErreicht")).isEqualTo(false);
         assertThat(eintraege(liste)).isEmpty();
+        assertThat(liste.get("absagen")).as("leere Liste, nicht null").isEqualTo(List.of());
     }
 
     // --------------------------------------------------------------------- Rueckmeldung

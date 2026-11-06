@@ -195,7 +195,10 @@ class TeilnehmerlisteTests {
                 .isEqualTo(true);
     }
 
-    /** Absagen stehen nicht in der Liste; sie ist eine Liste der Zusagen. */
+    /**
+     * Absagen stehen nicht in der Warteschlange; sie ist eine Liste der Zusagen. Seit dem
+     * 06.11.2026 stehen sie in einer eigenen Liste daneben.
+     */
     @Test
     void absagenErscheinenNichtInDerListe() throws Exception {
         Long terminId = terminAnlegen(4);
@@ -203,6 +206,7 @@ class TeilnehmerlisteTests {
         absageAnlegen(terminId, spielerId(1));
 
         assertThat(namen(teilnehmer(terminId))).containsExactly(name(0));
+        assertThat(namen(absagen(details(terminId, spielerSitzung())))).containsExactly(name(1));
     }
 
     /**
@@ -327,6 +331,95 @@ class TeilnehmerlisteTests {
         List<Map<String, Object>> danach = teilnehmer(terminId, admin);
         assertThat(namen(danach)).containsExactly(name(0), name(1));
         assertThat(danach.get(1).get("wartet")).as("Der Nachrueckende wartet nicht mehr").isEqualTo(false);
+        assertThat(absagen(details(terminId, admin)))
+                .as("Der abgemeldete Gast steht seit dem 06.11.2026 in den Absagen")
+                .containsExactly(Map.of("anzeigeName", "Testgast Emil", "gast", true));
+    }
+
+    /**
+     * Die Absagen stehen alphabetisch - nicht nach Meldezeit und nicht nach Reihenfolge des
+     * Einfuegens (Ergaenzung vom 06.11.2026).
+     *
+     * <p>Die drei Zeilen entstehen weder alphabetisch noch in zeitlicher Folge: Sortierte die
+     * Abfrage nach {@code gemeldet_am}, kaeme Ypsilon zuerst; nach {@code id} kaeme Ypsilon
+     * ebenfalls zuerst. Nur alphabetisch ergibt Alpha, Mu, Ypsilon. Die Namen sind reines
+     * ASCII mit gleichem Praefix, damit die Collation der Datenbank nicht mitentscheidet.
+     */
+    @Test
+    void absagenStehenAlphabetisch() throws Exception {
+        Long terminId = terminAnlegen(10);
+        gastAbsageAnlegen(terminId, "Testgast Ypsilon", 30);
+        gastAbsageAnlegen(terminId, "Testgast Alpha", 10);
+        gastAbsageAnlegen(terminId, "Testgast Mu", 20);
+
+        assertThat(namen(absagen(details(terminId, spielerSitzung()))))
+                .containsExactly("Testgast Alpha", "Testgast Mu", "Testgast Ypsilon");
+    }
+
+    /**
+     * Spieler und Gaeste stehen in den Absagen, unterschieden durch {@code gast} - wie bei den
+     * Zusagen. Und keine Absage steht in der Warteschlange, keine Zusage in den Absagen.
+     */
+    @Test
+    void spielerUndGaesteStehenMitKennzeichenInDenAbsagen() throws Exception {
+        Long terminId = terminAnlegen(11);
+        zusageAnlegen(terminId, spielerId(0), 20);
+        absageAnlegen(terminId, spielerId(1));
+        gastAbsageAnlegen(terminId, "Testgast Kappa", 10);
+
+        Map<String, Object> details = details(terminId, spielerSitzung());
+        List<Map<String, Object>> absagen = absagen(details);
+
+        assertThat(namen(absagen)).containsExactlyInAnyOrder(name(1), "Testgast Kappa");
+        assertThat(absagen).anySatisfy(eintrag -> assertThat(eintrag)
+                .containsEntry("anzeigeName", name(1)).containsEntry("gast", false));
+        assertThat(absagen).anySatisfy(eintrag -> assertThat(eintrag)
+                .containsEntry("anzeigeName", "Testgast Kappa").containsEntry("gast", true));
+        assertThat(namen(eintraege(teilnehmerliste(details)))).containsExactly(name(0));
+        assertThat(zahl(details, "absagen")).isEqualTo(2);
+    }
+
+    /**
+     * Gesperrte Profile fehlen in den Absagen - in der Liste und in der Zahl.
+     *
+     * <p>Beim Sperren werden die kuenftigen Zusagen eines Profils in Absagen umgewandelt; der
+     * Spieler hat sie nie gegeben. <b>Zahl und Liste filtern gleich</b>: Der Fall vergleicht
+     * beide, weil sie in zwei verschiedenen Abfragen entstehen und genau dort
+     * auseinanderlaufen koennten.
+     */
+    @Test
+    void gesperrteProfileFehlenInDenAbsagen() throws Exception {
+        Long terminId = terminAnlegen(12);
+        Long aktiv = spielerId(0);
+        Long gesperrt = spielerId(1);
+        String aktivName = name(0);
+        absageAnlegen(terminId, aktiv);
+        absageAnlegen(terminId, gesperrt);
+        gastAbsageAnlegen(terminId, "Testgast Sigma", 10);
+        jdbc.update("UPDATE profil.spieler SET aktiv = false WHERE id = ?", gesperrt);
+
+        Map<String, Object> details = details(terminId, spielerSitzung());
+
+        assertThat(namen(absagen(details))).containsExactlyInAnyOrder(aktivName, "Testgast Sigma");
+        assertThat(zahl(details, "absagen")).isEqualTo(absagen(details).size());
+    }
+
+    /**
+     * Die Absagen tragen keine Bewertung - fuer keine Rolle, auch nicht die Stufe eines Gastes
+     * fuer den Admin. Die Stufe braucht er an der Zusage, die der Generator rechnet.
+     */
+    @Test
+    void dieAbsagenTragenKeineBewertung() throws Exception {
+        Long terminId = terminAnlegen(13);
+        gastAbsageAnlegen(terminId, "Testgast Omikron", 10);
+        absageAnlegen(terminId, spielerId(1));
+
+        for (String token : List.of(adminSitzung(), spielerSitzung(), gastSitzung("Testgast Tau"))) {
+            assertThat(absagen(details(terminId, token)))
+                    .hasSize(2)
+                    .allSatisfy(eintrag -> assertThat(eintrag.keySet())
+                            .containsExactlyInAnyOrder("anzeigeName", "gast"));
+        }
     }
 
     // --------------------------------------------------------------------- Hilfsmittel
@@ -376,6 +469,30 @@ class TeilnehmerlisteTests {
                 INSERT INTO spieltag.teilnahme (termin_id, gast_name, gast_stufe, zusage, gemeldet_am)
                 VALUES (?, ?, 'MITTEL', true, now() - make_interval(mins => ?))
                 """, terminId, gastName, vorMinuten);
+    }
+
+    /** Wie {@link #gastZusageAnlegen}, nur als Absage - {@code vorMinuten} zaehlt rueckwaerts. */
+    private void gastAbsageAnlegen(Long terminId, String gastName, int vorMinuten) {
+        jdbc.update("""
+                INSERT INTO spieltag.teilnahme (termin_id, gast_name, gast_stufe, zusage, gemeldet_am)
+                VALUES (?, ?, 'MITTEL', false, now() - make_interval(mins => ?))
+                """, terminId, gastName, vorMinuten);
+    }
+
+    /** Die vollstaendige Einzelansicht unter einer beliebigen Sitzung. */
+    private Map<String, Object> details(Long terminId, String token) throws Exception {
+        String antwort = mockMvc.perform(get("/api/v1/termine/%d/lesen".formatted(terminId))
+                        .cookie(new Cookie(COOKIE, token)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        return objectMapper.readValue(antwort, new TypeReference<>() {
+        });
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> absagen(Map<String, Object> details) {
+        return (List<Map<String, Object>>) teilnehmerliste(details).get("absagen");
     }
 
     /** Die Teilnehmerliste aus der Einzelansicht - der einzige Weg, sie zu lesen. */

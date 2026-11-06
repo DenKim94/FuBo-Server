@@ -12,16 +12,21 @@ import java.util.List;
  * ueberhaupt stattfindet. Sie werden bei jedem Abruf frisch gelesen - {@code ConfigService}
  * hat bewusst keinen Zwischenspeicher.
  *
- * <p><b>Nur Zusagen.</b> Wer abgesagt hat, steht nicht in der Liste; die Absage ist in der
- * eigenen Rueckmeldung des Terminobjekts sichtbar.
+ * <p><b>Zusagen und Absagen getrennt</b> (Ergaenzung vom 06.11.2026). Die Zusagen bilden die
+ * Warteschlange und tragen eine Position; die Absagen stehen alphabetisch daneben und kennen
+ * weder Position noch Wartestatus. In einer gemeinsamen Liste muesste jeder Leser die Absagen
+ * aus Position, Warteschlange und Mindestzahl erst wieder herausrechnen.
  *
  * @param minTeilnehmer Mindestteilnehmerzahl, unter der ein Termin nicht stattfindet (A10)
  * @param maxTeilnehmer Hoechstzahl; alles darueber ist Warteschlange (A11)
  * @param teilnehmer    die Zusagen in Meldereihenfolge, Position ab 1
+ * @param absagen       die Absagen aktiver Spieler und von Gaesten, alphabetisch; gesperrte
+ *                      Profile fehlen (06.11.2026)
  */
 public record Teilnehmeruebersicht(short minTeilnehmer,
                                    short maxTeilnehmer,
-                                   List<Teilnehmereintrag> teilnehmer) {
+                                   List<Teilnehmereintrag> teilnehmer,
+                                   List<Absageeintrag> absagen) {
 
     /**
      * Beantwortet A10 unmittelbar: Ist die Mindestzahl erreicht?
